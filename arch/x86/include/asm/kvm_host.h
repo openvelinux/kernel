@@ -519,6 +519,11 @@ struct kvm_vcpu_hv {
 	cpumask_t tlb_flush;
 };
 
+/* Xen HVM per vcpu emulation context */
+struct kvm_vcpu_xen {
+	u64 hypercall_rip;
+};
+
 struct kvm_vcpu_arch {
 	/*
 	 * rip and regs accesses must go through
@@ -718,6 +723,7 @@ struct kvm_vcpu_arch {
 	unsigned long singlestep_rip;
 
 	struct kvm_vcpu_hv hyperv;
+	struct kvm_vcpu_xen xen;
 
 	cpumask_var_t wbinvd_dirty_mask;
 
