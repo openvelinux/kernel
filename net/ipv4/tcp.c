@@ -267,6 +267,7 @@
 #include <linux/slab.h>
 #include <linux/errqueue.h>
 #include <linux/static_key.h>
+#include <trace/events/tcp.h>
 
 #include <net/icmp.h>
 #include <net/inet_common.h>
@@ -1126,6 +1127,7 @@ int tcp_sendpage(struct sock *sk, struct page *page, int offset,
 	lock_sock(sk);
 	ret = tcp_sendpage_locked(sk, page, offset, size, flags);
 	release_sock(sk);
+	trace_tcp_send_length(sk, ret > 0 ? ret : 0, ret > 0 ? 0 : ret, 0);
 
 	return ret;
 }
@@ -1446,6 +1448,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	lock_sock(sk);
 	ret = tcp_sendmsg_locked(sk, msg, size);
 	release_sock(sk);
+	trace_tcp_send_length(sk, ret > 0 ? ret : 0, ret > 0 ? 0 : ret, 0);
 
 	return ret;
 }
@@ -2324,6 +2327,11 @@ found_fin_ok:
 
 	/* Clean up data we have read: This will do ACK frames. */
 	tcp_cleanup_rbuf(sk, copied);
+	trace_tcp_recv_length(sk,
+						(copied > 0
+						&& !(flags & MSG_PEEK)) ? copied : 0,
+						(copied > 0
+						&& !(flags & MSG_PEEK)) ? 0 : copied, flags);
 
 	release_sock(sk);
 

@@ -181,6 +181,47 @@ DEFINE_EVENT(tcp_event_sk, tcp_rcv_space_adjust,
 	TP_ARGS(sk)
 );
 
+/*
+ * tcp send/recv stream length
+ *
+ * Note: this class requires positive integer
+ */
+DECLARE_EVENT_CLASS(tcp_stream_length,
+
+	TP_PROTO(struct sock *sk, int length, int error, int flags),
+
+	TP_ARGS(sk, length, error, flags),
+
+	TP_STRUCT__entry(
+		__field(void *, sk)
+		__field(int, length)
+		__field(int, error)
+		__field(int, flags)
+	),
+
+	TP_fast_assign(
+		__entry->sk = sk;
+		__entry->length = length;
+		__entry->error = error;
+		__entry->flags = flags;
+	),
+
+	TP_printk("sk address = %p, length = %d, error = %d flags = %u ",
+		__entry->sk, __entry->length, __entry->error, __entry->flags)
+);
+
+DEFINE_EVENT(tcp_stream_length, tcp_send_length,
+	TP_PROTO(struct sock *sk, int length, int error, int flags),
+
+	TP_ARGS(sk, length, error, flags)
+);
+
+DEFINE_EVENT(tcp_stream_length, tcp_recv_length,
+	TP_PROTO(struct sock *sk, int length, int error, int flags),
+
+	TP_ARGS(sk, length, error, flags)
+);
+
 TRACE_EVENT(tcp_retransmit_synack,
 
 	TP_PROTO(const struct sock *sk, const struct request_sock *req),
