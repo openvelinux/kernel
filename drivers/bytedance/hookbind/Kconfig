@@ -1,0 +1,8 @@
+#
+# Bytedance module configuration
+#
+config BYTEDANCE_HOOKBIND
+	tristate "bytedance hook bind module"
+	help
+	  this module is hook bind 
+	  detail is https://wiki.bytedance.net/display/System/hookbind

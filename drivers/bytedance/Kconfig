@@ -1,0 +1,20 @@
+#
+# Bytedance module configuration
+#
+config BYTEDANCE
+	bool "bytedance private kernel module"
+	default y
+	help
+	  If you want some module which belong to bytedance 
+	  say Y.
+
+	  Note that the answer to this question does not directly affect the
+	  kernel: saying N will just cause the configurator to skip all
+	  the questions about Bytedance module. If you say Y, you will be asked
+	  for your specific module in the following questions.
+
+if BYTEDANCE
+
+source "drivers/bytedance/hookbind/Kconfig"
+
+endif # BYTEDANCE
