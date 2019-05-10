@@ -1,0 +1,10 @@
+#
+# Bytedance module configuration
+#
+config BYTEDANCE_HOOKBIND
+	tristate "ByteDance hookbind driver"
+	default n
+	help
+	  This driver is used to hook bind syscall.  Details can refer to
+	  https://bytedance.feishu.cn/wiki/wikcnso8i1DX1YirVuJcbGbmCYZ
+
