@@ -8512,6 +8512,7 @@ CONFIG_PM_OPP=y
 #
 CONFIG_BYTEDANCE=y
 CONFIG_BYTEDANCE_HOOKBIND=m
+CONFIG_BYTEDANCE_BLACKHOLEFS=m
 # end of ByteDance drivers support
 # end of Device Drivers
 
