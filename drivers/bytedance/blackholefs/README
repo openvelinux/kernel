@@ -1,0 +1,45 @@
+=======================
+blackholefs file system
+=======================
+
+
+What does blackholefs do?
+-------------------------
+A lot of virtual machines run with distributed storage volumes(Ex, ceph),
+of the IO requests may be slow during the heavy loading of ceph cluster.
+So we can let part of VMs run in degraded mode: services in VM writes log file
+into blackholefs, and the other VMs still run with ceph.
+The goal of this solution focuses SLA of the cluster.
+
+
+How does blackholefs implement?
+-------------------------------
+blackholefs only keeps the inodes in memory, drops the user data in write
+operation and clears user buffer in read operation.
+
+
+Usage example
+-------------
+	insmod /lib/modules/`uname -r`/kernel/drivers/bytedance/blackholefs/blackholefs.ko
+	mkdir -p /data01
+	mount -t blackholefs blackholefs /data01
+	touch /data01/survival-mode
+
+	mkdir -p /data01/opt/log/nginx
+	mkdir -p /data01/opt/tce/kubernetes/node/log/kubelet-log
+	mkdir -p /data01/opt/tce/kubernetes/node/run/kubelet-root
+	mkdir -p /data01/opt/tiger/cores
+	mkdir -p /data01/opt/tiger/http2p
+	mkdir -p /data01/var/crash
+	mkdir -p /data01/var/log/apt
+	mkdir -p /data01/var/log/atop
+	mkdir -p /data01/var/log/audit
+	mkdir -p /data01/var/log/containers
+	mkdir -p /data01/var/log/installer/cdebconf
+	mkdir -p /data01/var/log/mongoose
+	mkdir -p /data01/var/log/ntpstats
+	mkdir -p /data01/var/log/pods
+	mkdir -p /data01/var/log/private
+	mkdir -p /data01/var/log/sysstat
+
+	mount /dev/sdb /data01		[mount fail in degraded mode]

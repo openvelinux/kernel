@@ -17,6 +17,7 @@ config BYTEDANCE
 
 if BYTEDANCE
 source "drivers/bytedance/hookbind/Kconfig"
+source "drivers/bytedance/blackholefs/Kconfig"
 endif
 
 endmenu

@@ -1,0 +1,9 @@
+#
+# Bytedance module configuration
+#
+config BYTEDANCE_BLACKHOLEFS
+	tristate "ByteDance blackholefs driver"
+	default n
+	help
+	  This driver is blackholefs.
+
