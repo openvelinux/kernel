@@ -32,7 +32,7 @@ struct mapping_rule {
 };
 static LIST_HEAD(rules);
 static DEFINE_SPINLOCK(lock);	// protecting list above
-static asmlinkage int (*original_sys_bind)(int, struct sockaddr __user *, int);
+static asmlinkage int (*original_sys_bind)(struct pt_regs *regs);
 /* Called _without_ lock on */
 static void add(int port, int mport, struct task_struct *tsk)
 {
@@ -90,16 +90,23 @@ static int my_move_addr_to_kernel(void __user *uaddr, int ulen, struct sockaddr_
                 return -EFAULT;
         return 0;
 }
-static asmlinkage int hook_bind_function(int fd, struct sockaddr __user *uaddr, int len)
+static asmlinkage int hook_bind_function(struct pt_regs *regs)
 {
 	int err, port, mport;
 	bool hit = false;
 	struct pid *group;
+	int fd;
+	struct sockaddr __user *uaddr;
+	int len;
 	struct mapping_rule *t, *tmp;
 	struct sockaddr *kaddr;
 	struct sockaddr_in *addr;
 	struct sockaddr_in6 *addr6;
 	struct sockaddr_storage address;
+	fd = (int)regs->di;
+	uaddr = (struct sockaddr *)regs->si;
+	len = (int)regs->dx;
+
 	if (list_empty(&rules) || unloading)
 		goto end;
 	err = my_move_addr_to_kernel(uaddr, len, &address);
@@ -148,7 +155,7 @@ out:
 				task_pid_nr(current), t->nr, t->port, t->mport);
 	}
 end:
-	return original_sys_bind(fd, uaddr, len);
+	return original_sys_bind(regs);
 }
 /*
 Make the memory page writable
