@@ -15,6 +15,25 @@ config BYTEDANCE
 	  the questions about Bytedance module. If you say Y, you will be asked
 	  for your specific module in the following questions.
 
+config BYTEDANCE_TRACE_IRQOFF
+	tristate "Interrupts-off and Softirqs-off Latency Tracer"
+	depends on BYTEDANCE
+	default n
+	help
+	  This option measures the time spent in irqs-off or softirqs-off
+	  critical, with microsecond accuracy.
+
+	  The tracer is disabled by default and can be runtime (re-)started
+	  via:
+
+	      echo 1 > /proc/trace_irqoff/enable
+
+	  The tracer only records the stack trace that irqs-off or softirqs-off
+	  time exceeds the threshold and threshold can be set via:
+
+	      # unit: microsecond
+	      echo 50 > /proc/trace_irqoff/trace_latency
+
 if BYTEDANCE
 source "drivers/bytedance/hookbind/Kconfig"
 source "drivers/bytedance/blackholefs/Kconfig"
