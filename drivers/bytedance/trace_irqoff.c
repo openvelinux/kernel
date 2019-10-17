@@ -474,6 +474,46 @@ static const struct file_operations enable_fops = {
 	.release	= single_release,
 };
 
+static int sampling_period_show(struct seq_file *m, void *ptr)
+{
+	seq_printf(m, "%llums\n", sampling_period / (1000 * 1000UL));
+
+	return 0;
+}
+
+static int sampling_period_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sampling_period_show, inode->i_private);
+}
+
+static ssize_t sampling_period_write(struct file *file, const char __user *buf,
+				     size_t count, loff_t *ppos)
+{
+	unsigned long period;
+
+	if (trace_enable)
+		return -EINVAL;
+
+	if (kstrtoul_from_user(buf, count, 0, &period))
+		return -EINVAL;
+
+	period *= 1000 * 1000UL;
+	if (period > (trace_irqoff_latency >> 1))
+		trace_irqoff_latency = period << 1;
+
+	sampling_period = period;
+
+	return count;
+}
+
+static const struct file_operations sampling_period_fops = {
+	.open		= sampling_period_open,
+	.read		= seq_read,
+	.write		= sampling_period_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int __init trace_irqoff_init(void)
 {
 	struct proc_dir_entry *parent_dir;
@@ -492,7 +532,13 @@ static int __init trace_irqoff_init(void)
 	if (!proc_create("enable", S_IRUSR | S_IWUSR, parent_dir, &enable_fops))
 		goto remove_trace_latency;
 
+	if (!proc_create("sampling_period", S_IRUSR | S_IWUSR, parent_dir,
+			 &sampling_period_fops))
+		goto remove_enable;
+
 	return 0;
+remove_enable:
+	remove_proc_entry("enable", parent_dir);
 remove_trace_latency:
 	remove_proc_entry("trace_latency", parent_dir);
 remove_distribute:
@@ -508,6 +554,7 @@ static void __exit trace_irqoff_exit(void)
 	if (trace_enable)
 		trace_irqoff_cancel_timers();
 
+	remove_proc_entry("trace_irqoff/sampling_period", NULL);
 	remove_proc_entry("trace_irqoff/enable", NULL);
 	remove_proc_entry("trace_irqoff/trace_latency", NULL);
 	remove_proc_entry("trace_irqoff/distribute", NULL);
