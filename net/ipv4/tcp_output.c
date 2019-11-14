@@ -243,6 +243,15 @@ void tcp_select_initial_window(const struct sock *sk, int __space, __u32 mss,
 		space = min_t(u32, space, *window_clamp);
 		*rcv_wscale = clamp_t(int, ilog2(space) - 15,
 				      0, TCP_MAX_WSCALE);
+		/* b/144469234 : We force WSCALE >= 12 for 4K MTU
+		 * so that senders do not feel the need to send
+		 * too small packets. We prefer full size (4K) packets.
+		 * We also special-case MSS == 8192 for similar reason.
+		 */
+		if (mss == 4096)
+			*rcv_wscale = max_t(int, *rcv_wscale, 12);
+		if (mss == 8192)
+			*rcv_wscale = max_t(int, *rcv_wscale, 13);
 	}
 	/* Set the clamp no higher than max representable value */
 	(*window_clamp) = min_t(__u32, U16_MAX << (*rcv_wscale), *window_clamp);
