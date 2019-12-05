@@ -247,10 +247,18 @@ void tcp_select_initial_window(const struct sock *sk, int __space, __u32 mss,
 		 * so that senders do not feel the need to send
 		 * too small packets. We prefer full size (4K) packets.
 		 * We also special-case MSS == 8192 for similar reason.
+		 *
+		 * 4K MTU : SYN packets get mss = 4108 (4096 + 12),
+		 *          while SYNACK packets get mss = 4096,
+		 * (assuming TCP TS), courtesy of tcp_openreq_init_rwin()
+		 * calling us with "mss - (ireq->tstamp_ok ? TCPOLEN_TSTAMP_ALIGNED : 0)"
 		 */
-		if (mss == 4096)
+		if (mss == 4096 ||
+		    mss == 4096 + TCPOLEN_TSTAMP_ALIGNED)
 			*rcv_wscale = max_t(int, *rcv_wscale, 12);
-		if (mss == 8192)
+
+		if (mss == 8192 ||
+		    mss == 8192 + TCPOLEN_TSTAMP_ALIGNED)
 			*rcv_wscale = max_t(int, *rcv_wscale, 13);
 	}
 	/* Set the clamp no higher than max representable value */
