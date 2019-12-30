@@ -568,12 +568,7 @@ static void __exit trace_irqoff_exit(void)
 {
 	if (trace_enable)
 		trace_irqoff_cancel_timers();
-
-	remove_proc_entry("trace_irqoff/sampling_period", NULL);
-	remove_proc_entry("trace_irqoff/enable", NULL);
-	remove_proc_entry("trace_irqoff/trace_latency", NULL);
-	remove_proc_entry("trace_irqoff/distribute", NULL);
-	remove_proc_entry("trace_irqoff", NULL);
+	remove_proc_subtree("trace_irqoff", NULL);
 }
 
 module_init(trace_irqoff_init);
