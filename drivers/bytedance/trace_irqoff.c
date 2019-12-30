@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
-/**
- * Code for trace irq or bh off.
+/*
+ * Trace Irqsoff
+ *
+ * Copyright (C) 2020 Bytedance, Inc., Muchun Song
+ *
+ * The main authors of the trace irqsoff code are:
+ *
+ * Muchun Song <songmuchun@bytedance.com>
  */
 #include <linux/hrtimer.h>
 #include <linux/irqflags.h>
