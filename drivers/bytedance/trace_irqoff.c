@@ -8,6 +8,8 @@
  *
  * Muchun Song <songmuchun@bytedance.com>
  */
+#define pr_fmt(fmt) "trace-irqoff: " fmt
+
 #include <linux/hrtimer.h>
 #include <linux/irqflags.h>
 #include <linux/kernel.h>
