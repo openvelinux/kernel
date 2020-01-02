@@ -264,13 +264,61 @@ static void smp_timers_start(void *info)
 	add_timer_on(timer, smp_processor_id());
 }
 
+#define NUMBER_CHARACTER	40
+
+static bool histogram_show(struct seq_file *m, const char *header,
+			   const unsigned long *hist, unsigned long size,
+			   unsigned int factor)
+{
+	int i, zero_index = 0;
+	unsigned long count_max = 0;
+
+	for (i = 0; i < size; i++) {
+		unsigned long count = hist[i];
+
+		if (count > count_max)
+			count_max = count;
+
+		if (count)
+			zero_index = i + 1;
+	}
+	if (count_max == 0)
+		return false;
+
+	/* print header */
+	if (header)
+		seq_printf(m, "%s\n", header);
+	seq_printf(m, "%*c%s%*c : %-9s %s\n", 9, ' ', "msecs", 10, ' ', "count",
+		   "distribution");
+
+	for (i = 0; i < zero_index; i++) {
+		int num;
+		int scale_min, scale_max;
+		char str[NUMBER_CHARACTER + 1];
+
+		scale_max = 2 << i;
+		scale_min = unlikely(i == 0) ? 1 : scale_max / 2;
+
+		num = hist[i] * NUMBER_CHARACTER / count_max;
+		memset(str, '*', num);
+		memset(str + num, ' ', NUMBER_CHARACTER - num);
+		str[NUMBER_CHARACTER] = '\0';
+
+		seq_printf(m, "%10d -> %-10d : %-8lu |%s|\n",
+			   scale_min * factor, scale_max * factor - 1,
+			   hist[i], str);
+	}
+
+	return true;
+}
+
 static void distribute_show_one(struct seq_file *m, void *v, bool hardirq)
 {
-	int i, cpu;
-	int scale = (sampling_period << 1) / (1000 * 1000UL);
+	int cpu;
 	unsigned long latency_count[MAX_LATENCY_RECORD] = { 0 };
 
 	for_each_online_cpu(cpu) {
+		int i;
 		unsigned long *count;
 
 		count = hardirq ?
@@ -281,27 +329,14 @@ static void distribute_show_one(struct seq_file *m, void *v, bool hardirq)
 			latency_count[i] += count[i];
 	}
 
-	seq_puts(m, "scale(ms): ");
-	for (i = 0; i < MAX_LATENCY_RECORD; i++)
-		seq_printf(m, "%-6d ", scale << i);
-
-	seq_putc(m, '\n');
-
-	seq_puts(m, "count    : ");
-	for (i = 0; i < MAX_LATENCY_RECORD; i++)
-		seq_printf(m, "%-6lu ", latency_count[i]);
-
-	seq_putc(m, '\n');
+	histogram_show(m, hardirq ? "hardirq-off:" : "softirq-off:",
+		       latency_count, MAX_LATENCY_RECORD,
+		       (sampling_period << 1) / (1000 * 1000UL));
 }
 
 static int distribute_show(struct seq_file *m, void *v)
 {
-	seq_puts(m, "hardirq:\n");
 	distribute_show_one(m, v, true);
-
-	seq_putc(m, '\n');
-
-	seq_puts(m, "softirq:\n");
 	distribute_show_one(m, v, false);
 
 	return 0;
