@@ -71,6 +71,7 @@ static int __init init_my_module(void) {
 		return 0;
 	else
 		ret = -1;
+	device_destroy(ebbcharClass, MKDEV(Major, 0));
 device_create:
 	class_destroy(ebbcharClass);
 class_create:
