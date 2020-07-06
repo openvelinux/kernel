@@ -365,8 +365,44 @@ static int sd_flags_open(struct inode *inode, struct file *file)
 	return single_open(file, sd_flags_show, inode->i_private);
 }
 
+/*
+ * Here only allow some sd_flags to change by sysfs interface,
+ * because other flags need to update_top_cache_domain()
+ * and it is not easy to impletement here.
+ */
+#define SD_FLAGS_ALLOW_MASK (SD_BALANCE_NEWIDLE | SD_BALANCE_EXEC |\
+							SD_BALANCE_FORK | SD_BALANCE_WAKE |\
+							SD_WAKE_AFFINE)
+
+static ssize_t sd_flags_write(struct file *filp, const char __user *ubuf,
+					size_t cnt, loff_t *ppos)
+{
+	char buf[64];
+	unsigned int tmp;
+	struct seq_file *m = filp->private_data;
+	unsigned int *flags = (unsigned int *)m->private;
+
+	if (cnt > 63)
+		cnt = 63;
+
+	if (copy_from_user(&buf, ubuf, cnt))
+		return -EFAULT;
+
+	buf[cnt] = '\0';
+
+	if (kstrtouint(buf, 10, &tmp))
+		return -EINVAL;
+
+	*flags = ((*flags) & (~SD_FLAGS_ALLOW_MASK)) |
+			 (tmp & SD_FLAGS_ALLOW_MASK);
+
+	*ppos += cnt;
+	return cnt;
+}
+
 static const struct file_operations sd_flags_fops = {
 	.open		= sd_flags_open,
+	.write		= sd_flags_write,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
@@ -387,7 +423,7 @@ static void register_sd(struct sched_domain *sd, struct dentry *parent)
 
 #undef SDM
 
-	debugfs_create_file("flags", 0444, parent, &sd->flags, &sd_flags_fops);
+	debugfs_create_file("flags", 0644, parent, &sd->flags, &sd_flags_fops);
 }
 
 void update_sched_domain_debugfs(void)
