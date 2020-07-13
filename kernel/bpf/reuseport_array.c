@@ -155,7 +155,7 @@ static struct bpf_map *reuseport_array_alloc(union bpf_attr *attr)
 	struct bpf_map_memory mem;
 	u64 array_size;
 
-	if (!bpf_capable())
+	if (sysctl_unprivileged_bpf_disabled && !bpf_capable())
 		return ERR_PTR(-EPERM);
 
 	array_size = sizeof(*array);

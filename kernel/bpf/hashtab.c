@@ -360,7 +360,7 @@ static int htab_map_alloc_check(union bpf_attr *attr)
 	BUILD_BUG_ON(offsetof(struct htab_elem, fnode.next) !=
 		     offsetof(struct htab_elem, hash_node.pprev));
 
-	if (lru && !bpf_capable())
+	if (sysctl_unprivileged_bpf_disabled && lru && !bpf_capable())
 		/* LRU implementation is much complicated than other
 		 * maps.  Hence, limit to CAP_BPF.
 		 */
