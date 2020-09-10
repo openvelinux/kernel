@@ -167,6 +167,7 @@ struct cgroup_mgctx {
 extern spinlock_t css_set_lock;
 extern struct cgroup_subsys *cgroup_subsys[];
 extern struct list_head cgroup_roots;
+extern struct file_system_type cgroup2_fs_type;
 
 /* iterate across the hierarchies */
 #define for_each_root(root)						\

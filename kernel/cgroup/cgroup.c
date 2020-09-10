@@ -216,7 +216,7 @@ struct cgroup_namespace init_cgroup_ns = {
 	.root_cset	= &init_css_set,
 };
 
-static struct file_system_type cgroup2_fs_type;
+struct file_system_type cgroup2_fs_type;
 static struct cftype cgroup_base_files[];
 static struct cftype cgroup_psi_files[];
 
@@ -2286,7 +2286,7 @@ struct file_system_type cgroup_fs_type = {
 	.fs_flags		= FS_USERNS_MOUNT,
 };
 
-static struct file_system_type cgroup2_fs_type = {
+struct file_system_type cgroup2_fs_type = {
 	.name			= "cgroup2",
 	.init_fs_context	= cgroup_init_fs_context,
 	.parameters		= cgroup2_fs_parameters,
