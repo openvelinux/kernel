@@ -703,7 +703,8 @@ int cgroupstats_build(struct cgroupstats *stats, struct dentry *dentry)
 	struct task_struct *tsk;
 
 	/* it should be kernfs_node belonging to cgroupfs and is a directory */
-	if (dentry->d_sb->s_type != &cgroup_fs_type || !kn ||
+	if ((dentry->d_sb->s_type != &cgroup_fs_type &&
+	     dentry->d_sb->s_type != &cgroup2_fs_type) || !kn ||
 	    kernfs_type(kn) != KERNFS_DIR)
 		return -EINVAL;
 
