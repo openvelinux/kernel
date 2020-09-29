@@ -3799,6 +3799,27 @@ static inline bool kvm_can_mwait_in_guest(void)
 		boot_cpu_has(X86_FEATURE_ARAT);
 }
 
+static int kvm_ioctl_get_supported_hv_cpuid(struct kvm_vcpu *vcpu,
+					    struct kvm_cpuid2 __user *cpuid_arg)
+{
+	struct kvm_cpuid2 cpuid;
+	int r;
+
+	r = -EFAULT;
+	if (copy_from_user(&cpuid, cpuid_arg, sizeof(cpuid)))
+		return r;
+
+	r = kvm_get_hv_cpuid(vcpu, &cpuid, cpuid_arg->entries);
+	if (r)
+		return r;
+
+	r = -EFAULT;
+	if (copy_to_user(cpuid_arg, &cpuid, sizeof(cpuid)))
+		return r;
+
+	return 0;
+}
+
 int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 {
 	int r = 0;
@@ -3834,6 +3855,7 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_HYPERV_TLBFLUSH:
 	case KVM_CAP_HYPERV_SEND_IPI:
 	case KVM_CAP_HYPERV_CPUID:
+	case KVM_CAP_SYS_HYPERV_CPUID:
 	case KVM_CAP_PCI_SEGMENT:
 	case KVM_CAP_DEBUGREGS:
 	case KVM_CAP_X86_ROBUST_SINGLESTEP:
@@ -4091,6 +4113,9 @@ long kvm_arch_dev_ioctl(struct file *filp,
 		r = kvm_x86_dev_has_attr(&attr);
 		break;
 	}
+	case KVM_GET_SUPPORTED_HV_CPUID:
+		r = kvm_ioctl_get_supported_hv_cpuid(NULL, argp);
+		break;
 	default:
 		r = -EINVAL;
 		break;
@@ -5215,25 +5240,9 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		srcu_read_unlock(&vcpu->kvm->srcu, idx);
 		break;
 	}
-	case KVM_GET_SUPPORTED_HV_CPUID: {
-		struct kvm_cpuid2 __user *cpuid_arg = argp;
-		struct kvm_cpuid2 cpuid;
-
-		r = -EFAULT;
-		if (copy_from_user(&cpuid, cpuid_arg, sizeof(cpuid)))
-			goto out;
-
-		r = kvm_vcpu_ioctl_get_hv_cpuid(vcpu, &cpuid,
-						cpuid_arg->entries);
-		if (r)
-			goto out;
-
-		r = -EFAULT;
-		if (copy_to_user(cpuid_arg, &cpuid, sizeof(cpuid)))
-			goto out;
-		r = 0;
+	case KVM_GET_SUPPORTED_HV_CPUID:
+		r = kvm_ioctl_get_supported_hv_cpuid(vcpu, argp);
 		break;
-	}
 	case KVM_HAS_DEVICE_ATTR:
 	case KVM_GET_DEVICE_ATTR:
 	case KVM_SET_DEVICE_ATTR:
