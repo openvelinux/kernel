@@ -34,6 +34,22 @@ config BYTEDANCE_TRACE_IRQOFF
 	      # unit: microsecond
 	      echo 50 > /proc/trace_irqoff/trace_latency
 
+config BYTEDANCE_HOT_INSPECTOR
+	tristate "ByteDance hot component inspector"
+	depends on BYTEDANCE
+	default n
+	help
+	  Bytedance IDC workload hot component inspector. This option launches
+	  percpu timer to record hotpot in low freq.
+
+	  You can adjust the percpu timer freq in [100, 1000000] ms via:
+
+	      echo xxx > /sys/kernel/debug/hot_inspector/timer_ms
+
+	  The default value is 10000ms. The percpu hotpot status are in:
+
+	      /sys/kernel/debug/hot_inspector/cpu/[N]
+
 if BYTEDANCE
 source "drivers/bytedance/hookbind/Kconfig"
 source "drivers/bytedance/blackholefs/Kconfig"
