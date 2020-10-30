@@ -2381,6 +2381,8 @@ static void high_work_func(struct work_struct *work)
 }
 
 #ifdef CONFIG_MEMCG_BGD_RECLAIM
+#define MEMCG_RECLAIM_RETRY	2
+
 static struct workqueue_struct *memcg_reclaim_wq;
 
 static inline bool memcg_watermark_ok(struct mem_cgroup *memcg)
@@ -2392,11 +2394,21 @@ static inline bool memcg_watermark_ok(struct mem_cgroup *memcg)
 	return free >= memcg_low_wmark_pages(memcg);
 }
 
+static inline bool memcg_should_reclaim(struct mem_cgroup *memcg)
+{
+	return memcg->reclaim_failures < MEMCG_RECLAIM_RETRY &&
+	       !memcg_watermark_ok(memcg);
+}
+
 static void memcg_reclaim_work(struct work_struct *work)
 {
 	struct mem_cgroup *memcg = container_of(work, struct mem_cgroup,
 						mem_reclaim_work);
 	unsigned long low, high, free;
+	unsigned long nr_reclaimed;
+
+	if (memcg->reclaim_failures >= MEMCG_RECLAIM_RETRY)
+		return;
 
 	memcg_wmark_lock(memcg);
 	low = memcg_low_wmark_pages(memcg);
@@ -2407,7 +2419,10 @@ static void memcg_reclaim_work(struct work_struct *work)
 	if (free >= low)
 		return;
 
-	try_to_free_mem_cgroup_pages(memcg, high - free, GFP_KERNEL, true);
+	nr_reclaimed = try_to_free_mem_cgroup_pages(memcg, high - free,
+						    GFP_KERNEL, true);
+	if (!nr_reclaimed)
+		memcg->reclaim_failures++;
 }
 
 static inline void queue_reclaim_work(struct mem_cgroup *memcg)
@@ -2437,9 +2452,9 @@ static void memcg_watermark_init(struct mem_cgroup *memcg, unsigned int factor)
 	__set_memcg_watermark(memcg);
 }
 #else
-static inline bool memcg_watermark_ok(struct mem_cgroup *memcg)
+static inline bool memcg_should_reclaim(struct mem_cgroup *memcg)
 {
-	return true;
+	return false;
 }
 
 static inline void queue_reclaim_work(struct mem_cgroup *memcg)
@@ -2811,7 +2826,7 @@ done_restock:
 	if (batch > nr_pages)
 		refill_stock(memcg, batch - nr_pages);
 
-	if (!memcg_watermark_ok(memcg))
+	if (memcg_should_reclaim(memcg))
 		queue_reclaim_work(memcg);
 
 	/*

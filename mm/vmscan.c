@@ -3155,8 +3155,13 @@ again:
 	 * sleep. On reclaim progress, reset the failure counter. A
 	 * successful direct reclaim run will revive a dormant kswapd.
 	 */
-	if (reclaimable)
+	if (reclaimable) {
 		pgdat->kswapd_failures = 0;
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+		if (sc->target_mem_cgroup)
+			sc->target_mem_cgroup->reclaim_failures = 0;
+#endif
+	}
 }
 
 /*
