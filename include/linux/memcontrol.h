@@ -389,6 +389,8 @@ struct mem_cgroup {
 
 #ifdef CONFIG_MEMCG_BGD_RECLAIM
 	struct work_struct mem_reclaim_work;
+	/* Number of 'reclaimed == 0' runs */
+	unsigned int reclaim_failures;
 	unsigned int watermark_scale_factor;
 	unsigned long watermark[NR_MEMCG_WMARK];
 	spinlock_t wmark_lock;
