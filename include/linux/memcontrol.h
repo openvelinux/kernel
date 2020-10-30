@@ -248,6 +248,8 @@ enum memcg_watermarks {
 #define memcg_wmark_lock_init(memcg)	spin_lock_init(&(memcg)->wmark_lock)
 #define memcg_wmark_lock(memcg)		spin_lock(&(memcg)->wmark_lock)
 #define memcg_wmark_unlock(memcg)	spin_unlock(&(memcg)->wmark_lock)
+
+extern int memcg_watermark_scale_factor;
 #else
 #define memcg_wmark_lock_init(memcg)
 #define memcg_wmark_lock(memcg)

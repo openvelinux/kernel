@@ -3000,6 +3000,17 @@ static struct ctl_table vm_table[] = {
 		.extra1		= SYSCTL_ONE,
 		.extra2		= SYSCTL_THREE_THOUSAND,
 	},
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{
+		.procname	= "memcg_watermark_scale_factor",
+		.data		= &memcg_watermark_scale_factor,
+		.maxlen		= sizeof(memcg_watermark_scale_factor),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE_THOUSAND,
+	},
+#endif
 	{
 		.procname	= "percpu_pagelist_high_fraction",
 		.data		= &percpu_pagelist_high_fraction,
