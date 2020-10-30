@@ -2443,6 +2443,38 @@ static void high_work_func(struct work_struct *work)
 	reclaim_high(memcg, MEMCG_CHARGE_BATCH, GFP_KERNEL);
 }
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+static inline void __set_memcg_watermark(struct mem_cgroup *memcg)
+{
+	unsigned long factor = memcg->watermark_scale_factor;
+	unsigned long nr_pages = mult_frac(memcg->memory.max, factor, 10000);
+
+	if (memcg->memory.max == PAGE_COUNTER_MAX)
+		nr_pages = 0;
+
+	memcg_set_low_wmark_pages(memcg, nr_pages);
+	memcg_set_high_wmark_pages(memcg, nr_pages << 1);
+}
+
+static void memcg_watermark_init(struct mem_cgroup *memcg, unsigned int factor)
+{
+	/* Can't set watermark_scale_factor on root */
+	if (mem_cgroup_is_root(memcg))
+		factor = 0;
+
+	memcg->watermark_scale_factor = factor;
+	__set_memcg_watermark(memcg);
+}
+#else
+static inline void __set_memcg_watermark(struct mem_cgroup *memcg)
+{
+}
+
+static void memcg_watermark_init(struct mem_cgroup *memcg, unsigned int factor)
+{
+}
+#endif
+
 /*
  * Clamp the maximum sleep time per allocation batch to 2 seconds. This is
  * enough to still cause a significant slowdown in most cases, while still
@@ -3527,7 +3559,11 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 		}
 		if (max > counter->max)
 			enlarge = true;
+		memcg_wmark_lock(memcg);
 		ret = page_counter_set_max(counter, max);
+		if (!ret && !memsw)
+			__set_memcg_watermark(memcg);
+		memcg_wmark_unlock(memcg);
 		mutex_unlock(&memcg_max_mutex);
 
 		if (!ret)
@@ -5044,6 +5080,46 @@ static int mem_cgroup_slab_show(struct seq_file *m, void *p)
 
 static int memory_stat_show(struct seq_file *m, void *v);
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+static int memory_wmark_scale_factor_write(struct cgroup_subsys_state *css,
+					   struct cftype *cft, u64 factor)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	if (factor > 1000)
+		return -EINVAL;
+
+	/* Can't set watermark_scale_factor on root */
+	if (mem_cgroup_is_root(memcg))
+		return -EPERM;
+
+	memcg_wmark_lock(memcg);
+	memcg->watermark_scale_factor = factor;
+	__set_memcg_watermark(memcg);
+	memcg_wmark_unlock(memcg);
+
+	return 0;
+}
+
+static u64 memory_wmark_scale_factor_read(struct cgroup_subsys_state *css,
+					  struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return (u64)memcg->watermark_scale_factor;
+}
+
+static int memory_wmark_read(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(seq_css(m));
+
+	seq_printf(m, "low  %lu\n", memcg_low_wmark_pages(memcg) * PAGE_SIZE);
+	seq_printf(m, "high %lu\n", memcg_high_wmark_pages(memcg) * PAGE_SIZE);
+
+	return 0;
+}
+#endif
+
 static struct cftype mem_cgroup_legacy_files[] = {
 	{
 		.name = "usage_in_bytes",
@@ -5170,6 +5246,17 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.write = mem_cgroup_reset,
 		.read_u64 = mem_cgroup_read_u64,
 	},
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{
+		.name = "watermark_scale_factor",
+		.write_u64 = memory_wmark_scale_factor_write,
+		.read_u64 = memory_wmark_scale_factor_read,
+	},
+	{
+		.name = "watermark",
+		.seq_show = memory_wmark_read,
+	},
+#endif
 	{ },	/* terminate */
 };
 
@@ -5424,6 +5511,8 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	WRITE_ONCE(memcg->zswap_writeback, true);
 #endif
 	page_counter_set_high(&memcg->swap, PAGE_COUNTER_MAX);
+	memcg_wmark_lock_init(memcg);
+	memcg_watermark_init(memcg, 0);
 	if (parent) {
 		WRITE_ONCE(memcg->swappiness, mem_cgroup_swappiness(parent));
 		WRITE_ONCE(memcg->oom_kill_disable, READ_ONCE(parent->oom_kill_disable));
@@ -5594,6 +5683,7 @@ static void mem_cgroup_css_reset(struct cgroup_subsys_state *css)
 	WRITE_ONCE(memcg->soft_limit, PAGE_COUNTER_MAX);
 	page_counter_set_high(&memcg->swap, PAGE_COUNTER_MAX);
 	memcg_wb_domain_size_changed(memcg);
+	memcg_watermark_init(memcg, 0);
 }
 
 static void mem_cgroup_css_rstat_flush(struct cgroup_subsys_state *css, int cpu)
@@ -6638,7 +6728,10 @@ static ssize_t memory_max_write(struct kernfs_open_file *of,
 	if (err)
 		return err;
 
+	memcg_wmark_lock(memcg);
 	xchg(&memcg->memory.max, max);
+	__set_memcg_watermark(memcg);
+	memcg_wmark_unlock(memcg);
 
 	for (;;) {
 		unsigned long nr_pages = page_counter_read(&memcg->memory);
@@ -6892,6 +6985,19 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
 	},
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{
+		.name = "watermark_scale_factor",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write_u64 = memory_wmark_scale_factor_write,
+		.read_u64 = memory_wmark_scale_factor_read,
+	},
+	{
+		.name = "watermark",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = memory_wmark_read,
+	},
+#endif
 	{ }	/* terminate */
 };
 
