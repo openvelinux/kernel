@@ -250,6 +250,11 @@ enum memcg_watermarks {
 #define memcg_wmark_unlock(memcg)	spin_unlock(&(memcg)->wmark_lock)
 
 extern int memcg_watermark_scale_factor;
+extern int memcg_mem_reclaim_wq_max_active;
+
+int memcg_wq_max_active_sysctl_handler(struct ctl_table *table, int write,
+				       void __user *buffer, size_t *length,
+				       loff_t *ppos);
 #else
 #define memcg_wmark_lock_init(memcg)
 #define memcg_wmark_lock(memcg)
