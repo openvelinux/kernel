@@ -2385,6 +2385,20 @@ static void high_work_func(struct work_struct *work)
 
 static struct workqueue_struct *memcg_reclaim_wq;
 int memcg_watermark_scale_factor;
+int memcg_mem_reclaim_wq_max_active = 1;
+
+int memcg_wq_max_active_sysctl_handler(struct ctl_table *table, int write,
+				       void __user *buffer, size_t *length,
+				       loff_t *ppos)
+{
+	int ret;
+
+	ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+	if (ret == 0)
+		workqueue_set_max_active(memcg_reclaim_wq,
+					 memcg_mem_reclaim_wq_max_active);
+	return ret;
+}
 
 static int __init memcg_watermark_scale_factor_parm(char *str)
 {
