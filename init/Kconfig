@@ -957,6 +957,12 @@ config MEMCG_SWAP
 	depends on MEMCG && SWAP
 	default y
 
+config MEMCG_BGD_RECLAIM
+	bool "Background memory reclaim"
+	depends on MEMCG
+	help
+	  Reclaim memory int the background when hit low watermark.
+
 config MEMCG_KMEM
 	bool
 	depends on MEMCG && !SLOB
