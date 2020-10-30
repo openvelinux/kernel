@@ -388,6 +388,7 @@ struct mem_cgroup {
 #endif
 
 #ifdef CONFIG_MEMCG_BGD_RECLAIM
+	struct work_struct mem_reclaim_work;
 	unsigned int watermark_scale_factor;
 	unsigned long watermark[NR_MEMCG_WMARK];
 	spinlock_t wmark_lock;
