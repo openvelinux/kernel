@@ -2384,6 +2384,18 @@ static void high_work_func(struct work_struct *work)
 #define MEMCG_RECLAIM_RETRY	2
 
 static struct workqueue_struct *memcg_reclaim_wq;
+int memcg_watermark_scale_factor;
+
+static int __init memcg_watermark_scale_factor_parm(char *str)
+{
+	int factor;
+
+	if (get_option(&str, &factor) && factor >= 0 && factor <= 1000)
+		memcg_watermark_scale_factor = factor;
+
+	return 0;
+}
+early_param("memcg_watermark_scale_factor", memcg_watermark_scale_factor_parm);
 
 static inline bool memcg_watermark_ok(struct mem_cgroup *memcg)
 {
@@ -2452,6 +2464,8 @@ static void memcg_watermark_init(struct mem_cgroup *memcg, unsigned int factor)
 	__set_memcg_watermark(memcg);
 }
 #else
+#define memcg_watermark_init(memcg, factor)
+
 static inline bool memcg_should_reclaim(struct mem_cgroup *memcg)
 {
 	return false;
@@ -2462,10 +2476,6 @@ static inline void queue_reclaim_work(struct mem_cgroup *memcg)
 }
 
 static inline void __set_memcg_watermark(struct mem_cgroup *memcg)
-{
-}
-
-static void memcg_watermark_init(struct mem_cgroup *memcg, unsigned int factor)
 {
 }
 #endif
@@ -5442,7 +5452,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	memcg->soft_limit = PAGE_COUNTER_MAX;
 	page_counter_set_high(&memcg->swap, PAGE_COUNTER_MAX);
 	memcg_wmark_lock_init(memcg);
-	memcg_watermark_init(memcg, 0);
+	memcg_watermark_init(memcg, memcg_watermark_scale_factor);
 	if (parent) {
 		memcg->swappiness = mem_cgroup_swappiness(parent);
 		memcg->oom_kill_disable = parent->oom_kill_disable;
