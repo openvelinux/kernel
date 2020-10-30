@@ -953,6 +953,20 @@ config MEMCG
 	help
 	  Provides control over the memory footprint of tasks in a cgroup.
 
+config MEMCG_SWAP
+	bool
+	depends on MEMCG && SWAP
+	default y
+
+config MEMCG_BGD_RECLAIM
+	bool "Background memory reclaim"
+	depends on MEMCG
+	help
+	  Reclaim memory in the background when hit low watermark.
+	  Stop reclaiming memory when free memory reaches high watermark.
+	  Limit the maximum concurrency of the memcg kworker,
+	  with the default maximum concurrency being one kworker per node.
+
 config MEMCG_KMEM
 	bool
 	depends on MEMCG
