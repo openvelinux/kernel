@@ -3656,6 +3656,39 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 
 	return nr_reclaimed;
 }
+
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+unsigned long try_to_free_mem_cgroup_pages_asyn(struct mem_cgroup *memcg,
+						unsigned long nr_pages,
+						gfp_t gfp_mask)
+{
+	struct zonelist *zonelist;
+	unsigned long nr_reclaimed;
+	unsigned int noreclaim_flag;
+	struct scan_control sc = {
+		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
+		.gfp_mask = (current_gfp_context(gfp_mask) & GFP_RECLAIM_MASK) |
+				(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
+		.reclaim_idx = MAX_NR_ZONES - 1,
+		.target_mem_cgroup = memcg,
+		.priority = DEF_PRIORITY,
+		.may_writepage = !laptop_mode,
+		.may_unmap = 1,
+		.may_swap = true,
+	};
+
+	set_task_reclaim_state(current, &sc.reclaim_state);
+	zonelist = node_zonelist(numa_node_id(), sc.gfp_mask);
+
+	noreclaim_flag = memalloc_noreclaim_save();
+	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+	memalloc_noreclaim_restore(noreclaim_flag);
+
+	set_task_reclaim_state(current, NULL);
+
+	return nr_reclaimed;
+}
+#endif
 #endif
 
 static void age_active_anon(struct pglist_data *pgdat,
