@@ -35,6 +35,9 @@ enum memcg_stat_item {
 	MEMCG_PERCPU_B,
 	MEMCG_VMALLOC,
 	MEMCG_KMEM,
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	MEMCG_BGD_RECLAIM,
+#endif
 	MEMCG_NR_STAT,
 };
 
