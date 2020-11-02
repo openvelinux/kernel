@@ -2447,8 +2447,8 @@ static void memcg_reclaim_work(struct work_struct *work)
 	if (free >= low)
 		return;
 
-	nr_reclaimed = try_to_free_mem_cgroup_pages(memcg, high - free,
-						    GFP_KERNEL, true);
+	nr_reclaimed = try_to_free_mem_cgroup_pages_asyn(memcg, high - free,
+							 GFP_KERNEL);
 	if (!nr_reclaimed)
 		memcg->reclaim_failures++;
 	else

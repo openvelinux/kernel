@@ -382,6 +382,11 @@ extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 						  unsigned long nr_pages,
 						  gfp_t gfp_mask,
 						  bool may_swap);
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+extern unsigned long try_to_free_mem_cgroup_pages_asyn(struct mem_cgroup *memcg,
+						       unsigned long nr_pages,
+						       gfp_t gfp_mask);
+#endif
 extern unsigned long mem_cgroup_shrink_node(struct mem_cgroup *mem,
 						gfp_t gfp_mask, bool noswap,
 						pg_data_t *pgdat,
