@@ -1551,7 +1551,9 @@ static const struct memory_stat memory_stats[] = {
 	{ "unevictable",		NR_UNEVICTABLE			},
 	{ "slab_reclaimable",		NR_SLAB_RECLAIMABLE_B		},
 	{ "slab_unreclaimable",		NR_SLAB_UNRECLAIMABLE_B		},
-
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{ "bgd_reclaim",		MEMCG_BGD_RECLAIM		},
+#endif
 	/* The memory events */
 	{ "workingset_refault_anon",	WORKINGSET_REFAULT_ANON		},
 	{ "workingset_refault_file",	WORKINGSET_REFAULT_FILE		},
@@ -2512,6 +2514,8 @@ static void memcg_reclaim_work(struct work_struct *work)
 						    GFP_KERNEL, true);
 	if (!nr_reclaimed)
 		memcg->reclaim_failures++;
+	else
+		mod_memcg_state(memcg, MEMCG_BGD_RECLAIM, nr_reclaimed);
 }
 
 static inline void queue_reclaim_work(struct mem_cgroup *memcg)
@@ -4219,6 +4223,9 @@ static const unsigned int memcg1_stats[] = {
 	WORKINGSET_REFAULT_ANON,
 	WORKINGSET_REFAULT_FILE,
 	MEMCG_SWAP,
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	MEMCG_BGD_RECLAIM,
+#endif
 };
 
 static const char *const memcg1_stat_names[] = {
@@ -4234,6 +4241,9 @@ static const char *const memcg1_stat_names[] = {
 	"workingset_refault_anon",
 	"workingset_refault_file",
 	"swap",
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	"bgd_reclaim",
+#endif
 };
 
 /* Universal VM events cgroup1 shows, original sort order */
