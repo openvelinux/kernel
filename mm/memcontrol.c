@@ -2498,9 +2498,6 @@ static void memcg_reclaim_work(struct work_struct *work)
 	unsigned long low, high, free;
 	unsigned long nr_reclaimed;
 
-	if (memcg->reclaim_failures >= MEMCG_RECLAIM_RETRY)
-		return;
-
 	memcg_wmark_lock(memcg);
 	low = memcg_low_wmark_pages(memcg);
 	high = memcg_high_wmark_pages(memcg);
@@ -2508,6 +2505,11 @@ static void memcg_reclaim_work(struct work_struct *work)
 	memcg_wmark_unlock(memcg);
 
 	if (free >= low)
+		return;
+
+	cgroup_file_notify(&memcg->wmark_low_event);
+
+	if (memcg->reclaim_failures >= MEMCG_RECLAIM_RETRY)
 		return;
 
 	nr_reclaimed = try_to_free_mem_cgroup_pages_async(memcg, high - free,
@@ -5350,6 +5352,7 @@ static struct cftype mem_cgroup_legacy_files[] = {
 	},
 	{
 		.name = "watermark",
+		.file_offset = offsetof(struct mem_cgroup, wmark_low_event),
 		.seq_show = memory_wmark_read,
 	},
 #endif
@@ -7099,6 +7102,7 @@ static struct cftype memory_files[] = {
 	{
 		.name = "watermark",
 		.flags = CFTYPE_NOT_ON_ROOT,
+		.file_offset = offsetof(struct mem_cgroup, wmark_low_event),
 		.seq_show = memory_wmark_read,
 	},
 #endif
