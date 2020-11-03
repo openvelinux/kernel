@@ -288,6 +288,10 @@ struct mem_cgroup {
 	struct cgroup_file events_file;
 	struct cgroup_file events_local_file;
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	struct cgroup_file wmark_low_event;
+#endif
+
 	/* handle for "memory.swap.events" */
 	struct cgroup_file swap_events_file;
 
