@@ -156,6 +156,9 @@ struct dentry *ovl_decode_real_fh(struct ovl_fh *fh, struct vfsmount *mnt,
 	struct dentry *real;
 	int bytes;
 
+	if (!capable(CAP_DAC_READ_SEARCH))
+		return NULL;
+
 	/*
 	 * Make sure that the stored uuid matches the uuid of the lower
 	 * layer where file handle will be decoded.
