@@ -98,11 +98,12 @@ static void stack_snap(struct timer_list *timer)
 
 	write_seqcount_begin(seqcount);
 	entry->ts = ktime_to_ns(ktime_get_boottime());
+	entry->r1 = task->flags & PF_KTHREAD;
 	entry->state1 = task->state;
 	entry->state2 = regs && user_mode(regs) ? 0 : 1;
 	entry->pid = task->tgid;
 	entry->tid = task->pid;
-	entry->eip = KSTK_EIP(task);
+	entry->eip = regs ? instruction_pointer(regs) : 0;
 	memcpy(entry->comm, task->comm, TASK_COMM_LEN);
 	write_seqcount_end(seqcount);
 
