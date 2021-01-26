@@ -37,6 +37,9 @@
 #include "trace.h"
 #include "irq.h"
 
+/* "Hv#1" signature */
+#define HYPERV_CPUID_SIGNATURE_EAX 0x31237648
+
 #define KVM_HV_MAX_SPARSE_VCPU_SET_BITS DIV_ROUND_UP(KVM_MAX_VCPUS, 64)
 
 static void stimer_mark_pending(struct kvm_vcpu_hv_stimer *stimer,
@@ -1480,6 +1483,9 @@ int kvm_hv_set_msr_common(struct kvm_vcpu *vcpu, u32 msr, u64 data, bool host)
 {
 	struct kvm_hv *hv = to_kvm_hv(vcpu->kvm);
 
+	if (!host && !vcpu->arch.hyperv_enabled)
+		return 1;
+
 	if (kvm_hv_msr_partition_wide(msr)) {
 		int r;
 
@@ -1494,6 +1500,9 @@ int kvm_hv_set_msr_common(struct kvm_vcpu *vcpu, u32 msr, u64 data, bool host)
 int kvm_hv_get_msr_common(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata, bool host)
 {
 	struct kvm_hv *hv = to_kvm_hv(vcpu->kvm);
+
+	if (!host && !vcpu->arch.hyperv_enabled)
+		return 1;
 
 	if (kvm_hv_msr_partition_wide(msr)) {
 		int r;
@@ -1713,9 +1722,20 @@ ret_success:
 	return HV_STATUS_SUCCESS;
 }
 
-bool kvm_hv_hypercall_enabled(struct kvm *kvm)
+void kvm_hv_set_cpuid(struct kvm_vcpu *vcpu)
 {
-	return to_kvm_hv(kvm)->hv_guest_os_id != 0;
+	struct kvm_cpuid_entry2 *entry;
+
+	entry = kvm_find_cpuid_entry(vcpu, HYPERV_CPUID_INTERFACE, 0);
+	if (entry && entry->eax == HYPERV_CPUID_SIGNATURE_EAX)
+		vcpu->arch.hyperv_enabled = true;
+	else
+		vcpu->arch.hyperv_enabled = false;
+}
+
+bool kvm_hv_hypercall_enabled(struct kvm_vcpu *vcpu)
+{
+	return vcpu->arch.hyperv_enabled && to_kvm_hv(vcpu->kvm)->hv_guest_os_id;
 }
 
 static void kvm_hv_hypercall_set_result(struct kvm_vcpu *vcpu, u64 result)
@@ -2048,8 +2068,7 @@ int kvm_vcpu_ioctl_get_hv_cpuid(struct kvm_vcpu *vcpu, struct kvm_cpuid2 *cpuid,
 			break;
 
 		case HYPERV_CPUID_INTERFACE:
-			memcpy(signature, "Hv#1\0\0\0\0\0\0\0\0", 12);
-			ent->eax = signature[0];
+			ent->eax = HYPERV_CPUID_SIGNATURE_EAX;
 			break;
 
 		case HYPERV_CPUID_VERSION:
