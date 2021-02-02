@@ -80,6 +80,7 @@
 #include <linux/io_uring.h>
 #include <linux/tracehook.h>
 #include <linux/audit.h>
+#include <linux/security.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/io_uring.h>
@@ -7134,10 +7135,17 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
 
 	personality = READ_ONCE(sqe->personality);
 	if (personality) {
+		int ret;
+
 		req->creds = xa_load(&ctx->personalities, personality);
 		if (!req->creds)
 			return -EINVAL;
 		get_cred(req->creds);
+		ret = security_uring_override_creds(req->creds);
+		if (ret) {
+			put_cred(req->creds);
+			return ret;
+		}
 		req->flags |= REQ_F_CREDS;
 	}
 
@@ -8669,6 +8677,10 @@ static __cold int io_sq_offload_create(struct io_ring_ctx *ctx,
 		struct task_struct *tsk;
 		struct io_sq_data *sqd;
 		bool attached;
+
+		ret = security_uring_sqpoll();
+		if (ret)
+			return ret;
 
 		sqd = io_get_sq_data(p, &attached);
 		if (IS_ERR(sqd)) {
