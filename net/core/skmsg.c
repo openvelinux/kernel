@@ -532,7 +532,8 @@ static void sk_psock_backlog(struct work_struct *work)
 		len = skb->len;
 		off = 0;
 start:
-		ingress = tcp_skb_bpf_ingress(skb);
+		ingress = skb_bpf_ingress(skb);
+		skb_bpf_redirect_clear(skb);
 		do {
 			ret = -EIO;
 			if (likely(psock->sk->sk_socket))
@@ -638,7 +639,12 @@ void __sk_psock_purge_ingress_msg(struct sk_psock *psock)
 
 static void sk_psock_zap_ingress(struct sk_psock *psock)
 {
-	__skb_queue_purge(&psock->ingress_skb);
+	struct sk_buff *skb;
+
+	while ((skb = __skb_dequeue(&psock->ingress_skb)) != NULL) {
+		skb_bpf_redirect_clear(skb);
+		kfree_skb(skb);
+	}
 	__sk_psock_purge_ingress_msg(psock);
 }
 
@@ -761,7 +767,7 @@ static void sk_psock_skb_redirect(struct sk_buff *skb)
 	struct sk_psock *psock_other;
 	struct sock *sk_other;
 
-	sk_other = tcp_skb_bpf_redirect_fetch(skb);
+	sk_other = skb_bpf_redirect_fetch(skb);
 	/* This error is a buggy BPF program, it returned a redirect
 	 * return code, but then didn't set a redirect interface.
 	 */
@@ -806,9 +812,10 @@ int sk_psock_tls_strp_read(struct sk_psock *psock, struct sk_buff *skb)
 	prog = READ_ONCE(psock->progs.skb_verdict);
 	if (likely(prog)) {
 		skb->sk = psock->sk;
-		tcp_skb_bpf_redirect_clear(skb);
+		skb_dst_drop(skb);
+		skb_bpf_redirect_clear(skb);
 		ret = sk_psock_bpf_run(psock, prog, skb);
-		ret = sk_psock_map_verd(ret, tcp_skb_bpf_redirect_fetch(skb));
+		ret = sk_psock_map_verd(ret, skb_bpf_redirect_fetch(skb));
 		skb->sk = NULL;
 	}
 	sk_psock_tls_verdict_apply(skb, psock->sk, ret);
@@ -820,7 +827,6 @@ EXPORT_SYMBOL_GPL(sk_psock_tls_strp_read);
 static void sk_psock_verdict_apply(struct sk_psock *psock,
 				   struct sk_buff *skb, int verdict)
 {
-	struct tcp_skb_cb *tcp;
 	struct sock *sk_other;
 	int err = -EIO;
 
@@ -832,8 +838,7 @@ static void sk_psock_verdict_apply(struct sk_psock *psock,
 			goto out_free;
 		}
 
-		tcp = TCP_SKB_CB(skb);
-		tcp->bpf.flags |= BPF_F_INGRESS;
+		skb_bpf_set_ingress(skb);
 
 		/* If the queue is empty then we can submit directly
 		 * into the msg queue. If its not empty we have to
@@ -894,9 +899,10 @@ static void sk_psock_strp_read(struct strparser *strp, struct sk_buff *skb)
 	prog = READ_ONCE(psock->progs.skb_verdict);
 	if (likely(prog)) {
 		skb->sk = sk;
-		tcp_skb_bpf_redirect_clear(skb);
+		skb_dst_drop(skb);
+		skb_bpf_redirect_clear(skb);
 		ret = sk_psock_bpf_run(psock, prog, skb);
-		ret = sk_psock_map_verd(ret, tcp_skb_bpf_redirect_fetch(skb));
+		ret = sk_psock_map_verd(ret, skb_bpf_redirect_fetch(skb));
 		skb->sk = NULL;
 	}
 	sk_psock_verdict_apply(psock, skb, ret);
@@ -1014,9 +1020,10 @@ static int sk_psock_verdict_recv(read_descriptor_t *desc, struct sk_buff *skb,
 	prog = READ_ONCE(psock->progs.skb_verdict);
 	if (likely(prog)) {
 		skb->sk = sk;
-		tcp_skb_bpf_redirect_clear(skb);
+		skb_dst_drop(skb);
+		skb_bpf_redirect_clear(skb);
 		ret = sk_psock_bpf_run(psock, prog, skb);
-		ret = sk_psock_map_verd(ret, tcp_skb_bpf_redirect_fetch(skb));
+		ret = sk_psock_map_verd(ret, skb_bpf_redirect_fetch(skb));
 		skb->sk = NULL;
 	}
 	sk_psock_verdict_apply(psock, skb, ret);
