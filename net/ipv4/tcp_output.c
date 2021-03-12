@@ -3874,7 +3874,7 @@ int tcp_connect(struct sock *sk)
 	tcp_connect_queue_skb(sk, buff);
 	tcp_ecn_send_syn(sk, buff);
 	tcp_rbtree_insert(&sk->tcp_rtx_queue, buff);
-	tp->tcpi_csent_syn_stamp = tcp_jiffies32;
+	tp->tcpi_csent_syn_stamp = time_abs_ms();
 
 	/* Send off SYN; include data in Fast Open. */
 	err = tp->fastopen_req ? tcp_send_syn_data(sk, buff) :

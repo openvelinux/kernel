@@ -499,6 +499,8 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 	newsk->sk_txhash = treq->txhash;
 	newtp->total_retrans = req->num_retrans;
 
+	tcp_ts_copy_from_req(newtp, treq);
+
 	tcp_init_xmit_timers(newsk);
 	WRITE_ONCE(newtp->write_seq, newtp->pushed_seq = treq->snt_isn + 1);
 
@@ -785,7 +787,7 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 	tsk = tcp_sk(child);
 	treq = tcp_rsk(req);
 	tsk->tfo_info = treq->tfo_info;
-	tsk->tcpi_srcv_syn_stamp = treq->tcpi_srcv_syn_stamp;
+
 	sock_rps_save_rxhash(child, skb);
 	tcp_synack_rtt_meas(child, req);
 	*req_stolen = !own_req;
@@ -840,7 +842,7 @@ int tcp_child_process(struct sock *parent, struct sock *child,
 	int state = child->sk_state;
 	struct tcp_sock *tp = tcp_sk(child);
 
-	tp->tcpi_srcv_ack_stamp = tcp_jiffies32;
+	tp->tcpi_srcv_ack_stamp = time_abs_ms();
 	/* record NAPI ID of child */
 	sk_mark_napi_id(child, skb);
 

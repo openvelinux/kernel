@@ -297,11 +297,11 @@ struct tcp_info {
 				      * scaling (bytes)
 				      */
 	__u32	tfo_info;
-	__u32	tcpi_csent_syn_stamp;
-	__u32	tcpi_srcv_syn_stamp;
-	__u32	tcpi_crcv_synack_stamp;
-	__u32	tcpi_srcv_ack_stamp;
-	__u32	tcpi_firstdata_stamp;
+	__u64	tcpi_csent_syn_stamp;
+	__u64	tcpi_srcv_syn_stamp;
+	__u64	tcpi_crcv_synack_stamp;
+	__u64	tcpi_srcv_ack_stamp;
+	__u64	tcpi_firstdata_stamp;
 	__u32	tcpi_probe0_times;
 	__u32   tcpi_max_rtt;
 

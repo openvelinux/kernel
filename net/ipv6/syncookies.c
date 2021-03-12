@@ -178,6 +178,7 @@ struct sock *cookie_v6_check(struct sock *sk, struct sk_buff *skb)
 	treq = tcp_rsk(req);
 	treq->tfo_listener = false;
 	treq->tfo_info = 0;
+	tcp_reqsock_ts_init(treq);
 
 	if (security_inet_conn_request(sk, skb, req))
 		goto out_free;

@@ -3468,7 +3468,7 @@ static void tcp_rcv_nxt_update(struct tcp_sock *tp, u32 seq)
 
 	sock_owned_by_me((struct sock *)tp);
 	if (tp->bytes_received == 0)
-		tp->tcpi_firstdata_stamp = tcp_jiffies32;
+		tp->tcpi_firstdata_stamp = time_abs_ms();
 
 	tp->bytes_received += delta;
 	WRITE_ONCE(tp->rcv_nxt, seq);
@@ -6355,7 +6355,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 	case TCP_SYN_SENT:
 		tp->rx_opt.saw_tstamp = 0;
-		tp->tcpi_crcv_synack_stamp = tcp_jiffies32;
+		tp->tcpi_crcv_synack_stamp = time_abs_ms();
 		tcp_mstamp_refresh(tp);
 		queued = tcp_rcv_synsent_state_process(sk, skb, th);
 		if (queued >= 0)
@@ -6797,7 +6797,9 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	tcp_rsk(req)->is_mptcp = 0;
 #endif
 	tcp_rsk(req)->tfo_info = 0;
-	tcp_rsk(req)->tcpi_srcv_syn_stamp = tcp_jiffies32;
+
+	tcp_reqsock_ts_init(tcp_rsk(req));
+	tcp_rsk(req)->tcpi_srcv_syn_stamp = time_abs_ms();
 
 	tcp_clear_options(&tmp_opt);
 	tmp_opt.mss_clamp = af_ops->mss_clamp;
@@ -6881,7 +6883,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 			goto drop_and_free;
 		}
 		tsk->tfo_info = treq->tfo_info;
-		tsk->tcpi_srcv_syn_stamp = treq->tcpi_srcv_syn_stamp;
+
 		sk->sk_data_ready(sk);
 		bh_unlock_sock(fastopen_sk);
 		sock_put(fastopen_sk);
