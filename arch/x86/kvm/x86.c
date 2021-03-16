@@ -2578,6 +2578,8 @@ static void kvm_gen_update_masterclock(struct kvm *kvm)
 	struct kvm_arch *ka = &kvm->arch;
 	unsigned long flags;
 
+	kvm_hv_invalidate_tsc_page(kvm);
+
 	spin_lock_irqsave(&ka->pvclock_gtod_sync_lock, flags);
 	kvm_make_mclock_inprogress_request(kvm);
 	/* no guest entries from this point */
