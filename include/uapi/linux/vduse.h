@@ -214,6 +214,7 @@ enum vduse_req_type {
 	VDUSE_GET_CONFIG,
 	/* Notify userspace to update the memory mapping in device IOTLB */
 	VDUSE_UPDATE_IOTLB,
+	VDUSE_VDPA_DISCONNECT = 256,
 };
 
 struct vduse_vq_num {
