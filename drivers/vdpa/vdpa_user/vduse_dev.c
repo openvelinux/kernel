@@ -431,6 +431,15 @@ static int vduse_dev_update_iotlb(struct vduse_dev *dev,
 	return vduse_dev_msg_sync(dev, &msg);
 }
 
+static int vduse_dev_vdpa_disconnect(struct vduse_dev *dev)
+{
+	struct vduse_dev_msg msg = {{ 0 }};
+
+	msg.req.type = VDUSE_VDPA_DISCONNECT;
+
+	return vduse_dev_msg_sync(dev, &msg);
+}
+
 static ssize_t vduse_dev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct file *file = iocb->ki_filp;
@@ -899,6 +908,11 @@ static void vduse_vdpa_free(struct vdpa_device *vdpa)
 {
 	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
 
+	if (dev->connected)
+		vduse_dev_vdpa_disconnect(dev);
+
+	WARN_ON(!list_empty(&dev->send_list));
+	WARN_ON(!list_empty(&dev->recv_list));
 	dev->vdev = NULL;
 }
 
