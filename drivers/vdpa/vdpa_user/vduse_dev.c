@@ -95,13 +95,13 @@ struct vduse_control {
 	unsigned long api_version;
 };
 
-static unsigned long max_bounce_size = (64 * 1024 * 1024);
+static unsigned long max_bounce_size = (1024 * 1024 * 1024UL);
 module_param(max_bounce_size, ulong, 0444);
-MODULE_PARM_DESC(max_bounce_size, "Maximum bounce buffer size. (default: 64M)");
+MODULE_PARM_DESC(max_bounce_size, "Maximum bounce buffer size. (default: 1G)");
 
-static unsigned long max_iova_size = (128 * 1024 * 1024);
+static unsigned long max_iova_size = (2048 * 1024 * 1024UL);
 module_param(max_iova_size, ulong, 0444);
-MODULE_PARM_DESC(max_iova_size, "Maximum iova space size (default: 128M)");
+MODULE_PARM_DESC(max_iova_size, "Maximum iova space size (default: 2G)");
 
 static DEFINE_MUTEX(vduse_lock);
 static LIST_HEAD(vduse_devs);
