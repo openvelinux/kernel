@@ -1011,6 +1011,9 @@ struct kvm_arch {
 
 	bool bus_lock_detection_enabled;
 
+	/* Guest can access the SGX PROVISIONKEY. */
+	bool sgx_provisioning_allowed;
+
 	/* Deflect RDMSR and WRMSR to user space when they trigger a #GP */
 	u32 user_space_msr_mask;
 
