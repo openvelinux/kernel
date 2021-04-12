@@ -31,8 +31,8 @@
  * @vq_align: the allocation alignment of virtqueue's metadata
  * @config_size: the size of the configuration space
  * @reserved: for future use, needs to be initialized to zero
- * @reserved2: for future use
  * @req_cached: cached request mask
+ * @dead_timeout: dead timeout
  *
  * Structure used by VDUSE_CREATE_DEV ioctl to create VDUSE device.
  */
@@ -48,8 +48,8 @@ struct vduse_dev_config {
 	__u32 vq_align;
 	__u32 config_size;
 	__u32 reserved[6];
-	__u16 reserved2;
 	__u16 req_cached;
+	__u16 dead_timeout;
 };
 
 /* Create a VDUSE device which is represented by a char device (/dev/vduse/$NAME) */
