@@ -42,6 +42,8 @@ int vduse_domain_set_map(struct vduse_iova_domain *domain,
 void vduse_domain_clear_map(struct vduse_iova_domain *domain,
 			    struct vhost_iotlb *iotlb);
 
+int vduse_domain_translate_map(struct vduse_iova_domain *domain);
+
 dma_addr_t vduse_domain_map_page(struct vduse_iova_domain *domain,
 				 struct page *page, unsigned long offset,
 				 size_t size, enum dma_data_direction dir,
