@@ -49,9 +49,11 @@ static void vduse_iotlb_del_range(struct vduse_iova_domain *domain,
 	struct vhost_iotlb_map *map;
 
 	while ((map = vhost_iotlb_itree_first(domain->iotlb, start, last))) {
-		map_file = (struct vdpa_map_file *)map->opaque;
-		fput(map_file->file);
-		kfree(map_file);
+		if (map->opaque) {
+			map_file = (struct vdpa_map_file *)map->opaque;
+			fput(map_file->file);
+			kfree(map_file);
+		}
 		vhost_iotlb_map_free(domain->iotlb, map);
 	}
 }
@@ -184,6 +186,44 @@ static void vduse_domain_bounce(struct vduse_iova_domain *domain,
 		size -= sz;
 		iova += sz;
 	}
+}
+
+int vduse_domain_translate_map(struct vduse_iova_domain *domain)
+{
+	u64 start, last;
+	unsigned long pfn, bounce_pfns;
+	struct vduse_bounce_map *map;
+	int ret;
+
+	if (!domain->bounce_map)
+		return 0;
+
+	spin_lock(&domain->iotlb_lock);
+	vduse_iotlb_del_range(domain, 0, domain->bounce_size - 1);
+	bounce_pfns = domain->bounce_size >> PAGE_SHIFT;
+	for (pfn = 0; pfn < bounce_pfns; pfn++) {
+		map = &domain->bounce_maps[pfn];
+		if (map->orig_phys == INVALID_PHYS_ADDR)
+			continue;
+
+		if (WARN_ON(!map->bounce_page))
+			continue;
+
+		start = pfn << PAGE_SHIFT;
+		last = start + PAGE_SIZE - 1;
+		ret = vhost_iotlb_add_range(domain->iotlb, start, last,
+					    page_to_phys(map->bounce_page),
+					    VHOST_MAP_RW);
+		if (ret)
+			goto err;
+	}
+	spin_unlock(&domain->iotlb_lock);
+
+	return 0;
+err:
+	vhost_iotlb_del_range(domain->iotlb, 0, domain->bounce_size - 1);
+	spin_unlock(&domain->iotlb_lock);
+	return ret;
 }
 
 static struct page *
