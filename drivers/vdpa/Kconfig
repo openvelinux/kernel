@@ -38,6 +38,7 @@ config VDPA_USER
 	depends on EVENTFD && MMU && HAS_DMA
 	select DMA_OPS
 	select VHOST_IOTLB
+	select VHOST_RING
 	select IOMMU_IOVA
 	help
 	  With VDUSE it is possible to emulate a vDPA Device
