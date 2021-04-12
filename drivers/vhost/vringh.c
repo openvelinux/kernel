@@ -1291,6 +1291,29 @@ int vringh_init_iotlb(struct vringh *vrh, u64 features,
 EXPORT_SYMBOL(vringh_init_iotlb);
 
 /**
+ * vringh_recover_iotlb - recover a vringh from used_vring with IOTLB.
+ * @vrh: the vringh to initialize.
+ *
+ * Returns an error if recovery fail.
+ */
+int vringh_recover_iotlb(struct vringh *vrh)
+{
+	int err;
+	u16 used_idx;
+
+	err = getu16_iotlb(vrh, &used_idx, &vrh->vring.used->idx);
+	if (err)
+		return err;
+
+	vrh->last_avail_idx = used_idx;
+	vrh->last_used_idx = used_idx;
+	vrh->completed = 0;
+
+	return 0;
+}
+EXPORT_SYMBOL(vringh_recover_iotlb);
+
+/**
  * vringh_set_iotlb - initialize a vringh for a ring with IOTLB.
  * @vrh: the vring
  * @iotlb: iotlb associated with this vring
