@@ -27,6 +27,7 @@
 #include <uapi/linux/virtio_config.h>
 #include <uapi/linux/virtio_ids.h>
 #include <uapi/linux/virtio_blk.h>
+#include <uapi/linux/fuse.h>
 #include <linux/mod_devicetable.h>
 
 #include "iova_domain.h"
@@ -1290,7 +1291,8 @@ static int vduse_dev_release(struct inode *inode, struct file *file)
 	list_splice_init(&dev->recv_list, &dev->send_list);
 	spin_unlock(&dev->msg_lock);
 	dev->connected = false;
-	if (dev->dead_timeout && dev->device_id == VIRTIO_ID_BLOCK)
+	if (dev->dead_timeout && (dev->device_id == VIRTIO_ID_BLOCK ||
+	    dev->device_id == VIRTIO_ID_FS))
 		schedule_delayed_work(&dev->timeout_work,
 				msecs_to_jiffies(dev->dead_timeout * 1000));
 
@@ -1543,6 +1545,70 @@ err:
 	return ret;
 }
 
+static int vduse_fs_timeout_handler(struct vduse_dev *dev,
+				    struct vduse_virtqueue *vq)
+{
+	size_t len = 0;
+	ssize_t bytes;
+	unsigned short head;
+	int ret;
+	struct fuse_in_header in;
+	struct fuse_out_header out;
+
+	ret = vringh_getdesc_iotlb(&vq->vring, &vq->out_iov, &vq->in_iov,
+				   &head, GFP_ATOMIC);
+	if (ret != 1)
+		return ret;
+
+	if (vq->out_iov.used < 1) {
+		pr_err("VDUSE: missing headers - out_iov: %u\n",
+		       vq->out_iov.used);
+		goto out;
+	}
+
+	if (vq->out_iov.iov[0].iov_len < sizeof(struct fuse_in_header)) {
+		pr_err("VDUSE: request in header too short\n");
+		goto out;
+	}
+
+	bytes = vringh_iov_pull_iotlb(&vq->vring, &vq->out_iov,
+				      &in, sizeof(struct fuse_in_header));
+	if (bytes != sizeof(struct fuse_in_header)) {
+		ret = (bytes >= 0) ? -EINVAL : bytes;
+		pr_err("VDUSE: read fuse header failed: %ld\n", bytes);
+		goto err;
+	}
+
+	len = vringh_kiov_length(&vq->in_iov);
+	if (!len)
+		goto out;
+
+	out.unique = in.unique;
+	out.error = -EIO;
+
+	bytes = vringh_iov_push_iotlb(&vq->vring, &vq->in_iov,
+				      &out, sizeof(struct fuse_out_header));
+	if (bytes != sizeof(struct fuse_out_header)) {
+		ret = (bytes >= 0) ? -EINVAL : bytes;
+		pr_err("VDUSE: write fuse header failed: %ld\n", bytes);
+		goto err;
+	}
+
+	/* Make sure data is wrote before advancing index */
+	smp_wmb();
+out:
+	ret = vringh_complete_iotlb(&vq->vring, head, len);
+	if (ret) {
+		pr_err("VDUSE: update used vring failed\n");
+		goto err;
+	}
+
+	return 1;
+err:
+	vringh_abandon_iotlb(&vq->vring, 1);
+	return ret;
+}
+
 /* Returns 0 if there was no request, 1 if there was, or -errno. */
 static int vduse_req_timeout_handler(struct vduse_dev *dev,
 				      struct vduse_virtqueue *vq)
@@ -1559,6 +1625,8 @@ retry:
 
 	if (dev->device_id == VIRTIO_ID_BLOCK)
 		ret = vduse_blk_timeout_handler(dev, vq);
+	else if (dev->device_id == VIRTIO_ID_FS)
+		ret = vduse_fs_timeout_handler(dev, vq);
 
 	if (ret < 0 && do_retry) {
 		do_retry = false;
