@@ -31,6 +31,9 @@ struct snap_entry {
 	u32 tid;
 	u64 eip;
 	char comm[TASK_COMM_LEN];
+	/* new fields since v2 */
+	u64 kernel_eip;
+	u64 r2;
 };
 
 static u32 timer_ms = 10000;
@@ -43,10 +46,9 @@ static struct dentry *dir;
 static int hot_inspector_cpustate;
 
 static ssize_t entries_read(struct file *file, char __user *buf,
-                            size_t count, loff_t *ppos)
+                            size_t count, loff_t *ppos, loff_t avail)
 {
 	loff_t pos = *ppos;
-	loff_t avail = file_inode(file)->i_size;
 	struct snap_entry *entry = (struct snap_entry*)file->private_data;
 	int cpu = entry->cpu;
 	int seq;
@@ -72,10 +74,32 @@ static ssize_t entries_read(struct file *file, char __user *buf,
 	return count;
 }
 
+static ssize_t entries_read_v1(struct file *file, char __user *buf,
+                               size_t count, loff_t *ppos)
+{
+	/* v1: data layout only until comm field */
+	loff_t avail = offsetofend(struct snap_entry, comm);
+	return entries_read(file, buf, count, ppos, avail);
+}
+
+static ssize_t entries_read_v2(struct file *file, char __user *buf,
+                               size_t count, loff_t *ppos)
+{
+	loff_t avail = file_inode(file)->i_size;
+	return entries_read(file, buf, count, ppos, avail);
+}
+
 static const struct file_operations hot_inspector_fops = {
 	.owner   = THIS_MODULE,
 	.open    = simple_open,
-	.read    = entries_read,
+	.read    = entries_read_v1,
+	.llseek  = default_llseek,
+};
+
+static const struct file_operations hot_inspector_v2_fops = {
+	.owner   = THIS_MODULE,
+	.open    = simple_open,
+	.read    = entries_read_v2,
 	.llseek  = default_llseek,
 };
 
@@ -94,7 +118,8 @@ static void stack_snap(struct timer_list *timer)
 	entry->state2 = regs && user_mode(regs) ? 0 : 1;
 	entry->pid = task->tgid;
 	entry->tid = task->pid;
-	entry->eip = regs ? instruction_pointer(regs) : 0;
+	entry->eip = KSTK_EIP(task);
+	entry->kernel_eip = regs ? instruction_pointer(regs) : 0;
 	memcpy(entry->comm, task->comm, TASK_COMM_LEN);
 	write_seqcount_end(seqcount);
 
@@ -129,6 +154,7 @@ static int __init hot_inspector_init(void)
 	int ret;
 	char buf[32];
 	struct dentry *cpu_dir;
+	struct dentry *v2_dir;
 
 	dir = debugfs_create_dir("hot_inspector", NULL);
 	if (IS_ERR(dir))
@@ -137,6 +163,12 @@ static int __init hot_inspector_init(void)
 	cpu_dir = debugfs_create_dir("cpu", dir);
 	if (IS_ERR(cpu_dir)) {
 		ret = PTR_ERR(cpu_dir);
+		goto clean;
+	}
+
+	v2_dir = debugfs_create_dir("v2", dir);
+	if (IS_ERR(v2_dir)) {
+		ret = PTR_ERR(v2_dir);
 		goto clean;
 	}
 
@@ -158,6 +190,9 @@ static int __init hot_inspector_init(void)
 		snprintf(buf, sizeof(buf), "%d", cpu);
 		debugfs_create_file_size(buf, 0400, cpu_dir, entry,
 					 &hot_inspector_fops,
+					 sizeof(struct snap_entry));
+		debugfs_create_file_size(buf, 0400, v2_dir, entry,
+					 &hot_inspector_v2_fops,
 					 sizeof(struct snap_entry));
 	}
 
