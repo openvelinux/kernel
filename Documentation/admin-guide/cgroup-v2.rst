@@ -1200,6 +1200,18 @@ PAGE_SIZE multiple when read back.
 	high limit is used and monitored properly, this limit's
 	utility is limited to providing the final safety net.
 
+
+  memory.drop_cache
+        A write-only single value file which exists on non-root
+        cgroups.
+
+        Provide a mechanism for users to actively trigger memory
+        reclaim. The cgroup will be reclaimed and as many pages
+        reclaimed as possible.
+
+        It will broke low boundary. Because it tries to reclaim the
+        memory many times, until the memory drops to a certain level.
+
   memory.oom.group
 	A read-write single value file which exists on non-root
 	cgroups.  The default value is "0".
