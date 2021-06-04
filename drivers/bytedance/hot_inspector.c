@@ -22,7 +22,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("BYTEDANCE STE");
 MODULE_DESCRIPTION("Bytedance IDC workload hot component inspector");
-MODULE_VERSION("0.11");
+MODULE_VERSION("0.12");
 
 struct snap_entry {
 	u64 ts;
