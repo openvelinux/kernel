@@ -1004,7 +1004,6 @@ static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
 static int vduse_dev_release(struct inode *inode, struct file *file)
 {
 	struct vduse_dev *dev = file->private_data;
-	struct vduse_dev_msg *msg;
 	int i;
 
 	for (i = 0; i < dev->vq_num; i++) {
@@ -1019,8 +1018,7 @@ static int vduse_dev_release(struct inode *inode, struct file *file)
 
 	spin_lock(&dev->msg_lock);
 	/* Make sure the inflight messages can processed after reconncection */
-	while ((msg = vduse_dequeue_msg(&dev->recv_list)))
-		vduse_enqueue_msg(&dev->send_list, msg);
+	list_splice_init(&dev->recv_list, &dev->send_list);
 	spin_unlock(&dev->msg_lock);
 
 	dev->connected = false;
