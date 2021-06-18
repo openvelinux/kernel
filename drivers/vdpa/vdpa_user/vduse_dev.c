@@ -93,6 +93,7 @@ struct vduse_dev {
 	int minor;
 	bool broken;
 	bool connected;
+	bool aborted;
 	u64 api_version;
 	u64 device_features;
 	u64 driver_features;
@@ -1644,7 +1645,7 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 					struct vduse_dev, timeout_work);
 
 	mutex_lock(&dev->lock);
-	if (dev->connected)
+	if (dev->connected && !dev->aborted)
 		goto unlock;
 
 	if (!dev->dead) {
@@ -1813,8 +1814,27 @@ static ssize_t msg_timeout_store(struct device *device,
 
 static DEVICE_ATTR_RW(msg_timeout);
 
+static ssize_t abort_conn_store(struct device *device,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct vduse_dev *dev = dev_get_drvdata(device);
+
+	if (dev->device_id != VIRTIO_ID_BLOCK &&
+	    dev->device_id != VIRTIO_ID_FS)
+		return -EINVAL;
+
+	dev->aborted = true;
+	mod_delayed_work(system_wq, &dev->timeout_work, 0);
+
+	return count;
+}
+
+static DEVICE_ATTR_WO(abort_conn);
+
 static struct attribute *vduse_dev_attrs[] = {
 	&dev_attr_msg_timeout.attr,
+	&dev_attr_abort_conn.attr,
 	NULL
 };
 
