@@ -1271,6 +1271,17 @@ static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
 
 		index = array_index_nospec(index, dev->vq_num);
 		vq = dev->vqs[index];
+		ret = 0;
+
+		/* virtio-fs driver already uses workqueue in irq handler */
+		if (dev->device_id == VIRTIO_ID_FS) {
+			spin_lock_irq(&vq->irq_lock);
+			if (vq->ready && vq->cb.callback)
+				vq->cb.callback(vq->cb.private);
+			spin_unlock_irq(&vq->irq_lock);
+			break;
+		}
+
 		ret = vduse_dev_queue_irq_work(dev, &dev->vqs[index]->inject,
 					       vq->irq_affinity);
 		break;
