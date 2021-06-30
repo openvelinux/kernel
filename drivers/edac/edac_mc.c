@@ -163,6 +163,7 @@ const char * const edac_mem_types[] = {
 	[MEM_LRDDR4]	= "Load-Reduced-DDR4-RAM",
 	[MEM_DDR5]	= "Unbuffered-DDR5",
 	[MEM_NVDIMM]	= "Non-volatile-RAM",
+	[MEM_HBM2]	= "High-bandwidth-memory-Gen2",
 };
 EXPORT_SYMBOL_GPL(edac_mem_types);
 
