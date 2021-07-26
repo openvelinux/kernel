@@ -785,6 +785,8 @@ show_signal_msg(struct pt_regs *regs, unsigned long error_code,
 	printk(KERN_CONT "\n");
 
 	show_opcodes(regs, loglvl);
+
+	trace_segfault(address, regs, error_code, tsk);
 }
 
 /*
