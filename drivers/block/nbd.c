@@ -153,6 +153,7 @@ static struct dentry *nbd_dbg_dir;
 
 #define NBD_DEF_BLKSIZE_BITS 10
 
+static const int nbd_version = 5;
 static unsigned int nbds_max = 16;
 static int max_part = 16;
 static int part_shift;
@@ -2565,3 +2566,5 @@ module_param(nbds_max, int, 0444);
 MODULE_PARM_DESC(nbds_max, "number of network block devices to initialize (default: 16)");
 module_param(max_part, int, 0444);
 MODULE_PARM_DESC(max_part, "number of partitions per device (default: 16)");
+module_param(nbd_version, int, 0444);
+MODULE_PARM_DESC(nbd_version, "nbd version");
