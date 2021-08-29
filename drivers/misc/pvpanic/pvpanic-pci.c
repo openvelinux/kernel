@@ -19,7 +19,7 @@
 #define PCI_DEVICE_ID_REDHAT_PVPANIC     0x0011
 
 MODULE_AUTHOR("Mihai Carabas <mihai.carabas@oracle.com>");
-MODULE_DESCRIPTION("pvpanic device driver ");
+MODULE_DESCRIPTION("pvpanic device driver");
 MODULE_LICENSE("GPL");
 
 static int pvpanic_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
