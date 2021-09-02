@@ -120,5 +120,4 @@
 
 #define EHWPOISON	133	/* Memory page has hardware error */
 
-#define EPOISONED	134	/* Memory page has been set posioned */
 #endif
