@@ -367,7 +367,7 @@ int __init arch_populate_kprobe_blacklist(void)
 
 void __kprobes __used *trampoline_probe_handler(struct pt_regs *regs)
 {
-	return (void *)kretprobe_trampoline_handler(regs, &kretprobe_trampoline, NULL);
+	return (void *)kretprobe_trampoline_handler(regs, &__kretprobe_trampoline, NULL);
 }
 
 void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
@@ -375,7 +375,7 @@ void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
 {
 	ri->ret_addr = (kprobe_opcode_t *)regs->ra;
 	ri->fp = NULL;
-	regs->ra = (unsigned long) &kretprobe_trampoline;
+	regs->ra = (unsigned long) &__kretprobe_trampoline;
 }
 
 int __kprobes arch_trampoline_kprobe(struct kprobe *p)

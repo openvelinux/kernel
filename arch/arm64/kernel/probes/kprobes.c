@@ -401,7 +401,7 @@ int __init arch_populate_kprobe_blacklist(void)
 
 void __kprobes __used *trampoline_probe_handler(struct pt_regs *regs)
 {
-	return (void *)kretprobe_trampoline_handler(regs, &kretprobe_trampoline,
+	return (void *)kretprobe_trampoline_handler(regs, &__kretprobe_trampoline,
 					(void *)kernel_stack_pointer(regs));
 }
 
@@ -412,7 +412,7 @@ void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
 	ri->fp = (void *)kernel_stack_pointer(regs);
 
 	/* replace return addr (x30) with trampoline */
-	regs->regs[30] = (long)&kretprobe_trampoline;
+	regs->regs[30] = (long)&__kretprobe_trampoline;
 }
 
 int __kprobes arch_trampoline_kprobe(struct kprobe *p)
