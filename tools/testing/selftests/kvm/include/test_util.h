@@ -67,6 +67,8 @@ struct timespec timespec_sub(struct timespec ts1, struct timespec ts2);
 struct timespec timespec_diff_now(struct timespec start);
 struct timespec timespec_div(struct timespec ts, int divisor);
 
+#define MIN_RUN_DELAY_NS	200000UL
+
 long get_run_delay(void);
 
 #endif /* SELFTEST_KVM_TEST_UTIL_H */
