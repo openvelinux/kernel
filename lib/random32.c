@@ -39,7 +39,6 @@
 #include <linux/random.h>
 #include <linux/sched.h>
 #include <linux/bitops.h>
-#include <linux/slab.h>
 #include <linux/notifier.h>
 #include <asm/unaligned.h>
 
