@@ -204,6 +204,8 @@ static inline int add_disk(struct gendisk *disk)
 }
 extern void del_gendisk(struct gendisk *gp);
 
+void invalidate_disk(struct gendisk *disk);
+
 void set_disk_ro(struct gendisk *disk, bool read_only);
 
 static inline int get_disk_ro(struct gendisk *disk)
