@@ -153,7 +153,7 @@ static struct dentry *nbd_dbg_dir;
 
 #define NBD_DEF_BLKSIZE_BITS 10
 
-static const int nbd_version = 5;
+static int nbd_version = 5;
 static unsigned int nbds_max = 16;
 static int max_part = 16;
 static int part_shift;
