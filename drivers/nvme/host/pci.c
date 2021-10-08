@@ -949,7 +949,7 @@ out_free_cmd:
 	return ret;
 }
 
-static void nvme_pci_complete_rq(struct request *req)
+static __always_inline void nvme_pci_unmap_rq(struct request *req)
 {
 	struct nvme_queue *nvmeq = req->mq_hctx->driver_data;
 	struct nvme_dev *dev = nvmeq->dev;
@@ -963,7 +963,17 @@ static void nvme_pci_complete_rq(struct request *req)
 
 	if (blk_rq_nr_phys_segments(req))
 		nvme_unmap_data(dev, req);
+}
+
+static void nvme_pci_complete_rq(struct request *req)
+{
+	nvme_pci_unmap_rq(req);
 	nvme_complete_rq(req);
+}
+
+static void nvme_pci_complete_batch(struct io_comp_batch *iob)
+{
+	nvme_complete_batch(iob, nvme_pci_unmap_rq);
 }
 
 /* We read the CQE phase first to check if the rest of the entry is valid */
@@ -990,7 +1000,8 @@ static inline struct blk_mq_tags *nvme_queue_tagset(struct nvme_queue *nvmeq)
 	return nvmeq->dev->tagset.tags[nvmeq->qid - 1];
 }
 
-static inline void nvme_handle_cqe(struct nvme_queue *nvmeq, u16 idx)
+static inline void nvme_handle_cqe(struct nvme_queue *nvmeq,
+				   struct io_comp_batch *iob, u16 idx)
 {
 	struct nvme_completion *cqe = &nvmeq->cqes[idx];
 	__u16 command_id = READ_ONCE(cqe->command_id);
@@ -1017,7 +1028,9 @@ static inline void nvme_handle_cqe(struct nvme_queue *nvmeq, u16 idx)
 	}
 
 	trace_nvme_sq(req, cqe->sq_head, nvmeq->sq_tail);
-	if (!nvme_try_complete_req(req, cqe->status, cqe->result))
+	if (!nvme_try_complete_req(req, cqe->status, cqe->result) &&
+	    !blk_mq_add_to_batch(req, iob, nvme_req(req)->status,
+					nvme_pci_complete_batch))
 		nvme_pci_complete_rq(req);
 }
 
@@ -1033,7 +1046,8 @@ static inline void nvme_update_cq_head(struct nvme_queue *nvmeq)
 	}
 }
 
-static inline int nvme_process_cq(struct nvme_queue *nvmeq)
+static inline int nvme_poll_cq(struct nvme_queue *nvmeq,
+			       struct io_comp_batch *iob)
 {
 	int found = 0;
 
@@ -1044,7 +1058,7 @@ static inline int nvme_process_cq(struct nvme_queue *nvmeq)
 		 * the cqe requires a full read memory barrier
 		 */
 		dma_rmb();
-		nvme_handle_cqe(nvmeq, nvmeq->cq_head);
+		nvme_handle_cqe(nvmeq, iob, nvmeq->cq_head);
 		nvme_update_cq_head(nvmeq);
 	}
 
@@ -1057,7 +1071,7 @@ static irqreturn_t nvme_irq(int irq, void *data)
 {
 	struct nvme_queue *nvmeq = data;
 
-	if (nvme_process_cq(nvmeq))
+	if (nvme_poll_cq(nvmeq, NULL))
 		return IRQ_HANDLED;
 	return IRQ_NONE;
 }
@@ -1082,7 +1096,7 @@ static void nvme_poll_irqdisable(struct nvme_queue *nvmeq)
 	WARN_ON_ONCE(test_bit(NVMEQ_POLLED, &nvmeq->flags));
 
 	disable_irq(pci_irq_vector(pdev, nvmeq->cq_vector));
-	nvme_process_cq(nvmeq);
+	nvme_poll_cq(nvmeq, NULL);
 	enable_irq(pci_irq_vector(pdev, nvmeq->cq_vector));
 }
 
@@ -1095,7 +1109,7 @@ static int nvme_poll(struct blk_mq_hw_ctx *hctx, struct io_comp_batch *iob)
 		return 0;
 
 	spin_lock(&nvmeq->cq_poll_lock);
-	found = nvme_process_cq(nvmeq);
+	found = nvme_poll_cq(nvmeq, iob);
 	spin_unlock(&nvmeq->cq_poll_lock);
 
 	return found;
@@ -1427,7 +1441,7 @@ static void nvme_reap_pending_cqes(struct nvme_dev *dev)
 
 	for (i = dev->ctrl.queue_count - 1; i > 0; i--) {
 		spin_lock(&dev->queues[i].cq_poll_lock);
-		nvme_process_cq(&dev->queues[i]);
+		nvme_poll_cq(&dev->queues[i], NULL);
 		spin_unlock(&dev->queues[i].cq_poll_lock);
 	}
 }
