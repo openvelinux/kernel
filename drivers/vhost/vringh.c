@@ -1314,6 +1314,20 @@ int vringh_recover_iotlb(struct vringh *vrh)
 EXPORT_SYMBOL(vringh_recover_iotlb);
 
 /**
+ * vringh_recover_desc_iotlb - recover desc head.
+ * @vrh: the vringh to initialize.
+ *
+ * Returns an error if recovery fail.
+ */
+int vringh_recover_desc_iotlb(struct vringh *vrh, u16 idx, u16 head)
+{
+	idx = idx & (vrh->vring.num - 1);
+
+	return putu16_iotlb(vrh, &vrh->vring.avail->ring[idx], head);
+}
+EXPORT_SYMBOL(vringh_recover_desc_iotlb);
+
+/**
  * vringh_set_iotlb - initialize a vringh for a ring with IOTLB.
  * @vrh: the vring
  * @iotlb: iotlb associated with this vring

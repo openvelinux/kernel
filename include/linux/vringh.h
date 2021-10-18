@@ -286,6 +286,8 @@ int vringh_init_iotlb(struct vringh *vrh, u64 features,
 
 int vringh_recover_iotlb(struct vringh *vrh);
 
+int vringh_recover_desc_iotlb(struct vringh *vrh, u16 idx, u16 head);
+
 int vringh_getdesc_iotlb(struct vringh *vrh,
 			 struct vringh_kiov *riov,
 			 struct vringh_kiov *wiov,
