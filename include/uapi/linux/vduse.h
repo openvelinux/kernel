@@ -32,6 +32,8 @@
  * @config_size: the size of the configuration space
  * @reserved: for future use, needs to be initialized to zero
  * @req_cached: cached request mask
+ * @dev_shm_size: size of device shared memory
+ * @vq_shm_off: offset of virtqueue shared memory
  * @dead_timeout: dead timeout
  *
  * Structure used by VDUSE_CREATE_DEV ioctl to create VDUSE device.
@@ -47,8 +49,10 @@ struct vduse_dev_config {
 	__u32 vq_num;
 	__u32 vq_align;
 	__u32 config_size;
-	__u32 reserved[6];
+	__u32 reserved[5];
 	__u16 req_cached;
+	__u16 dev_shm_size;
+	__u16 vq_shm_off;
 	__u16 dead_timeout;
 };
 
@@ -177,6 +181,26 @@ struct vduse_vq_eventfd {
  * to consume the used vring.
  */
 #define VDUSE_INJECT_VQ_IRQ	_IOW(VDUSE_BASE, 0x06, __u32)
+
+#define VDUSE_SHM_ALIGNMENT 64
+
+/* Some definition for mmap(2) on /dev/vduse/$NAME */
+
+struct desc_state_split {
+	__u8 inflight;
+	__u8 padding[5];
+	__u8 next;
+	__u8 counter;
+};
+
+struct vduse_vq_inflight {
+	__u64 features;
+	__u16 version;
+	__u16 desc_num;
+	__u16 last_batch_head;
+	__u16 used_idx;
+	struct desc_state_split desc[];
+};
 
 /* The control messages definition for read(2)/write(2) on /dev/vduse/$NAME */
 
