@@ -110,6 +110,9 @@ struct vduse_dev {
 	u32 vq_align;
 	struct delayed_work timeout_work;
 	u16 dead_timeout;
+	void *shm_addr;
+	u8 dev_shm_size;
+	u8 vq_shm_off;
 	bool dead;
 };
 
@@ -1294,6 +1297,42 @@ static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
 	return ret;
 }
 
+static inline unsigned long vduse_vq_inflight_size(struct vduse_dev *dev)
+{
+	return ALIGN(dev->vq_shm_off + sizeof(struct vduse_vq_inflight) +
+		     dev->vq_size_max * sizeof(struct desc_state_split),
+		     VDUSE_SHM_ALIGNMENT);
+}
+
+static inline struct vduse_vq_inflight *
+vduse_get_vq_inflight(struct vduse_dev *dev, int index)
+{
+	return (struct vduse_vq_inflight *)(dev->shm_addr +
+		dev->dev_shm_size + dev->vq_shm_off +
+		vduse_vq_inflight_size(dev) * index);
+}
+
+static int vduse_dev_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	struct vduse_dev *dev = file->private_data;
+	unsigned long size = vma->vm_end - vma->vm_start;
+
+	if (size < dev->dev_shm_size +
+	    vduse_vq_inflight_size(dev) * dev->vq_num)
+		return -EINVAL;
+
+	if (!(vma->vm_flags & VM_SHARED))
+		return -EINVAL;
+
+	if (!dev->shm_addr) {
+		dev->shm_addr = vmalloc_user(size);
+		if (!dev->shm_addr)
+			return -ENOMEM;
+	}
+
+	return remap_vmalloc_range(vma, dev->shm_addr, 0);
+}
+
 static int vduse_dev_release(struct inode *inode, struct file *file)
 {
 	struct vduse_dev *dev = file->private_data;
@@ -1359,6 +1398,7 @@ static const struct file_operations vduse_dev_fops = {
 	.unlocked_ioctl	= vduse_dev_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.llseek		= noop_llseek,
+	.mmap		= vduse_dev_mmap,
 };
 
 static ssize_t irq_affinity_show(struct vduse_virtqueue *vq, char *buf)
@@ -1648,12 +1688,32 @@ retry:
 	return ret;
 }
 
+static void vduse_vq_check_inflights(struct vduse_dev *dev, int index)
+{
+	struct vduse_vq_inflight *inflight = vduse_get_vq_inflight(dev, index);
+	struct vduse_virtqueue *vq = dev->vqs[index];
+	uint16_t idx = vq->vring.last_avail_idx;
+	int i, desc_num = dev->vq_size_max;
+
+	if (inflight->desc_num)
+		desc_num = inflight->desc_num;
+
+	if (inflight->used_idx != idx)
+		inflight->desc[inflight->last_batch_head].inflight = 0;
+
+	for (i = 0; i < desc_num; i++) {
+		if (inflight->desc[i].inflight)
+			vringh_recover_desc_iotlb(&vq->vring, idx++, i);
+	}
+}
+
 static void vduse_dev_timeout_work(struct work_struct *work)
 {
 	int i, ret;
 	struct vduse_dev_msg *msg;
 	struct vduse_dev *dev = container_of(to_delayed_work(work),
 					struct vduse_dev, timeout_work);
+	bool check_inflight = false;
 
 	mutex_lock(&dev->lock);
 	if (dev->connected && !dev->aborted)
@@ -1662,6 +1722,7 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 	if (!dev->dead) {
 		pr_warn("VDUSE: dead connection found in %s\n",
 			dev_name(dev->dev));
+		check_inflight = true;
 		flush_workqueue(vduse_irq_wq);
 		flush_workqueue(vduse_irq_bound_wq);
 	}
@@ -1674,12 +1735,22 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 	}
 	spin_unlock(&dev->msg_lock);
 
+	if (!dev->shm_addr) {
+		dev->dead = false;
+		pr_warn("VDUSE: can't handle dead connection in %s\n",
+			dev_name(dev->dev));
+		goto unlock;
+	}
+
 	for (i = 0; i < dev->vq_num; i++) {
 		if (!dev->vqs[i]->ready)
 			continue;
 
 		if (vringh_recover_iotlb(&dev->vqs[i]->vring))
 			continue;
+
+		if (check_inflight)
+			vduse_vq_check_inflights(dev, i);
 
 		do {
 			vringh_notify_disable_iotlb(&dev->vqs[i]->vring);
@@ -1721,6 +1792,7 @@ static struct vduse_dev *vduse_dev_create(void)
 
 static void vduse_dev_destroy(struct vduse_dev *dev)
 {
+	vfree(dev->shm_addr);
 	kfree(dev);
 }
 
@@ -1869,6 +1941,8 @@ static int vduse_create_dev(struct vduse_dev_config *config,
 	dev->device_id = config->device_id;
 	dev->vendor_id = config->vendor_id;
 	dev->config_size = config->config_size;
+	dev->dev_shm_size = config->dev_shm_size;
+	dev->vq_shm_off = config->vq_shm_off;
 	dev->req_cached = config->req_cached;
 	dev->name = kstrdup(config->name, GFP_KERNEL);
 	if (!dev->name)
