@@ -6046,7 +6046,7 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	 * apply due to shutdown filesystem.
 	 */
 	if (ext4_test_mount_flag(sb, EXT4_MF_FS_ABORTED))
-		ext4_abort(sb, EXT4_ERR_ESHUTDOWN, "Abort forced by user");
+		ext4_abort(sb, ESHUTDOWN, "Abort forced by user");
 
 	/*
 	 * Some options can be enabled by ext4 and/or by VFS mount flag
