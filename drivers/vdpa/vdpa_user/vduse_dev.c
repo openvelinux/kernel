@@ -1422,6 +1422,30 @@ static ssize_t irq_affinity_store(struct vduse_virtqueue *vq,
 	return count;
 }
 
+static ssize_t irq_inject_store(struct vduse_virtqueue *vq,
+				const char *buf, size_t count)
+{
+	queue_work(vduse_irq_wq, &vq->inject);
+	return count;
+}
+
+static ssize_t kick_store(struct vduse_virtqueue *vq,
+			  const char *buff, size_t count)
+{
+	ssize_t ret = -EPERM;
+
+	spin_lock(&vq->kick_lock);
+	if (!vq->ready || !vq->kickfd)
+		goto unlock;
+
+	ret = count;
+	eventfd_signal(vq->kickfd, 1);
+unlock:
+	spin_unlock(&vq->kick_lock);
+
+	return ret;
+}
+
 struct vq_sysfs_entry {
 	struct attribute attr;
 	ssize_t (*show)(struct vduse_virtqueue *, char *);
@@ -1430,8 +1454,14 @@ struct vq_sysfs_entry {
 
 static struct vq_sysfs_entry irq_affinity_attr = __ATTR_RW(irq_affinity);
 
+static struct vq_sysfs_entry irq_inject_attr = __ATTR_WO(irq_inject);
+
+static struct vq_sysfs_entry kick_attr = __ATTR_WO(kick);
+
 static struct attribute *vq_attrs[] = {
 	&irq_affinity_attr.attr,
+	&irq_inject_attr.attr,
+	&kick_attr.attr,
 	NULL,
 };
 
