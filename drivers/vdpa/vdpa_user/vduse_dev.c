@@ -894,12 +894,18 @@ static int vduse_kickfd_setup(struct vduse_dev *dev,
 static void vduse_dev_irq_inject(struct work_struct *work)
 {
 	struct vduse_dev *dev = container_of(work, struct vduse_dev, inject);
+	bool missed = true;
 
 	spin_lock_irq(&dev->irq_lock);
 	if ((dev->status & VIRTIO_CONFIG_S_DRIVER_OK) &&
-	    dev->config_cb.callback)
+	    dev->config_cb.callback) {
 		dev->config_cb.callback(dev->config_cb.private);
+		missed = false;
+	}
 	spin_unlock_irq(&dev->irq_lock);
+	if (missed)
+		pr_err_ratelimited("Miss vduse [%s] config irq, status: %d\n",
+				   dev->name, dev->status);
 }
 
 static void vduse_vq_irq_inject(struct work_struct *work)
@@ -907,12 +913,18 @@ static void vduse_vq_irq_inject(struct work_struct *work)
 	struct vduse_virtqueue *vq = container_of(work,
 					struct vduse_virtqueue, inject);
 	struct vduse_dev *dev = vq->dev;
+	bool missed = true;
 
 	spin_lock_irq(&vq->irq_lock);
 	if (dev && (dev->status & VIRTIO_CONFIG_S_DRIVER_OK) &&
-	    vq->cb.callback)
+	    vq->cb.callback) {
 		vq->cb.callback(vq->cb.private);
+		missed = false;
+	}
 	spin_unlock_irq(&vq->irq_lock);
+	if (missed && dev)
+		pr_err_ratelimited("Miss vduse [%s] vq%d irq, status: %d\n",
+				   dev->name, vq->index, dev->status);
 }
 
 static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
