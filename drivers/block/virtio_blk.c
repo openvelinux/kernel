@@ -84,6 +84,7 @@ struct virtblk_req {
 	struct virtio_blk_outhdr out_hdr;
 	u8 status;
 	struct sg_table sg_table;
+	u32 retries;
 	struct scatterlist sg[];
 };
 
@@ -207,6 +208,7 @@ static int virtblk_setup_cmd(struct virtio_device *vdev, struct request *req,
 	bool unmap = false;
 	u32 type;
 
+	vbr->retries = 0;
 	vbr->out_hdr.sector = 0;
 
 	switch (req_op(req)) {
@@ -723,11 +725,26 @@ static int virtblk_map_queues(struct blk_mq_tag_set *set)
 					vblk->vdev, 0);
 }
 
+static enum blk_eh_timer_return virtblk_timeout(struct request *req,
+						bool reserved)
+{
+	struct virtblk_req *vbr = blk_mq_rq_to_pdu(req);
+	struct virtio_blk *vblk = req->q->queuedata;
+
+	dev_info(disk_to_dev(vblk->disk),
+		 "Possible stuck request %p: %llu,%uB. Runtime %u seconds\n",
+		 req, (unsigned long long)blk_rq_pos(req) << 9,
+		 blk_rq_bytes(req), (req->timeout / HZ) * (++vbr->retries));
+
+	return BLK_EH_RESET_TIMER;
+}
+
 static const struct blk_mq_ops virtio_mq_ops = {
 	.queue_rq	= virtio_queue_rq,
 	.commit_rqs	= virtio_commit_rqs,
 	.complete	= virtblk_request_done,
 	.map_queues	= virtblk_map_queues,
+	.timeout	= virtblk_timeout,
 };
 
 static unsigned int virtblk_queue_depth;
@@ -809,6 +826,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 		sizeof(struct scatterlist) * VIRTIO_BLK_INLINE_SG_CNT;
 	vblk->tag_set.driver_data = vblk;
 	vblk->tag_set.nr_hw_queues = vblk->num_vqs;
+	vblk->tag_set.timeout = 120 * HZ;
 
 	err = blk_mq_alloc_tag_set(&vblk->tag_set);
 	if (err)
