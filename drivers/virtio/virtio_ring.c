@@ -777,11 +777,13 @@ static void *virtqueue_get_buf_ctx_split(struct virtqueue *_vq,
 			vq->split.vring.used->ring[last_used].len);
 
 	if (unlikely(i >= vq->split.vring.num)) {
-		BAD_RING(vq, "id %u out of range\n", i);
+		BAD_RING(vq, "id %u out of range, usd_idx: %u\n", i,
+			 vq->last_used_idx);
 		return NULL;
 	}
 	if (unlikely(!vq->split.desc_state[i].data)) {
-		BAD_RING(vq, "id %u is not a head!\n", i);
+		BAD_RING(vq, "id %u is not a head! used_idx: %u\n", i,
+			 vq->last_used_idx);
 		return NULL;
 	}
 
