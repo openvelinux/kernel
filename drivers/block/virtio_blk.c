@@ -730,6 +730,18 @@ static enum blk_eh_timer_return virtblk_timeout(struct request *req,
 {
 	struct virtblk_req *vbr = blk_mq_rq_to_pdu(req);
 	struct virtio_blk *vblk = req->q->queuedata;
+	struct blk_mq_hw_ctx *hctx = req->mq_hctx;
+	struct virtio_blk_vq *vq = &vblk->vqs[hctx->queue_num];
+
+	if (virtqueue_is_broken(vq->vq)) {
+		dev_warn(disk_to_dev(vblk->disk),
+			 "Request: %llu,%uB in broken queue %u\n",
+			 (unsigned long long)blk_rq_pos(req) << 9,
+			 blk_rq_bytes(req), hctx->queue_num);
+		vbr->status = VIRTIO_BLK_S_IOERR;
+		blk_mq_complete_request(req);
+		return BLK_EH_DONE;
+	}
 
 	dev_info(disk_to_dev(vblk->disk),
 		 "Possible stuck request %p: %llu,%uB. Runtime %u seconds\n",
