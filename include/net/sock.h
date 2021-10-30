@@ -1652,13 +1652,6 @@ static inline void sk_mem_uncharge(struct sock *sk, int size)
 	sk_mem_reclaim(sk);
 }
 
-static inline void sk_wmem_free_skb(struct sock *sk, struct sk_buff *skb)
-{
-	sk_wmem_queued_add(sk, -skb->truesize);
-	sk_mem_uncharge(sk, skb->truesize);
-	__kfree_skb(skb);
-}
-
 static inline void sock_release_ownership(struct sock *sk)
 {
 	sk->sk_lock.owned = 0;
