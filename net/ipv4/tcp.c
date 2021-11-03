@@ -874,6 +874,7 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 	if (likely(skb)) {
 		bool mem_scheduled;
 
+		skb->truesize = SKB_TRUESIZE(skb_end_offset(skb));
 		if (force_schedule) {
 			mem_scheduled = true;
 			sk_forced_mem_schedule(sk, skb->truesize);
@@ -1389,6 +1390,15 @@ new_segment:
 
 			copy = min_t(int, copy, pfrag->size - pfrag->offset);
 
+			/* skb changing from pure zc to mixed, must charge zc */
+			if (unlikely(skb_zcopy_pure(skb))) {
+				if (!sk_wmem_schedule(sk, skb->data_len))
+					goto wait_for_space;
+
+				sk_mem_charge(sk, skb->data_len);
+				skb_shinfo(skb)->flags &= ~SKBFL_PURE_ZEROCOPY;
+			}
+
 			if (!sk_wmem_schedule(sk, copy))
 				goto wait_for_space;
 
@@ -1409,8 +1419,17 @@ new_segment:
 			}
 			pfrag->offset += copy;
 		} else {
-			if (!sk_wmem_schedule(sk, copy))
-				goto wait_for_space;
+			/* First append to a fragless skb builds initial
+			 * pure zerocopy skb
+			 */
+			if (!skb->len)
+				skb_shinfo(skb)->flags |= SKBFL_PURE_ZEROCOPY;
+
+			if (!skb_zcopy_pure(skb)) {
+				if (!sk_wmem_schedule(sk, copy))
+					goto wait_for_space;
+			}
+
 
 			if (devmem_file) {
 				err = skb_devmem_iter_stream(sk, skb,
