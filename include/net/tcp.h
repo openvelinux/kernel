@@ -312,7 +312,10 @@ static inline bool tcp_out_of_memory(struct sock *sk)
 static inline void tcp_wmem_free_skb(struct sock *sk, struct sk_buff *skb)
 {
 	sk_wmem_queued_add(sk, -skb->truesize);
-	sk_mem_uncharge(sk, skb->truesize);
+	if (!skb_zcopy_pure(skb))
+		sk_mem_uncharge(sk, skb->truesize);
+	else
+		sk_mem_uncharge(sk, SKB_TRUESIZE(skb_end_offset(skb)));
 	__kfree_skb(skb);
 }
 
@@ -1002,6 +1005,7 @@ static inline bool tcp_skb_can_collapse(const struct sk_buff *to,
 {
 	return likely(tcp_skb_can_collapse_to(to) &&
 		      mptcp_skb_can_collapse(to, from) &&
+		      skb_pure_zcopy_same(to, from) &&
 		      skb_frags_not_readable(to) ==
 			      skb_frags_not_readable(from));
 }
