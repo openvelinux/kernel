@@ -2484,7 +2484,7 @@ static inline struct request *blk_mq_get_request(struct request_queue *q,
 		struct request *rq;
 
 		rq = rq_list_peek(&plug->cached_rq);
-		if (rq) {
+		if (rq && rq->q == q) {
 			plug->cached_rq = rq_list_next(rq);
 			INIT_LIST_HEAD(&rq->queuelist);
 			return rq;
