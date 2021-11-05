@@ -1714,7 +1714,6 @@ static bool prep_compound_gigantic_page(struct page *page, unsigned int order)
 			pr_warn("HugeTLB page can not be used due to unexpected inflated ref count\n");
 			goto out_error;
 		}
-		set_page_count(p, 0);
 		set_compound_head(p, page);
 	}
 	atomic_set(compound_mapcount_ptr(page), -1);
