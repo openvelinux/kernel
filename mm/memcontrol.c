@@ -3831,22 +3831,12 @@ static void memcg_offline_kmem(struct mem_cgroup *memcg)
 	memcg_free_cache_id(kmemcg_id);
 	memcg->kmemcg_id = -1;
 }
-
-static void memcg_free_kmem(struct mem_cgroup *memcg)
-{
-	/* css_alloc() failed, offlining didn't happen */
-	if (unlikely(memcg->kmem_state == KMEM_ONLINE))
-		memcg_offline_kmem(memcg);
-}
 #else
 static int memcg_online_kmem(struct mem_cgroup *memcg)
 {
 	return 0;
 }
 static void memcg_offline_kmem(struct mem_cgroup *memcg)
-{
-}
-static void memcg_free_kmem(struct mem_cgroup *memcg)
 {
 }
 #endif /* CONFIG_MEMCG_KMEM */
@@ -5591,7 +5581,9 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 #endif
 	mem_cgroup_remove_from_trees(memcg);
 	free_shrinker_info(memcg);
-	memcg_free_kmem(memcg);
+
+	/* Need to offline kmem if online_css() fails */
+	memcg_offline_kmem(memcg);
 	mem_cgroup_free(memcg);
 }
 
