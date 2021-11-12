@@ -36,6 +36,8 @@ drm-$(CONFIG_DRM_ACCEL) += ../../accel/drm_accel.o
 
 obj-$(CONFIG_DRM_DP_AUX_BUS) += drm_dp_aux_bus.o
 
+obj-$(CONFIG_VGA_CONSOLE) += drm_nomodeset.o
+
 drm_vram_helper-y := drm_gem_vram_helper.o
 obj-$(CONFIG_DRM_VRAM_HELPER) += drm_vram_helper.o
 
