@@ -5529,7 +5529,7 @@ static void tcp_check_urg(struct sock *sk, const struct tcphdr *th)
 		}
 	}
 
-	tp->urg_data = TCP_URG_NOTYET;
+	WRITE_ONCE(tp->urg_data, TCP_URG_NOTYET);
 	WRITE_ONCE(tp->urg_seq, ptr);
 
 	/* Disable header prediction. */
@@ -5555,7 +5555,7 @@ static void tcp_urg(struct sock *sk, struct sk_buff *skb, const struct tcphdr *t
 			u8 tmp;
 			if (skb_copy_bits(skb, ptr, &tmp, 1))
 				BUG();
-			tp->urg_data = TCP_URG_VALID | tmp;
+			WRITE_ONCE(tp->urg_data, TCP_URG_VALID | tmp);
 			if (!sock_flag(sk, SOCK_DEAD))
 				sk->sk_data_ready(sk);
 		}
