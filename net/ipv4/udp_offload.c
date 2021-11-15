@@ -451,7 +451,6 @@ static int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb)
 	return 0;
 }
 
-
 #define UDP_GRO_CNT_MAX 64
 static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 					       struct sk_buff *skb)
