@@ -558,7 +558,18 @@ static struct attribute *node_dev_attrs[] = {
 	&dev_attr_vmstat.attr,
 	NULL
 };
-ATTRIBUTE_GROUPS(node_dev);
+
+static const struct attribute_group node_dev_group = {
+	.attrs = node_dev_attrs,
+};
+
+static const struct attribute_group *node_dev_groups[] = {
+	&node_dev_group,
+#ifdef CONFIG_HAVE_ARCH_NODE_DEV_GROUP
+	&arch_node_dev_group,
+#endif
+	NULL
+};
 
 #ifdef CONFIG_HUGETLBFS
 /*

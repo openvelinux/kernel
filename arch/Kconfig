@@ -1065,6 +1065,10 @@ config ARCH_SPLIT_ARG64
 config DYNAMIC_SIGFRAME
 	bool
 
+# Select, if arch has a named attribute group bound to NUMA device nodes.
+config HAVE_ARCH_NODE_DEV_GROUP
+	bool
+
 source "kernel/gcov/Kconfig"
 
 source "scripts/gcc-plugins/Kconfig"
