@@ -284,8 +284,9 @@ out:
  */
 static u32 fanotify_group_event_mask(struct fsnotify_group *group,
 				     struct fsnotify_iter_info *iter_info,
-				     u32 event_mask, const void *data,
-				     int data_type, struct inode *dir)
+				     u32 *match_mask, u32 event_mask,
+				     const void *data, int data_type,
+				     struct inode *dir)
 {
 	__u32 marks_mask = 0, marks_ignored_mask = 0;
 	__u32 test_mask, user_mask = FANOTIFY_OUTGOING_EVENTS |
@@ -323,6 +324,9 @@ static u32 fanotify_group_event_mask(struct fsnotify_group *group,
 			continue;
 
 		marks_mask |= mark->mask;
+
+		/* Record the mark types of this group that matched the event */
+		*match_mask |= 1U << type;
 	}
 
 	test_mask = event_mask & marks_mask & ~marks_ignored_mask;
@@ -689,11 +693,11 @@ static struct fanotify_event *fanotify_alloc_error_event(
 	return &fee->fae;
 }
 
-static struct fanotify_event *fanotify_alloc_event(struct fsnotify_group *group,
-						   u32 mask, const void *data,
-						   int data_type, struct inode *dir,
-						   const struct qstr *file_name,
-						   __kernel_fsid_t *fsid)
+static struct fanotify_event *fanotify_alloc_event(
+				struct fsnotify_group *group,
+				u32 mask, const void *data, int data_type,
+				struct inode *dir, const struct qstr *file_name,
+				__kernel_fsid_t *fsid, u32 match_mask)
 {
 	struct fanotify_event *event = NULL;
 	gfp_t gfp = GFP_KERNEL_ACCOUNT;
@@ -741,13 +745,36 @@ static struct fanotify_event *fanotify_alloc_event(struct fsnotify_group *group,
 		}
 
 		/*
-		 * In the special case of FAN_RENAME event, we record both
-		 * old and new parent+name.
+		 * In the special case of FAN_RENAME event, use the match_mask
+		 * to determine if we need to report only the old parent+name,
+		 * only the new parent+name or both.
 		 * 'dirid' and 'file_name' are the old parent+name and
 		 * 'moved' has the new parent+name.
 		 */
-		if (mask & FAN_RENAME)
-			moved = fsnotify_data_dentry(data, data_type);
+		if (mask & FAN_RENAME) {
+			bool report_old, report_new;
+
+			if (WARN_ON_ONCE(!match_mask))
+				return NULL;
+
+			/* Report both old and new parent+name if sb watching */
+			report_old = report_new =
+				match_mask & (1U << FSNOTIFY_ITER_TYPE_SB);
+			report_old |=
+				match_mask & (1U << FSNOTIFY_ITER_TYPE_INODE);
+			report_new |=
+				match_mask & (1U << FSNOTIFY_ITER_TYPE_INODE2);
+
+			if (!report_old) {
+				/* Do not report old parent+name */
+				dirid = NULL;
+				file_name = NULL;
+			}
+			if (report_new) {
+				/* Report new parent+name */
+				moved = fsnotify_data_dentry(data, data_type);
+			}
+		}
 	}
 
 	/*
@@ -858,6 +885,7 @@ static int fanotify_handle_event(struct fsnotify_group *group, u32 mask,
 	struct fanotify_event *event;
 	struct fsnotify_event *fsn_event;
 	__kernel_fsid_t fsid = {};
+	u32 match_mask = 0;
 
 	BUILD_BUG_ON(FAN_ACCESS != FS_ACCESS);
 	BUILD_BUG_ON(FAN_MODIFY != FS_MODIFY);
@@ -883,12 +911,13 @@ static int fanotify_handle_event(struct fsnotify_group *group, u32 mask,
 
 	BUILD_BUG_ON(HWEIGHT32(ALL_FANOTIFY_EVENT_BITS) != 20);
 
-	mask = fanotify_group_event_mask(group, iter_info, mask, data,
-					 data_type, dir);
+	mask = fanotify_group_event_mask(group, iter_info, &match_mask,
+					 mask, data, data_type, dir);
 	if (!mask)
 		return 0;
 
-	pr_debug("%s: group=%p mask=%x\n", __func__, group, mask);
+	pr_debug("%s: group=%p mask=%x report_mask=%x\n", __func__,
+		 group, mask, match_mask);
 
 	if (fanotify_is_perm_event(mask)) {
 		/*
@@ -907,7 +936,7 @@ static int fanotify_handle_event(struct fsnotify_group *group, u32 mask,
 	}
 
 	event = fanotify_alloc_event(group, mask, data, data_type, dir,
-				     file_name, &fsid);
+				     file_name, &fsid, match_mask);
 	ret = -ENOMEM;
 	if (unlikely(!event)) {
 		/*
