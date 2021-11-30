@@ -494,6 +494,7 @@ struct kvm_pmc {
 	 */
 	u64 current_config;
 	bool is_paused;
+	bool intr;
 };
 
 #define KVM_PMC_MAX_FIXED	3
