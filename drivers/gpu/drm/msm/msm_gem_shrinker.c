@@ -3,6 +3,7 @@
  * Copyright (C) 2016 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  */
+#include <linux/sched/mm.h>
 
 #include "msm_drv.h"
 #include "msm_gem.h"
