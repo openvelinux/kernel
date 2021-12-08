@@ -76,7 +76,7 @@ static inline bool constraint_match(struct event_constraint *c, u64 ecode)
 #define PERF_X86_EVENT_PEBS_NA_HSW	0x00010 /* haswell style datala, unknown */
 #define PERF_X86_EVENT_EXCL		0x00020 /* HT exclusivity on counter */
 #define PERF_X86_EVENT_DYNAMIC		0x00040 /* dynamic alloc'd constraint */
-#define PERF_X86_EVENT_RDPMC_ALLOWED	0x00080 /* grant rdpmc permission */
+
 #define PERF_X86_EVENT_EXCL_ACCT	0x00100 /* accounted EXCL event */
 #define PERF_X86_EVENT_AUTO_RELOAD	0x00200 /* use PEBS auto-reload */
 #define PERF_X86_EVENT_LARGE_PEBS	0x00400 /* use large PEBS */
