@@ -537,13 +537,15 @@ void vdpa_set_status(struct vdpa_device *vdev, u8 status);
  * @dev_del: Remove a vdpa device using unregister
  *	     @mdev: parent device to use for device removal
  *	     @dev: vdpa device to remove
+ *	     @timetou: delete timeout
  *	     Driver need to remove the specified device by calling
  *	     _vdpa_unregister_device().
  */
 struct vdpa_mgmtdev_ops {
 	int (*dev_add)(struct vdpa_mgmt_dev *mdev, const char *name,
 		       const struct vdpa_dev_set_config *config);
-	void (*dev_del)(struct vdpa_mgmt_dev *mdev, struct vdpa_device *dev);
+	void (*dev_del)(struct vdpa_mgmt_dev *mdev,
+			struct vdpa_device *dev, int timeout);
 };
 
 /**
