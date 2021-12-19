@@ -1766,11 +1766,10 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 	}
 	spin_unlock(&dev->msg_lock);
 
-	if (!dev->shm_addr) {
-		dev->dead = false;
-		pr_warn("VDUSE: can't handle dead connection in %s\n",
+	if (!dev->shm_addr && check_inflight) {
+		check_inflight = false;
+		pr_warn("VDUSE: can't check inflight I/Os in %s\n",
 			dev_name(dev->dev));
-		goto unlock;
 	}
 
 	for (i = 0; i < dev->vq_num; i++) {
