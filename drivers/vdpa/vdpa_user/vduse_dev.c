@@ -2184,6 +2184,13 @@ static int vdpa_dev_add(struct vdpa_mgmt_dev *mdev, const char *name)
 static void vdpa_dev_del(struct vdpa_mgmt_dev *mdev,
 			 struct vdpa_device *dev, int timeout)
 {
+	struct vduse_dev *vdev = vdpa_to_vduse(dev);
+
+	if (timeout >= 0) {
+		vdev->aborted = true;
+		mod_delayed_work(system_wq, &vdev->timeout_work,
+				 msecs_to_jiffies(timeout * 1000));
+	}
 	_vdpa_unregister_device(dev);
 }
 
