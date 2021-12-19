@@ -272,7 +272,7 @@ static int vdpa_match_remove(struct device *dev, void *data)
 	struct vdpa_mgmt_dev *mdev = vdev->mdev;
 
 	if (mdev == data)
-		mdev->ops->dev_del(mdev, vdev);
+		mdev->ops->dev_del(mdev, vdev, -1);
 	return 0;
 }
 
@@ -460,10 +460,14 @@ static int vdpa_nl_cmd_dev_del_set_doit(struct sk_buff *skb, struct genl_info *i
 	struct device *dev;
 	const char *name;
 	int err = 0;
+	int timeout = -1;
 
 	if (!info->attrs[VDPA_ATTR_DEV_NAME])
 		return -EINVAL;
 	name = nla_data(info->attrs[VDPA_ATTR_DEV_NAME]);
+
+	if (info->attrs[VDPA_ATTR_DEV_DEL_TIMEOUT])
+		timeout = nla_get_u16(info->attrs[VDPA_ATTR_DEV_DEL_TIMEOUT]);
 
 	mutex_lock(&vdpa_dev_mutex);
 	dev = bus_find_device(&vdpa_bus, NULL, name, vdpa_name_match);
@@ -479,7 +483,7 @@ static int vdpa_nl_cmd_dev_del_set_doit(struct sk_buff *skb, struct genl_info *i
 		goto mdev_err;
 	}
 	mdev = vdev->mdev;
-	mdev->ops->dev_del(mdev, vdev);
+	mdev->ops->dev_del(mdev, vdev, timeout);
 mdev_err:
 	put_device(dev);
 dev_err:
@@ -616,6 +620,7 @@ static const struct nla_policy vdpa_nl_policy[VDPA_ATTR_MAX + 1] = {
 	[VDPA_ATTR_MGMTDEV_BUS_NAME] = { .type = NLA_NUL_STRING },
 	[VDPA_ATTR_MGMTDEV_DEV_NAME] = { .type = NLA_STRING },
 	[VDPA_ATTR_DEV_NAME] = { .type = NLA_STRING },
+	[VDPA_ATTR_DEV_DEL_TIMEOUT] = { .type = NLA_U16 },
 };
 
 static const struct genl_ops vdpa_nl_ops[] = {

@@ -371,12 +371,14 @@ static inline void vdpa_get_config(struct vdpa_device *vdev, unsigned offset,
  * @dev_del:	Remove a vdpa device using unregister
  *		@mdev: parent device to use for device removal
  *		@dev: vdpa device to remove
+ *		@timeout: delete timeout
  *		Driver need to remove the specified device by calling
  *		_vdpa_unregister_device().
  */
 struct vdpa_mgmtdev_ops {
 	int (*dev_add)(struct vdpa_mgmt_dev *mdev, const char *name);
-	void (*dev_del)(struct vdpa_mgmt_dev *mdev, struct vdpa_device *dev);
+	void (*dev_del)(struct vdpa_mgmt_dev *mdev,
+			struct vdpa_device *dev, int timeout);
 };
 
 struct vdpa_mgmt_dev {

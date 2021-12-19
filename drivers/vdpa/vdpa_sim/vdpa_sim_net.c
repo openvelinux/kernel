@@ -158,7 +158,7 @@ reg_err:
 }
 
 static void vdpasim_net_dev_del(struct vdpa_mgmt_dev *mdev,
-				struct vdpa_device *dev)
+				struct vdpa_device *dev, int timeout)
 {
 	struct vdpasim *simdev = container_of(dev, struct vdpasim, vdpa);
 
