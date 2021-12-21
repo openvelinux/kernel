@@ -1343,8 +1343,7 @@ static int vduse_dev_release(struct inode *inode, struct file *file)
 	list_splice_init(&dev->recv_list, &dev->send_list);
 	spin_unlock(&dev->msg_lock);
 	dev->connected = false;
-	if (dev->dead_timeout && (dev->device_id == VIRTIO_ID_BLOCK ||
-	    dev->device_id == VIRTIO_ID_FS))
+	if (dev->dead_timeout)
 		schedule_delayed_work(&dev->timeout_work,
 				msecs_to_jiffies(dev->dead_timeout * 1000));
 
@@ -1766,6 +1765,13 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 	}
 	spin_unlock(&dev->msg_lock);
 
+	if (dev->device_id != VIRTIO_ID_BLOCK &&
+	    dev->device_id != VIRTIO_ID_FS) {
+		pr_warn("VDUSE: unsupported device type %d in %s\n",
+			dev->device_id, dev_name(dev->dev));
+		goto unlock;
+	}
+
 	if (!dev->shm_addr && check_inflight) {
 		check_inflight = false;
 		pr_warn("VDUSE: can't check inflight I/Os in %s\n",
@@ -1932,10 +1938,6 @@ static ssize_t abort_conn_store(struct device *device,
 				const char *buf, size_t count)
 {
 	struct vduse_dev *dev = dev_get_drvdata(device);
-
-	if (dev->device_id != VIRTIO_ID_BLOCK &&
-	    dev->device_id != VIRTIO_ID_FS)
-		return -EINVAL;
 
 	dev->aborted = true;
 	mod_delayed_work(system_wq, &dev->timeout_work, 0);
