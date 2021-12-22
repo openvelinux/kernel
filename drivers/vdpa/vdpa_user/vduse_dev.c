@@ -938,6 +938,8 @@ static int vduse_vdpa_set_map(struct vdpa_device *vdpa,
 	return 0;
 }
 
+static int vduse_destroy_dev(char *name);
+
 static void vduse_vdpa_free(struct vdpa_device *vdpa)
 {
 	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
@@ -948,6 +950,10 @@ static void vduse_vdpa_free(struct vdpa_device *vdpa)
 	WARN_ON(!list_empty(&dev->send_list));
 	WARN_ON(!list_empty(&dev->recv_list));
 	dev->vdev = NULL;
+	if (dev->dead && !dev->connected) {
+		pr_info("VDUSE: destroy dead device: %s\n", dev->name);
+		vduse_destroy_dev(dev->name);
+	}
 }
 
 static const struct vdpa_config_ops vduse_vdpa_config_ops = {
