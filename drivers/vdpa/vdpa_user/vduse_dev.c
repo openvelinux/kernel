@@ -706,7 +706,8 @@ static void vduse_vdpa_set_vq_ready(struct vdpa_device *vdpa,
 		vduse_dev_set_vq_ready(dev, vq, ready);
 
 	mutex_lock(&dev->lock);
-	vringh_init_iotlb(&vq->vring, dev->driver_features,
+	if (ready)
+		vringh_init_iotlb(&vq->vring, dev->driver_features,
 			  vq->num, false,
 			  (struct vring_desc *)(uintptr_t)vq->desc_addr,
 			  (struct vring_avail *)(uintptr_t)vq->driver_addr,
