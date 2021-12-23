@@ -181,7 +181,14 @@ enum pageflags {
 struct page;	/* forward declaration */
 
 #ifdef CONFIG_HUGETLB_PAGE_FREE_VMEMMAP
-extern bool hugetlb_free_vmemmap_enabled;
+DECLARE_STATIC_KEY_MAYBE(CONFIG_HUGETLB_PAGE_FREE_VMEMMAP_DEFAULT_ON,
+			 hugetlb_free_vmemmap_enabled_key);
+
+static __always_inline bool hugetlb_free_vmemmap_enabled(void)
+{
+	return static_branch_maybe(CONFIG_HUGETLB_PAGE_FREE_VMEMMAP_DEFAULT_ON,
+				   &hugetlb_free_vmemmap_enabled_key);
+}
 
 /*
  * If the feature of freeing some vmemmap pages associated with each HugeTLB
@@ -201,7 +208,7 @@ extern bool hugetlb_free_vmemmap_enabled;
  */
 static __always_inline struct page *page_fixed_fake_head(struct page *page)
 {
-	if (!hugetlb_free_vmemmap_enabled)
+	if (!hugetlb_free_vmemmap_enabled())
 		return page;
 
 	/*
@@ -228,6 +235,11 @@ static __always_inline struct page *page_fixed_fake_head(struct page *page)
 static inline struct page *page_fixed_fake_head(struct page *page)
 {
 	return page;
+}
+
+static inline bool hugetlb_free_vmemmap_enabled(void)
+{
+	return false;
 }
 #endif
 
