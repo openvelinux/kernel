@@ -74,6 +74,7 @@ hisilicon_1980005_enable(const struct arm64_cpu_capabilities *__unused)
 {
 	cpus_set_cap(ARM64_HAS_CACHE_IDC);
 	arm64_ftr_reg_ctrel0.sys_val |= BIT(CTR_IDC_SHIFT);
+	arm64_ftr_reg_ctrel0.strict_mask &= ~BIT(CTR_IDC_SHIFT);
 	sysreg_clear_set(sctlr_el1, SCTLR_EL1_UCT, 0);
 }
 #endif
