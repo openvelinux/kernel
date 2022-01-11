@@ -491,7 +491,7 @@ static void intel_pmu_refresh(struct kvm_vcpu *vcpu)
 	pmu->fixed_ctr_ctrl_mask = ~0ull;
 
 	entry = kvm_find_cpuid_entry(vcpu, 0xa, 0);
-	if (!entry)
+	if (!entry || !enable_pmu)
 		return;
 	eax.full = entry->eax;
 	edx.full = entry->edx;
