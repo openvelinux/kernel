@@ -3901,8 +3901,14 @@ union bpf_attr {
 	FN(per_cpu_ptr),		\
 	FN(this_cpu_ptr),		\
 	FN(redirect_peer),		\
-	FN(unsafe_helper),		\
-	/* */
+	FN(biggest_bits),		\
+	FN(unsafe_helper),
+	/*
+	 * biggest_bits and unsafe_helper are the helper functions we implement
+	 * ourselves. In order to ensure that the order of the new helper
+	 * functions which backported from community kernel is consistent, the
+	 * biggest_bits and unsafe_helper need to be be placed last.
+	 */
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
@@ -4268,6 +4274,15 @@ enum xdp_action {
 	XDP_PASS,
 	XDP_TX,
 	XDP_REDIRECT,
+};
+
+struct bpf_unsafe_ctx {
+	void *ctx;
+	__u16 mod;
+	__u16 cmd;
+	__u16 flags;
+	__u16 data_len;
+	char data[0];
 };
 
 /* user accessible metadata for XDP packet hook
