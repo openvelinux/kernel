@@ -3884,6 +3884,7 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_X86_MSR_FILTER:
 	case KVM_CAP_ENFORCE_PV_FEATURE_CPUID:
 	case KVM_CAP_VCPU_ATTRIBUTES:
+	case KVM_CAP_SYS_ATTRIBUTES:
 		r = 1;
 		break;
 	case KVM_CAP_SYNC_REGS:
@@ -3975,6 +3976,40 @@ static inline void __user *kvm_get_attr_addr(struct kvm_device_attr *attr)
 	return uaddr;
 }
 
+static int kvm_x86_dev_get_attr(struct kvm_device_attr *attr)
+{
+	u64 __user *uaddr = kvm_get_attr_addr(attr);
+
+	if (attr->group)
+		return -ENXIO;
+
+	if (IS_ERR(uaddr))
+		return PTR_ERR(uaddr);
+
+	switch (attr->attr) {
+	case KVM_X86_XCOMP_GUEST_SUPP:
+		if (put_user(supported_xcr0, uaddr))
+			return -EFAULT;
+		return 0;
+	default:
+		return -ENXIO;
+		break;
+	}
+}
+
+static int kvm_x86_dev_has_attr(struct kvm_device_attr *attr)
+{
+	if (attr->group)
+		return -ENXIO;
+
+	switch (attr->attr) {
+	case KVM_X86_XCOMP_GUEST_SUPP:
+		return 0;
+	default:
+		return -ENXIO;
+	}
+}
+
 long kvm_arch_dev_ioctl(struct file *filp,
 			unsigned int ioctl, unsigned long arg)
 {
@@ -4060,6 +4095,22 @@ long kvm_arch_dev_ioctl(struct file *filp,
 	case KVM_GET_MSRS:
 		r = msr_io(NULL, argp, do_get_msr_feature, 1);
 		break;
+	case KVM_GET_DEVICE_ATTR: {
+		struct kvm_device_attr attr;
+		r = -EFAULT;
+		if (copy_from_user(&attr, (void __user *)arg, sizeof(attr)))
+			break;
+		r = kvm_x86_dev_get_attr(&attr);
+		break;
+	}
+	case KVM_HAS_DEVICE_ATTR: {
+		struct kvm_device_attr attr;
+		r = -EFAULT;
+		if (copy_from_user(&attr, (void __user *)arg, sizeof(attr)))
+			break;
+		r = kvm_x86_dev_has_attr(&attr);
+		break;
+	}
 	default:
 		r = -EINVAL;
 		break;
