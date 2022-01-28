@@ -550,7 +550,7 @@ void svm_vcpu_unblocking(struct kvm_vcpu *vcpu);
 extern unsigned int max_sev_asid;
 
 void sev_vm_destroy(struct kvm *kvm);
-int svm_mem_enc_op(struct kvm *kvm, void __user *argp);
+int svm_mem_enc_ioctl(struct kvm *kvm, void __user *argp);
 int svm_register_enc_region(struct kvm *kvm,
 			    struct kvm_enc_region *range);
 int svm_unregister_enc_region(struct kvm *kvm,
