@@ -254,10 +254,10 @@ int irq_do_set_affinity(struct irq_data *data, const struct cpumask *mask,
 	 * online.
 	 */
 	if (irqd_affinity_is_managed(data) &&
-	    housekeeping_enabled(HK_FLAG_MANAGED_IRQ)) {
+	    housekeeping_enabled(HK_TYPE_MANAGED_IRQ)) {
 		const struct cpumask *hk_mask;
 
-		hk_mask = housekeeping_cpumask(HK_FLAG_MANAGED_IRQ);
+		hk_mask = housekeeping_cpumask(HK_TYPE_MANAGED_IRQ);
 
 		cpumask_and(&tmp_mask, mask, hk_mask);
 		if (!cpumask_intersects(&tmp_mask, cpu_online_mask))
