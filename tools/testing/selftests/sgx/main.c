@@ -224,8 +224,6 @@ static bool setup_test_encl(unsigned long heap_size, struct encl *encl,
 	return true;
 
 err:
-	encl_delete(encl);
-
 	for (i = 0; i < encl->nr_segments; i++) {
 		seg = &encl->segment_tbl[i];
 
@@ -245,6 +243,8 @@ err:
 	}
 
 	TH_LOG("Failed to initialize the test enclave.");
+
+	encl_delete(encl);
 
 	return false;
 }
