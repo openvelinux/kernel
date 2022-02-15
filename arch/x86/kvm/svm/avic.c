@@ -686,11 +686,6 @@ int svm_deliver_avic_intr(struct kvm_vcpu *vcpu, int vec)
 	return 0;
 }
 
-bool svm_dy_apicv_has_pending_interrupt(struct kvm_vcpu *vcpu)
-{
-	return false;
-}
-
 static void svm_ir_list_del(struct vcpu_svm *svm, struct amd_iommu_pi_data *pi)
 {
 	unsigned long flags;
