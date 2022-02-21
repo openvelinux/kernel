@@ -193,7 +193,9 @@ static inline bool inode_cgwb_enabled(struct inode *inode)
 {
 	struct backing_dev_info *bdi = inode_to_bdi(inode);
 
-	return (bdi->capabilities & BDI_CAP_WRITEBACK) &&
+	return cgroup_subsys_on_dfl(memory_cgrp_subsys) &&
+		cgroup_subsys_on_dfl(io_cgrp_subsys) &&
+		(bdi->capabilities & BDI_CAP_WRITEBACK) &&
 		(inode->i_sb->s_iflags & SB_I_CGROUPWB);
 }
 
