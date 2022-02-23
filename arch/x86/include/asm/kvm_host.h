@@ -1174,6 +1174,7 @@ struct kvm_arch {
 	u32 notify_window;
 	u32 notify_vmexit_flags;
 
+	bool enable_pmu;
 	/*
 	 * If exit_on_emulation_error is set, and the in-kernel instruction
 	 * emulator fails to emulate an instruction, allow userspace
