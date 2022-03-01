@@ -12,5 +12,8 @@ struct netns_smc {
 	/* protect fback_rsn */
 	struct mutex			mutex_fback_rsn;
 	struct smc_stats_rsn		*fback_rsn;
+#ifdef CONFIG_SYSCTL
+	struct ctl_table_header		*smc_hdr;
+#endif
 };
 #endif
