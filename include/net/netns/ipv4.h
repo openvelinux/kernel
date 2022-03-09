@@ -129,6 +129,8 @@ struct netns_ipv4 {
 	u8 sysctl_tcp_synack_retries;
 	u8 sysctl_tcp_syncookies;
 	u8 sysctl_tcp_migrate_req;
+	u8 sysctl_tcp_comp_sack_nr;
+	u8 sysctl_tcp_backlog_ack_defer;
 	int sysctl_tcp_reordering;
 	u8 sysctl_tcp_retries1;
 	u8 sysctl_tcp_retries2;
@@ -164,10 +166,9 @@ struct netns_ipv4 {
 	int sysctl_tcp_min_rtt_wlen;
 	int sysctl_tcp_tlp_pto_us;
 	u8 sysctl_tcp_min_tso_segs;
+	u8 sysctl_tcp_tso_rtt_log;
 	u8 sysctl_tcp_autocorking;
 	u8 sysctl_tcp_reflect_tos;
-	u8 sysctl_tcp_comp_sack_nr;
-	u8 sysctl_tcp_backlog_ack_defer;
 	int sysctl_tcp_invalid_ratelimit;
 	int sysctl_tcp_pacing_ss_ratio;
 	int sysctl_tcp_pacing_ca_ratio;
