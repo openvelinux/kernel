@@ -225,7 +225,7 @@ static inline void ap_init_freq_invariance(void) { }
 
 #ifdef CONFIG_ACPI_CPPC_LIB
 void init_freq_invariance_cppc(void);
-#define init_freq_invariance_cppc init_freq_invariance_cppc
+#define arch_init_invariance_cppc init_freq_invariance_cppc
 
 bool amd_set_max_freq_ratio(u64 *ratio);
 #else
