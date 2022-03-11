@@ -76,8 +76,12 @@ static void add(int port, int mport, struct task_struct *tsk)
 	t->port = port;
 	t->mport = mport;
 	t->sig_sent = false;
+
+	rcu_read_lock();
 	t->pgrp = task_pgrp(tsk);
+	get_pid(t->pgrp);
 	t->nr	= pid_nr(t->pgrp);
+	rcu_read_unlock();
 
 	spin_lock(&lock);
 	list_add_tail(&t->list, &rules);
@@ -92,6 +96,7 @@ static void delete(struct mapping_rule *t)
 	if (t) {
 		pr_info("hookbind: del rule: pgrp: %d, mapping port %d --> %d\n",
 				t->nr, t->port, t->mport);
+		put_pid(t->pgrp);
 		list_del(&t->list);
 		kfree(t);
 	}
