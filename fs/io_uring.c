@@ -1224,6 +1224,26 @@ struct sock *io_uring_get_socket(struct file *file)
 }
 EXPORT_SYMBOL(io_uring_get_socket);
 
+static void io_ring_submit_unlock(struct io_ring_ctx *ctx, unsigned issue_flags)
+{
+	lockdep_assert_held(&ctx->uring_lock);
+	if (issue_flags & IO_URING_F_UNLOCKED)
+		mutex_unlock(&ctx->uring_lock);
+}
+
+static void io_ring_submit_lock(struct io_ring_ctx *ctx, unsigned issue_flags)
+{
+	/*
+	 * "Normal" inline submissions always hold the uring_lock, since we
+	 * grab it from the system call. Same is true for the SQPOLL offload.
+	 * The only exception is when we've detached the request and issue it
+	 * from an async worker thread, grab the lock for that case.
+	 */
+	if (issue_flags & IO_URING_F_UNLOCKED)
+		mutex_lock(&ctx->uring_lock);
+	lockdep_assert_held(&ctx->uring_lock);
+}
+
 static inline void io_tw_lock(struct io_ring_ctx *ctx, bool *locked)
 {
 	if (!*locked) {
@@ -1421,10 +1441,7 @@ static void io_kbuf_recycle(struct io_kiocb *req, unsigned issue_flags)
 	if (req->flags & REQ_F_PARTIAL_IO)
 		return;
 
-	if (issue_flags & IO_URING_F_UNLOCKED)
-		mutex_lock(&ctx->uring_lock);
-
-	lockdep_assert_held(&ctx->uring_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 
 	buf = req->kbuf;
 	bl = io_buffer_get_list(ctx, buf->bgid);
@@ -1432,8 +1449,7 @@ static void io_kbuf_recycle(struct io_kiocb *req, unsigned issue_flags)
 	req->flags &= ~REQ_F_BUFFER_SELECTED;
 	req->kbuf = NULL;
 
-	if (issue_flags & IO_URING_F_UNLOCKED)
-		mutex_unlock(&ctx->uring_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 }
 
 static bool io_match_task(struct io_kiocb *head, struct task_struct *task,
@@ -3310,24 +3326,6 @@ static int io_import_fixed(struct io_kiocb *req, int rw, struct iov_iter *iter,
 	return __io_import_fixed(req, rw, iter, imu);
 }
 
-static void io_ring_submit_unlock(struct io_ring_ctx *ctx, bool needs_lock)
-{
-	if (needs_lock)
-		mutex_unlock(&ctx->uring_lock);
-}
-
-static void io_ring_submit_lock(struct io_ring_ctx *ctx, bool needs_lock)
-{
-	/*
-	 * "Normal" inline submissions always hold the uring_lock, since we
-	 * grab it from the system call. Same is true for the SQPOLL offload.
-	 * The only exception is when we've detached the request and issue it
-	 * from an async worker thread, grab the lock for that case.
-	 */
-	if (needs_lock)
-		mutex_lock(&ctx->uring_lock);
-}
-
 static void io_buffer_add_list(struct io_ring_ctx *ctx,
 			       struct io_buffer_list *bl, unsigned int bgid)
 {
@@ -3343,16 +3341,13 @@ static struct io_buffer *io_buffer_select(struct io_kiocb *req, size_t *len,
 					  int bgid, unsigned int issue_flags)
 {
 	struct io_buffer *kbuf = req->kbuf;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 	struct io_ring_ctx *ctx = req->ctx;
 	struct io_buffer_list *bl;
 
 	if (req->flags & REQ_F_BUFFER_SELECTED)
 		return kbuf;
 
-	io_ring_submit_lock(ctx, needs_lock);
-
-	lockdep_assert_held(&ctx->uring_lock);
+	io_ring_submit_lock(req->ctx, issue_flags);
 
 	bl = io_buffer_get_list(ctx, bgid);
 	if (bl && !list_empty(&bl->buf_list)) {
@@ -3366,7 +3361,7 @@ static struct io_buffer *io_buffer_select(struct io_kiocb *req, size_t *len,
 		kbuf = ERR_PTR(-ENOBUFS);
 	}
 
-	io_ring_submit_unlock(req->ctx, needs_lock);
+	io_ring_submit_unlock(req->ctx, issue_flags);
 	return kbuf;
 }
 
@@ -4739,11 +4734,8 @@ static int io_remove_buffers(struct io_kiocb *req, unsigned int issue_flags)
 	struct io_ring_ctx *ctx = req->ctx;
 	struct io_buffer_list *bl;
 	int ret = 0;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 
-	io_ring_submit_lock(ctx, needs_lock);
-
-	lockdep_assert_held(&ctx->uring_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 
 	ret = -ENOENT;
 	bl = io_buffer_get_list(ctx, p->bgid);
@@ -4754,7 +4746,7 @@ static int io_remove_buffers(struct io_kiocb *req, unsigned int issue_flags)
 
 	/* complete before unlock, IOPOLL may need the lock */
 	__io_req_complete(req, issue_flags, ret, 0);
-	io_ring_submit_unlock(ctx, needs_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 	return 0;
 }
 
@@ -4868,11 +4860,8 @@ static int io_provide_buffers(struct io_kiocb *req, unsigned int issue_flags)
 	struct io_ring_ctx *ctx = req->ctx;
 	struct io_buffer_list *bl;
 	int ret = 0;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 
-	io_ring_submit_lock(ctx, needs_lock);
-
-	lockdep_assert_held(&ctx->uring_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 
 	bl = io_buffer_get_list(ctx, p->bgid);
 	if (unlikely(!bl)) {
@@ -4890,7 +4879,7 @@ err:
 		req_set_fail(req);
 	/* complete before unlock, IOPOLL may need the lock */
 	__io_req_complete(req, issue_flags, ret, 0);
-	io_ring_submit_unlock(ctx, needs_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 	return 0;
 }
 
@@ -6796,7 +6785,6 @@ static int io_async_cancel(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_ring_ctx *ctx = req->ctx;
 	u64 sqe_addr = req->cancel.addr;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 	struct io_tctx_node *node;
 	int ret;
 
@@ -6805,7 +6793,7 @@ static int io_async_cancel(struct io_kiocb *req, unsigned int issue_flags)
 		goto done;
 
 	/* slow path, try all io-wq's */
-	io_ring_submit_lock(ctx, needs_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 	ret = -ENOENT;
 	list_for_each_entry(node, &ctx->tctx_list, ctx_node) {
 		struct io_uring_task *tctx = node->task->io_uring;
@@ -6814,7 +6802,7 @@ static int io_async_cancel(struct io_kiocb *req, unsigned int issue_flags)
 		if (ret != -ENOENT)
 			break;
 	}
-	io_ring_submit_unlock(ctx, needs_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 done:
 	if (ret < 0)
 		req_set_fail(req);
@@ -6841,7 +6829,6 @@ static int io_rsrc_update_prep(struct io_kiocb *req,
 static int io_files_update(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_ring_ctx *ctx = req->ctx;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 	struct io_uring_rsrc_update2 up;
 	int ret;
 
@@ -6852,10 +6839,10 @@ static int io_files_update(struct io_kiocb *req, unsigned int issue_flags)
 	up.resv = 0;
 	up.resv2 = 0;
 
-	io_ring_submit_lock(ctx, needs_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 	ret = __io_register_rsrc_update(ctx, IORING_RSRC_FILE,
 					&up, req->rsrc_update.nr_args);
-	io_ring_submit_unlock(ctx, needs_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 
 	if (ret < 0)
 		req_set_fail(req);
@@ -8786,15 +8773,17 @@ static void __io_rsrc_put_work(struct io_rsrc_node *ref_node)
 		list_del(&prsrc->list);
 
 		if (prsrc->tag) {
-			bool lock_ring = ctx->flags & IORING_SETUP_IOPOLL;
+			if (ctx->flags & IORING_SETUP_IOPOLL)
+				mutex_lock(&ctx->uring_lock);
 
-			io_ring_submit_lock(ctx, lock_ring);
 			spin_lock(&ctx->completion_lock);
 			io_fill_cqe_aux(ctx, prsrc->tag, 0, 0);
 			io_commit_cqring(ctx);
 			spin_unlock(&ctx->completion_lock);
 			io_cqring_ev_posted(ctx);
-			io_ring_submit_unlock(ctx, lock_ring);
+
+			if (ctx->flags & IORING_SETUP_IOPOLL)
+				mutex_unlock(&ctx->uring_lock);
 		}
 
 		rsrc_data->do_put(ctx, prsrc);
@@ -8970,12 +8959,11 @@ static int io_install_fixed_file(struct io_kiocb *req, struct file *file,
 				 unsigned int issue_flags, u32 slot_index)
 {
 	struct io_ring_ctx *ctx = req->ctx;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 	bool needs_switch = false;
 	struct io_fixed_file *file_slot;
 	int ret = -EBADF;
 
-	io_ring_submit_lock(ctx, needs_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 	if (file->f_op == &io_uring_fops)
 		goto err;
 	ret = -ENXIO;
@@ -9016,7 +9004,7 @@ static int io_install_fixed_file(struct io_kiocb *req, struct file *file,
 err:
 	if (needs_switch)
 		io_rsrc_node_switch(ctx, ctx->file_data);
-	io_ring_submit_unlock(ctx, needs_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 	if (ret)
 		fput(file);
 	return ret;
@@ -9026,12 +9014,11 @@ static int io_close_fixed(struct io_kiocb *req, unsigned int issue_flags)
 {
 	unsigned int offset = req->close.file_slot - 1;
 	struct io_ring_ctx *ctx = req->ctx;
-	bool needs_lock = issue_flags & IO_URING_F_UNLOCKED;
 	struct io_fixed_file *file_slot;
 	struct file *file;
 	int ret;
 
-	io_ring_submit_lock(ctx, needs_lock);
+	io_ring_submit_lock(ctx, issue_flags);
 	ret = -ENXIO;
 	if (unlikely(!ctx->file_data))
 		goto out;
@@ -9057,7 +9044,7 @@ static int io_close_fixed(struct io_kiocb *req, unsigned int issue_flags)
 	io_rsrc_node_switch(ctx, ctx->file_data);
 	ret = 0;
 out:
-	io_ring_submit_unlock(ctx, needs_lock);
+	io_ring_submit_unlock(ctx, issue_flags);
 	return ret;
 }
 
