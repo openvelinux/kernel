@@ -5502,6 +5502,37 @@ static enum hrtimer_restart sched_cfs_slack_timer(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+#ifdef CONFIG_NO_HZ_FULL
+void sync_cfs_bandwidth_runtime(struct cfs_bandwidth *cfs_b)
+{
+	unsigned int cpu;
+	struct rq *rq;
+	struct rq_flags rf;
+	struct cfs_rq *cfs_rq;
+	struct task_group *tg;
+
+	tg = container_of(cfs_b, struct task_group, cfs_bandwidth);
+
+	for_each_online_cpu(cpu) {
+		if (!tick_nohz_tick_stopped_cpu(cpu))
+			continue;
+
+		rq = cpu_rq(cpu);
+		cfs_rq = tg->cfs_rq[cpu];
+
+		if (!READ_ONCE(cfs_rq->curr))
+			continue;
+
+		rq_lock_irqsave(rq, &rf);
+		if (cfs_rq->curr) {
+			update_rq_clock(rq);
+			update_curr(cfs_rq);
+		}
+		rq_unlock_irqrestore(rq, &rf);
+	}
+}
+#endif
+
 extern const u64 max_cfs_quota_period;
 
 static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
@@ -5512,6 +5543,8 @@ static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 	int overrun;
 	int idle = 0;
 	int count = 0;
+
+	sync_cfs_bandwidth_runtime(cfs_b);
 
 	raw_spin_lock_irqsave(&cfs_b->lock, flags);
 	for (;;) {
