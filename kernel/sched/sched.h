@@ -2366,9 +2366,12 @@ static inline void sched_update_tick_dependency(struct rq *rq)
 	else
 		tick_nohz_dep_set_cpu(cpu, TICK_DEP_BIT_SCHED);
 }
+
+extern void sync_cfs_bandwidth_runtime(struct cfs_bandwidth *cfs_b);
 #else
 static inline int sched_tick_offload_init(void) { return 0; }
 static inline void sched_update_tick_dependency(struct rq *rq) { }
+static inline void sync_cfs_bandwidth_runtime(struct cfs_bandwidth *cfs_b) {}
 #endif
 
 static inline void add_nr_running(struct rq *rq, unsigned count)
