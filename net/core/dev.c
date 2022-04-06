@@ -148,6 +148,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/prandom.h>
 
+#include "dev.h"
 #include "net-sysfs.h"
 
 #define MAX_GRO_SKBS 8
