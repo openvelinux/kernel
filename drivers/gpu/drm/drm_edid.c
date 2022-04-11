@@ -1948,6 +1948,8 @@ int drm_add_override_edid_modes(struct drm_connector *connector)
 }
 EXPORT_SYMBOL(drm_add_override_edid_modes);
 
+typedef int read_block_fn(void *context, u8 *buf, unsigned int block, size_t len);
+
 /**
  * drm_do_get_edid - get EDID data using a custom EDID block read function
  * @connector: connector we're probing
@@ -1969,9 +1971,8 @@ EXPORT_SYMBOL(drm_add_override_edid_modes);
  * Return: Pointer to valid EDID or NULL if we couldn't find any.
  */
 struct edid *drm_do_get_edid(struct drm_connector *connector,
-	int (*get_edid_block)(void *data, u8 *buf, unsigned int block,
-			      size_t len),
-	void *data)
+			     read_block_fn read_block,
+			     void *context)
 {
 	int i, j = 0, valid_extensions = 0;
 	u8 *edid, *new;
@@ -1986,7 +1987,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 
 	/* base block fetch */
 	for (i = 0; i < 4; i++) {
-		if (get_edid_block(data, edid, 0, EDID_LENGTH))
+		if (read_block(context, edid, 0, EDID_LENGTH))
 			goto out;
 		if (drm_edid_block_valid(edid, 0, false,
 					 &connector->edid_corrupt))
@@ -2013,7 +2014,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 		u8 *block = edid + j * EDID_LENGTH;
 
 		for (i = 0; i < 4; i++) {
-			if (get_edid_block(data, block, j, EDID_LENGTH))
+			if (read_block(context, block, j, EDID_LENGTH))
 				goto out;
 			if (drm_edid_block_valid(block, j, false, NULL))
 				break;
