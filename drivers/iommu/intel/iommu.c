@@ -6059,6 +6059,9 @@ intel_iommu_dev_enable_feat(struct device *dev, enum iommu_dev_features feat)
 		if (!info)
 			return -EINVAL;
 
+		if (intel_iommu_enable_pasid(info->iommu, dev))
+			return -ENODEV;
+
 		if (!info->pasid_enabled || !info->pri_enabled || !info->ats_enabled)
 			return -EINVAL;
 
