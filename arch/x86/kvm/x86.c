@@ -10797,6 +10797,9 @@ int kvm_arch_vcpu_precreate(struct kvm *kvm, unsigned int id)
 	if (id >= kvm->arch.max_vcpu_ids)
 		return -EINVAL;
 
+	if (kvm_x86_ops.vcpu_precreate)
+		return static_call(kvm_x86_vcpu_precreate)(kvm);
+
 	return 0;
 }
 
