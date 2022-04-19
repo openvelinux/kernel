@@ -158,6 +158,11 @@ static inline u32 kvm_lapic_get_reg(struct kvm_lapic *apic, int reg_off)
 	return *((u32 *) (apic->regs + reg_off));
 }
 
+static inline u64 kvm_lapic_get_reg64(struct kvm_lapic *apic, int reg_off)
+{
+	return *((u64 *) (apic->regs + reg_off));
+}
+
 static inline void __kvm_lapic_set_reg(char *regs, int reg_off, u32 val)
 {
 	*((u32 *) (regs + reg_off)) = val;
