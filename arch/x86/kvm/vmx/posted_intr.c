@@ -85,11 +85,24 @@ static bool vmx_can_use_vtd_pi(struct kvm *kvm)
 		irq_remapping_cap(IRQ_POSTING_CAP);
 }
 
+static bool vmx_needs_pi_wakeup(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * The default posted interrupt vector does nothing when
+	 * invoked outside guest mode.   Return whether a blocked vCPU
+	 * can be the target of posted interrupts, as is the case when
+	 * using either IPI virtualization or VT-d PI, so that the
+	 * notification vector is switched to the one that calls
+	 * back to the pi_wakeup_handler() function.
+	 */
+	return vmx_can_use_ipiv(vcpu) || vmx_can_use_vtd_pi(vcpu->kvm);
+}
+
 void vmx_vcpu_pi_put(struct kvm_vcpu *vcpu)
 {
 	struct pi_desc *pi_desc = vcpu_to_pi_desc(vcpu);
 
-	if (!vmx_can_use_vtd_pi(vcpu->kvm))
+	if (!vmx_needs_pi_wakeup(vcpu))
 		return;
 
 	/* Set SN when the vCPU is preempted */
@@ -147,8 +160,7 @@ int pi_pre_block(struct kvm_vcpu *vcpu)
 	struct pi_desc old, new;
 	struct pi_desc *pi_desc = vcpu_to_pi_desc(vcpu);
 
-	if (!vmx_can_use_vtd_pi(vcpu->kvm) ||
-	    vmx_interrupt_blocked(vcpu))
+	if (vmx_interrupt_blocked(vcpu) || !vmx_needs_pi_wakeup(vcpu))
 		return 0;
 
 	WARN_ON(irqs_disabled());
