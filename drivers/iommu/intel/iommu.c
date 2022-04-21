@@ -322,6 +322,8 @@ int intel_iommu_sm = IS_ENABLED(CONFIG_INTEL_IOMMU_SCALABLE_MODE_DEFAULT_ON);
 int intel_iommu_enabled = 0;
 EXPORT_SYMBOL_GPL(intel_iommu_enabled);
 
+int cx6_2M_limitation;
+
 static int dmar_map_gfx = 1;
 static int intel_iommu_superpage = 1;
 static int iommu_identity_mapping;
@@ -406,6 +408,9 @@ static int __init intel_iommu_setup(char *str)
 		} else if (!strncmp(str, "tboot_noforce", 13)) {
 			pr_info("Intel-IOMMU: not forcing on after tboot. This could expose security risk for tboot\n");
 			intel_iommu_tboot_noforce = 1;
+		} else if (!strncmp(str, "cx6_2M_limitation", 17)) {
+			pr_info("Intel-IOMMU: enable cx6_2M_limitation\n");
+			cx6_2M_limitation = 1;
 		} else {
 			pr_notice("Unknown option - '%s'\n", str);
 		}
@@ -627,10 +632,11 @@ static int domain_update_iommu_superpage(struct dmar_domain *domain,
 	for_each_active_iommu(iommu, drhd) {
 		if (iommu != skip) {
 			if (domain && domain_use_first_level(domain)) {
-				if (!cap_fl1gp_support(iommu->cap))
+				if (cx6_2M_limitation || !cap_fl1gp_support(iommu->cap))
 					mask = 0x1;
 			} else {
-				mask &= cap_super_page_val(iommu->cap);
+				mask &= cap_super_page_val(iommu->cap) &
+						(cx6_2M_limitation ? 1 : ~0);
 			}
 
 			if (!mask)
