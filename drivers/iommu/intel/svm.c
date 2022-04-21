@@ -179,7 +179,7 @@ void intel_svm_check(struct intel_iommu *iommu)
 		return;
 
 	if (cpu_feature_enabled(X86_FEATURE_GBPAGES) &&
-	    !cap_fl1gp_support(iommu->cap)) {
+	    (cx6_2M_limitation || !cap_fl1gp_support(iommu->cap))) {
 		pr_err("%s SVM disabled, incompatible 1GB page capability\n",
 		       iommu->name);
 		return;
