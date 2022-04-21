@@ -480,6 +480,7 @@ enum {
 
 extern int intel_iommu_sm;
 extern spinlock_t device_domain_lock;
+extern int cx6_2M_limitation;
 
 #define sm_supported(iommu)	(intel_iommu_sm && ecap_smts((iommu)->ecap))
 #define pasid_supported(iommu)	(sm_supported(iommu) &&			\
