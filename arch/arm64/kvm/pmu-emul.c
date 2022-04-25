@@ -166,6 +166,9 @@ u64 kvm_pmu_get_counter_value(struct kvm_vcpu *vcpu, u64 select_idx)
 	struct kvm_pmu *pmu = &vcpu->arch.pmu;
 	struct kvm_pmc *pmc = &pmu->pmc[select_idx];
 
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return 0;
+
 	counter = kvm_pmu_get_pair_counter_value(vcpu, pmc);
 
 	if (kvm_pmu_pmc_is_chained(pmc) &&
@@ -186,6 +189,9 @@ u64 kvm_pmu_get_counter_value(struct kvm_vcpu *vcpu, u64 select_idx)
 void kvm_pmu_set_counter_value(struct kvm_vcpu *vcpu, u64 select_idx, u64 val)
 {
 	u64 reg;
+
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return;
 
 	reg = (select_idx == ARMV8_PMU_CYCLE_IDX)
 	      ? PMCCNTR_EL0 : PMEVCNTR0_EL0 + select_idx;
@@ -311,6 +317,9 @@ void kvm_pmu_enable_counter_mask(struct kvm_vcpu *vcpu, u64 val)
 	struct kvm_pmu *pmu = &vcpu->arch.pmu;
 	struct kvm_pmc *pmc;
 
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return;
+
 	if (!(__vcpu_sys_reg(vcpu, PMCR_EL0) & ARMV8_PMU_PMCR_E) || !val)
 		return;
 
@@ -346,7 +355,7 @@ void kvm_pmu_disable_counter_mask(struct kvm_vcpu *vcpu, u64 val)
 	struct kvm_pmu *pmu = &vcpu->arch.pmu;
 	struct kvm_pmc *pmc;
 
-	if (!val)
+	if (!kvm_vcpu_has_pmu(vcpu) || !val)
 		return;
 
 	for (i = 0; i < ARMV8_PMU_MAX_COUNTERS; i++) {
@@ -516,6 +525,9 @@ void kvm_pmu_software_increment(struct kvm_vcpu *vcpu, u64 val)
 	struct kvm_pmu *pmu = &vcpu->arch.pmu;
 	int i;
 
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return;
+
 	if (!(__vcpu_sys_reg(vcpu, PMCR_EL0) & ARMV8_PMU_PMCR_E))
 		return;
 
@@ -565,6 +577,9 @@ void kvm_pmu_software_increment(struct kvm_vcpu *vcpu, u64 val)
 void kvm_pmu_handle_pmcr(struct kvm_vcpu *vcpu, u64 val)
 {
 	int i;
+
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return;
 
 	if (val & ARMV8_PMU_PMCR_E) {
 		kvm_pmu_enable_counter_mask(vcpu,
@@ -728,6 +743,9 @@ void kvm_pmu_set_counter_event_type(struct kvm_vcpu *vcpu, u64 data,
 {
 	u64 reg, mask;
 
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return;
+
 	mask  =  ARMV8_PMU_EVTYPE_MASK;
 	mask &= ~ARMV8_PMU_EVTYPE_EVENT;
 	mask |= kvm_pmu_event_mask(vcpu->kvm);
@@ -798,6 +816,9 @@ u64 kvm_pmu_get_pmceid(struct kvm_vcpu *vcpu, bool pmceid1)
 	unsigned long *bmap = vcpu->kvm->arch.pmu_filter;
 	u64 val, mask = 0;
 	int base, i, nr_events;
+
+	if (!kvm_vcpu_has_pmu(vcpu))
+		return 0;
 
 	if (!pmceid1) {
 		val = read_sysreg(pmceid0_el0);
