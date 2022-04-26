@@ -128,7 +128,7 @@ enum {
  */
 #define IORING_SETUP_TASKRUN_FLAG	(1U << 9)
 
-enum {
+enum io_uring_op {
 	IORING_OP_NOP,
 	IORING_OP_READV,
 	IORING_OP_WRITEV,
