@@ -1597,6 +1597,24 @@ static const void *edid_extension_block_data(const struct edid *edid, int index)
 	return edid_block_data(edid, index + 1);
 }
 
+/*
+ * Initializer helper for legacy interfaces, where we have no choice but to
+ * trust edid size. Not for general purpose use.
+ */
+static const struct drm_edid *drm_edid_legacy_init(struct drm_edid *drm_edid,
+						   const struct edid *edid)
+{
+	if (!edid)
+		return NULL;
+
+	memset(drm_edid, 0, sizeof(*drm_edid));
+
+	drm_edid->edid = edid;
+	drm_edid->size = edid_size(edid);
+
+	return drm_edid;
+}
+
 static const u8 edid_header[] = {
 	0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00
 };
@@ -5583,17 +5601,19 @@ static int add_displayid_detailed_modes(struct drm_connector *connector,
 }
 
 static int drm_edid_connector_update(struct drm_connector *connector,
-				     const struct edid *edid)
+				     const struct drm_edid *drm_edid)
 {
+	const struct edid *edid;
 	int num_modes = 0;
 	u32 quirks;
 
-	if (edid == NULL) {
+	if (!drm_edid) {
 		clear_eld(connector);
 		return 0;
 	}
 
 	drm_edid_to_eld(connector, edid);
+	edid = drm_edid->edid;
 
 	/*
 	 * CEA-861-F adds ycbcr capability map block, for HDMI 2.0 sinks.
@@ -5657,13 +5677,16 @@ static int drm_edid_connector_update(struct drm_connector *connector,
  */
 int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 {
+	struct drm_edid drm_edid;
+
 	if (edid && !drm_edid_is_valid(edid)) {
 		drm_warn(connector->dev, "%s: EDID invalid.\n",
 			 connector->name);
 		edid = NULL;
 	}
 
-	return drm_edid_connector_update(connector, edid);
+	return drm_edid_connector_update(connector,
+					 drm_edid_legacy_init(&drm_edid, edid));
 }
 EXPORT_SYMBOL(drm_add_edid_modes);
 
