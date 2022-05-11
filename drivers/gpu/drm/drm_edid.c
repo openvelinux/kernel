@@ -3195,17 +3195,16 @@ do_inferred_modes(struct detailed_timing *timing, void *c)
 	}
 }
 
-static int
-add_inferred_modes(struct drm_connector *connector, struct edid *edid)
+static int add_inferred_modes(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid)
 {
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 	};
 
-	if (version_greater(edid, 1, 0))
-		drm_for_each_detailed_block((u8 *)edid, do_inferred_modes,
-					    &closure);
+	if (version_greater(drm_edid->edid, 1, 0))
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_inferred_modes, &closure);
 
 	return closure.modes;
 }
@@ -3258,10 +3257,11 @@ do_established_modes(struct detailed_timing *timing, void *c)
  * Each EDID block contains a bitmap of the supported "established modes" list
  * (defined above).  Tease them out and add them to the global modes list.
  */
-static int
-add_established_modes(struct drm_connector *connector, struct edid *edid)
+static int add_established_modes(struct drm_connector *connector,
+				 const struct drm_edid *drm_edid)
 {
 	struct drm_device *dev = connector->dev;
+	const struct edid *edid = drm_edid->edid;
 	unsigned long est_bits = edid->established_timings.t1 |
 		(edid->established_timings.t2 << 8) |
 		((edid->established_timings.mfg_rsvd & 0x80) << 9);
@@ -3284,8 +3284,8 @@ add_established_modes(struct drm_connector *connector, struct edid *edid)
 	}
 
 	if (version_greater(edid, 1, 0))
-		    drm_for_each_detailed_block((u8 *)edid,
-						do_established_modes, &closure);
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_established_modes,
+					    &closure);
 
 	return modes + closure.modes;
 }
@@ -3322,28 +3322,28 @@ do_standard_modes(struct detailed_timing *timing, void *c)
  * Standard modes can be calculated using the appropriate standard (DMT,
  * GTF or CVT. Grab them from @edid and add them to the list.
  */
-static int
-add_standard_modes(struct drm_connector *connector, struct edid *edid)
+static int add_standard_modes(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid)
 {
 	int i, modes = 0;
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 	};
 
 	for (i = 0; i < EDID_STD_TIMINGS; i++) {
 		struct drm_display_mode *newmode;
 
-		newmode = drm_mode_std(connector, edid,
-				       &edid->standard_timings[i]);
+		newmode = drm_mode_std(connector, drm_edid->edid,
+				       &drm_edid->edid->standard_timings[i]);
 		if (newmode) {
 			drm_mode_probed_add(connector, newmode);
 			modes++;
 		}
 	}
 
-	if (version_greater(edid, 1, 0))
-		drm_for_each_detailed_block((u8 *)edid, do_standard_modes,
+	if (version_greater(drm_edid->edid, 1, 0))
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_standard_modes,
 					    &closure);
 
 	/* XXX should also look for standard codes in VTB blocks */
@@ -3415,15 +3415,15 @@ do_cvt_mode(struct detailed_timing *timing, void *c)
 }
 
 static int
-add_cvt_modes(struct drm_connector *connector, struct edid *edid)
+add_cvt_modes(struct drm_connector *connector, const struct drm_edid *drm_edid)
 {
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 	};
 
-	if (version_greater(edid, 1, 2))
-		drm_for_each_detailed_block((u8 *)edid, do_cvt_mode, &closure);
+	if (version_greater(drm_edid->edid, 1, 2))
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_cvt_mode, &closure);
 
 	/* XXX should also look for CVT codes in VTB blocks */
 
@@ -3465,25 +3465,24 @@ do_detailed_mode(struct detailed_timing *timing, void *c)
 /*
  * add_detailed_modes - Add modes from detailed timings
  * @connector: attached connector
- * @edid: EDID block to scan
+ * @drm_edid: EDID block to scan
  * @quirks: quirks to apply
  */
-static int
-add_detailed_modes(struct drm_connector *connector, struct edid *edid,
-		   u32 quirks)
+static int add_detailed_modes(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid, u32 quirks)
 {
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 		.preferred = true,
 		.quirks = quirks,
 	};
 
-	if (closure.preferred && !version_greater(edid, 1, 3))
+	if (closure.preferred && !version_greater(drm_edid->edid, 1, 3))
 		closure.preferred =
-		    (edid->features & DRM_EDID_FEATURE_PREFERRED_TIMING);
+		    (drm_edid->edid->features & DRM_EDID_FEATURE_PREFERRED_TIMING);
 
-	drm_for_each_detailed_block((u8 *)edid, do_detailed_mode, &closure);
+	drm_for_each_detailed_block((u8 *)drm_edid->edid, do_detailed_mode, &closure);
 
 	return closure.modes;
 }
@@ -3814,8 +3813,8 @@ static bool drm_valid_hdmi_vic(u8 vic)
 	return vic > 0 && vic < ARRAY_SIZE(edid_4k_modes);
 }
 
-static int
-add_alternate_cea_modes(struct drm_connector *connector, struct edid *edid)
+static int add_alternate_cea_modes(struct drm_connector *connector,
+				   const struct drm_edid *drm_edid)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_display_mode *mode, *tmp;
@@ -3823,7 +3822,7 @@ add_alternate_cea_modes(struct drm_connector *connector, struct edid *edid)
 	int modes = 0;
 
 	/* Don't add CEA modes if the CEA extension block is missing */
-	if (!drm_find_cea_extension(edid))
+	if (!drm_find_cea_extension(drm_edid->edid))
 		return 0;
 
 	/*
@@ -4492,9 +4491,10 @@ static void drm_parse_y420cmdb_bitmap(struct drm_connector *connector,
 	hdmi->y420_cmdb_map = map;
 }
 
-static int
-add_cea_modes(struct drm_connector *connector, struct edid *edid)
+static int add_cea_modes(struct drm_connector *connector,
+			 const struct drm_edid *drm_edid)
 {
+	struct edid *edid = drm_edid->edid;
 	const u8 *cea = drm_find_cea_extension(edid);
 	const u8 *db, *hdmi = NULL, *video = NULL;
 	u8 dbl, hdmi_len, video_len = 0;
@@ -5595,13 +5595,13 @@ static int add_displayid_detailed_1_modes(struct drm_connector *connector,
 }
 
 static int add_displayid_detailed_modes(struct drm_connector *connector,
-					struct edid *edid)
+					const struct drm_edid *drm_edid)
 {
 	const struct displayid_block *block;
 	struct displayid_iter iter;
 	int num_modes = 0;
 
-	displayid_iter_edid_begin(edid, &iter);
+	displayid_iter_edid_begin(drm_edid->edid, &iter);
 	displayid_iter_for_each(block, &iter) {
 		if (block->tag == DATA_BLOCK_TYPE_1_DETAILED_TIMING)
 			num_modes += add_displayid_detailed_1_modes(connector, block);
@@ -5614,7 +5614,6 @@ static int add_displayid_detailed_modes(struct drm_connector *connector,
 static int drm_edid_connector_update(struct drm_connector *connector,
 				     const struct drm_edid *drm_edid)
 {
-	const struct edid *edid;
 	int num_modes = 0;
 	u32 quirks;
 
@@ -5622,9 +5621,6 @@ static int drm_edid_connector_update(struct drm_connector *connector,
 		clear_eld(connector);
 		return 0;
 	}
-
-	drm_edid_to_eld(connector, edid);
-	edid = drm_edid->edid;
 
 	/*
 	 * CEA-861-F adds ycbcr capability map block, for HDMI 2.0 sinks.
@@ -5647,15 +5643,15 @@ static int drm_edid_connector_update(struct drm_connector *connector,
 	 *
 	 * XXX order for additional mode types in extension blocks?
 	 */
-	num_modes += add_detailed_modes(connector, edid, quirks);
-	num_modes += add_cvt_modes(connector, edid);
-	num_modes += add_standard_modes(connector, edid);
-	num_modes += add_established_modes(connector, edid);
-	num_modes += add_cea_modes(connector, edid);
-	num_modes += add_alternate_cea_modes(connector, edid);
-	num_modes += add_displayid_detailed_modes(connector, edid);
-	if (edid->features & DRM_EDID_FEATURE_DEFAULT_GTF)
-		num_modes += add_inferred_modes(connector, edid);
+	num_modes += add_detailed_modes(connector, drm_edid, quirks);
+	num_modes += add_cvt_modes(connector, drm_edid);
+	num_modes += add_standard_modes(connector, drm_edid);
+	num_modes += add_established_modes(connector, drm_edid);
+	num_modes += add_cea_modes(connector, drm_edid);
+	num_modes += add_alternate_cea_modes(connector, drm_edid);
+	num_modes += add_displayid_detailed_modes(connector, drm_edid);
+	if (drm_edid->edid->features & DRM_EDID_FEATURE_DEFAULT_GTF)
+		num_modes += add_inferred_modes(connector, drm_edid);
 
 	if (quirks & (EDID_QUIRK_PREFER_LARGE_60 | EDID_QUIRK_PREFER_LARGE_75))
 		edid_fixup_preferred(connector, quirks);
