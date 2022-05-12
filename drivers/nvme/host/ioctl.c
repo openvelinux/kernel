@@ -461,7 +461,7 @@ static int nvme_uring_cmd_io(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
 	pdu->meta_buffer = nvme_to_user_ptr(d.metadata);
 	pdu->meta_len = d.metadata_len;
 
-	blk_execute_rq_nowait(req, 0, nvme_uring_cmd_end_io);
+	blk_execute_rq_nowait(NULL, req, 0, nvme_uring_cmd_end_io);
 	return -EIOCBQUEUED;
 }
 
