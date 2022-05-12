@@ -1055,6 +1055,54 @@ static void blk_end_sync_rq(struct request *rq, blk_status_t error)
 	complete(waiting);
 }
 
+/*
+ * Allow 2x BLK_MAX_REQUEST_COUNT requests on plug queue for multiple
+ * queues. This is important for md arrays to benefit from merging
+ * requests.
+ */
+static inline unsigned short blk_plug_max_rq_count(struct blk_plug *plug)
+{
+	if (plug->multiple_queues)
+		return BLK_MAX_REQUEST_COUNT * 2;
+	return BLK_MAX_REQUEST_COUNT;
+}
+
+static void blk_add_rq_to_plug(struct blk_plug *plug, struct request *rq)
+{
+	list_add_tail(&rq->queuelist, &plug->mq_list);
+	plug->rq_count++;
+	if (!plug->multiple_queues && !list_is_singular(&plug->mq_list)) {
+		struct request *tmp;
+
+		tmp = list_first_entry(&plug->mq_list, struct request,
+						queuelist);
+		if (tmp->q != rq->q)
+			plug->multiple_queues = true;
+	}
+}
+
+static void __blk_execute_rq_nowait(struct gendisk *bd_disk, struct request *rq, bool at_head,
+		rq_end_io_fn *done, bool use_plug)
+{
+	WARN_ON(irqs_disabled());
+	WARN_ON(!blk_rq_is_passthrough(rq));
+
+	rq->rq_disk = bd_disk;
+	rq->end_io = done;
+
+	blk_account_io_start(rq);
+
+	if (use_plug && current->plug) {
+		blk_add_rq_to_plug(current->plug, rq);
+		return;
+	}
+	/*
+	 * don't check dying flag for MQ because the request won't
+	 * be reused after dying flag is set
+	 */
+	blk_mq_sched_insert_request(rq, at_head, true, false);
+}
+
 /**
  * blk_execute_rq_nowait - insert a request to I/O scheduler for execution
  * @bd_disk:	matching gendisk
@@ -1072,19 +1120,7 @@ static void blk_end_sync_rq(struct request *rq, blk_status_t error)
 void blk_execute_rq_nowait(struct gendisk *bd_disk, struct request *rq,
 			   int at_head, rq_end_io_fn *done)
 {
-	WARN_ON(irqs_disabled());
-	WARN_ON(!blk_rq_is_passthrough(rq));
-
-	rq->rq_disk = bd_disk;
-	rq->end_io = done;
-
-	blk_account_io_start(rq);
-
-	/*
-	 * don't check dying flag for MQ because the request won't
-	 * be reused after dying flag is set
-	 */
-	blk_mq_sched_insert_request(rq, at_head, true, false);
+	__blk_execute_rq_nowait(bd_disk, rq, at_head, done, true);
 }
 EXPORT_SYMBOL_GPL(blk_execute_rq_nowait);
 
@@ -1124,8 +1160,13 @@ blk_status_t blk_execute_rq(struct gendisk *bd_disk, struct request *rq,
 	DECLARE_COMPLETION_ONSTACK(wait);
 	unsigned long hang_check;
 
+	/*
+	 * iopoll requires request to be submitted to driver, so can't
+	 * use plug
+	 */
 	rq->end_io_data = &wait;
-	blk_execute_rq_nowait(bd_disk, rq, at_head, blk_end_sync_rq);
+	__blk_execute_rq_nowait(bd_disk, rq, at_head, blk_end_sync_rq,
+			!blk_rq_is_poll(rq));
 
 	/* Prevent hang_check timer from firing at us during very long I/O */
 	hang_check = sysctl_hung_task_timeout_secs;
@@ -2259,32 +2300,6 @@ void __blk_mq_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 	blk_mq_hctx_mark_pending(hctx, ctx);
 }
 
-/*
- * Allow 2x BLK_MAX_REQUEST_COUNT requests on plug queue for multiple
- * queues. This is important for md arrays to benefit from merging
- * requests.
- */
-static inline unsigned short blk_plug_max_rq_count(struct blk_plug *plug)
-{
-	if (plug->multiple_queues)
-		return BLK_MAX_REQUEST_COUNT * 2;
-	return BLK_MAX_REQUEST_COUNT;
-}
-
-static void blk_add_rq_to_plug(struct blk_plug *plug, struct request *rq)
-{
-	list_add_tail(&rq->queuelist, &plug->mq_list);
-	plug->rq_count++;
-	if (!plug->multiple_queues && !list_is_singular(&plug->mq_list)) {
-		struct request *tmp;
-
-		tmp = list_first_entry(&plug->mq_list, struct request,
-						queuelist);
-		if (tmp->q != rq->q)
-			plug->multiple_queues = true;
-	}
-}
-
 /**
  * blk_mq_request_bypass_insert - Insert a request at dispatch list.
  * @rq: Pointer to request to be inserted.
@@ -2298,12 +2313,7 @@ void blk_mq_request_bypass_insert(struct request *rq, bool at_head,
 				  bool run_queue)
 {
 	struct blk_mq_hw_ctx *hctx = rq->mq_hctx;
-	struct blk_plug *plug = current->plug;
 
-	if (plug) {
-		blk_add_rq_to_plug(plug, rq);
-		return;
-	}
 	spin_lock(&hctx->lock);
 	if (at_head)
 		list_add(&rq->queuelist, &hctx->dispatch);
