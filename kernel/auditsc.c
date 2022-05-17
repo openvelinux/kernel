@@ -1919,6 +1919,11 @@ void __audit_uring_exit(int success, long code)
 {
 	struct audit_context *ctx = audit_context();
 
+	if (ctx->dummy) {
+		if (ctx->context != AUDIT_CTX_URING)
+			return;
+		goto out;
+	}
 	audit_return_fixup(ctx, success, code);
 	/*
 	 * TODO: At some point we will likely want to filter on io_uring ops
