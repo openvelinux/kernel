@@ -4974,6 +4974,8 @@ static int __io_remove_buffers(struct io_ring_ctx *ctx,
 		kvfree(bl->buf_pages);
 		bl->buf_pages = NULL;
 		bl->buf_nr_pages = 0;
+		/* make sure it's seen as empty */
+		INIT_LIST_HEAD(&bl->buf_list);
 		return i;
 	}
 
@@ -5161,6 +5163,7 @@ static int io_provide_buffers(struct io_kiocb *req, unsigned int issue_flags)
 			ret = -ENOMEM;
 			goto err;
 		}
+		INIT_LIST_HEAD(&bl->buf_list);
 		ret = io_buffer_add_list(ctx, bl, p->bgid);
 		if (ret) {
 			kfree(bl);
