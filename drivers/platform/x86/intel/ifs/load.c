@@ -174,6 +174,7 @@ static int ifs_sanity_check(struct device *dev,
 {
 	unsigned long total_size, data_size;
 	u32 sum, *mc;
+	int i;
 
 	total_size = get_totalsize(mc_header);
 	data_size = get_datasize(mc_header);
@@ -190,7 +191,7 @@ static int ifs_sanity_check(struct device *dev,
 
 	mc = (u32 *)mc_header;
 	sum = 0;
-	for (int i = 0; i < total_size / sizeof(u32); i++)
+	for (i = 0; i < total_size / sizeof(u32); i++)
 		sum += mc[i];
 
 	if (sum) {
