@@ -396,6 +396,11 @@ static inline bool kvm_cstate_in_guest(struct kvm *kvm)
 
 DECLARE_PER_CPU(struct kvm_vcpu *, current_vcpu);
 
+static inline bool kvm_notify_vmexit_enabled(struct kvm *kvm)
+{
+	return kvm->arch.notify_vmexit_flags & KVM_X86_NOTIFY_VMEXIT_ENABLED;
+}
+
 static inline void kvm_before_interrupt(struct kvm_vcpu *vcpu)
 {
 	__this_cpu_write(current_vcpu, vcpu);
