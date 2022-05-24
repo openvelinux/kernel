@@ -1138,6 +1138,8 @@ struct kvm_arch {
 	bool guest_can_read_msr_platform_info;
 	bool exception_payload_enabled;
 
+	bool triple_fault_event;
+
 	bool bus_lock_detection_enabled;
 	/*
 	 * If exit_on_emulation_error is set, and the in-kernel instruction
