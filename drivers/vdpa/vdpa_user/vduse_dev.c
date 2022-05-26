@@ -1640,7 +1640,6 @@ static int vduse_fs_timeout_handler(struct vduse_dev *dev,
 	ssize_t bytes;
 	unsigned short head;
 	int ret;
-	struct fuse_in_header in;
 	struct fuse_out_header out;
 
 	ret = vringh_getdesc_iotlb(&vq->vring, &vq->out_iov, &vq->in_iov,
@@ -1648,37 +1647,22 @@ static int vduse_fs_timeout_handler(struct vduse_dev *dev,
 	if (ret != 1)
 		return ret;
 
-	if (vq->out_iov.used < 1) {
-		pr_err("VDUSE: missing headers - out_iov: %u\n",
-		       vq->out_iov.used);
-		goto out;
-	}
-
-	if (vq->out_iov.iov[0].iov_len < sizeof(struct fuse_in_header)) {
-		pr_err("VDUSE: request in header too short\n");
-		goto out;
-	}
-
-	bytes = vringh_iov_pull_iotlb(&vq->vring, &vq->out_iov,
-				      &in, sizeof(struct fuse_in_header));
-	if (bytes != sizeof(struct fuse_in_header)) {
-		ret = (bytes >= 0) ? -EINVAL : bytes;
-		pr_err("VDUSE: read fuse header failed: %ld\n", bytes);
-		goto err;
-	}
-
 	len = vringh_kiov_length(&vq->in_iov);
 	if (!len)
 		goto out;
 
-	out.unique = in.unique;
-	out.error = -EIO;
+	if (vq->index == 0) {
+		pr_err("VDUSE: invalid req in virtiofs high priority queue\n");
+		goto out;
+	}
 
+	out.error = -EIO;
 	bytes = vringh_iov_push_iotlb(&vq->vring, &vq->in_iov,
 				      &out, sizeof(struct fuse_out_header));
 	if (bytes != sizeof(struct fuse_out_header)) {
 		ret = (bytes >= 0) ? -EINVAL : bytes;
-		pr_err("VDUSE: write fuse header failed: %ld\n", bytes);
+		pr_err("VDUSE: write fuse header failed in (%u, %u): %ld\n",
+		       head, vq->vring.last_avail_idx, bytes);
 		goto err;
 	}
 
@@ -1687,7 +1671,8 @@ static int vduse_fs_timeout_handler(struct vduse_dev *dev,
 out:
 	ret = vringh_complete_iotlb(&vq->vring, head, len);
 	if (ret) {
-		pr_err("VDUSE: update used vring failed\n");
+		pr_err("VDUSE: update used vring failed in (%u, %u): %ld\n",
+		       head, vq->vring.last_avail_idx, bytes);
 		goto err;
 	}
 
@@ -1741,6 +1726,10 @@ static void vduse_vq_check_inflights(struct vduse_dev *dev, int index)
 		if (inflight->desc[i].inflight)
 			vringh_recover_desc_iotlb(&vq->vring, idx++, i);
 	}
+
+	pr_info("VDUSE: get vq%d I/O for %s, desc %d num %d idx %u inuse %d\n",
+		index, dev_name(dev->dev), desc_num, vq->vring.vring.num,
+		vq->vring.last_avail_idx, idx - vq->vring.last_avail_idx);
 }
 
 static void vduse_dev_timeout_work(struct work_struct *work)
