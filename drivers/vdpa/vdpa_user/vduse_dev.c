@@ -60,6 +60,7 @@ struct vduse_virtqueue {
 	struct work_struct kick;
 	struct kobject kobj;
 	int irq_affinity;
+	bool irq_use_wq;
 	struct vringh vring;
 	struct vringh_kiov in_iov;
 	struct vringh_kiov out_iov;
@@ -1284,8 +1285,7 @@ static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
 		vq = dev->vqs[index];
 		ret = 0;
 
-		/* virtio-fs driver already uses workqueue in irq handler */
-		if (dev->device_id == VIRTIO_ID_FS) {
+		if (!vq->irq_use_wq) {
 			spin_lock_irq(&vq->irq_lock);
 			if (vq->ready && vq->cb.callback)
 				vq->cb.callback(vq->cb.private);
@@ -1408,6 +1408,26 @@ static const struct file_operations vduse_dev_fops = {
 	.mmap		= vduse_dev_mmap,
 };
 
+static ssize_t irq_use_wq_show(struct vduse_virtqueue *vq, char *buf)
+{
+	return sprintf(buf, "%d\n", vq->irq_use_wq);
+}
+
+static ssize_t irq_use_wq_store(struct vduse_virtqueue *vq,
+				const char *buf, size_t count)
+{
+	bool enabled;
+	int ret;
+
+	ret = kstrtobool(buf, &enabled);
+	if (ret)
+		return ret;
+
+	vq->irq_use_wq = enabled;
+
+	return count;
+}
+
 static ssize_t irq_affinity_show(struct vduse_virtqueue *vq, char *buf)
 {
 	return sprintf(buf, "%d\n", vq->irq_affinity);
@@ -1465,10 +1485,13 @@ static struct vq_sysfs_entry irq_inject_attr = __ATTR_WO(irq_inject);
 
 static struct vq_sysfs_entry kick_attr = __ATTR_WO(kick);
 
+static struct vq_sysfs_entry irq_use_wq_attr = __ATTR_RW(irq_use_wq);
+
 static struct attribute *vq_attrs[] = {
 	&irq_affinity_attr.attr,
 	&irq_inject_attr.attr,
 	&kick_attr.attr,
+	&irq_use_wq_attr.attr,
 	NULL,
 };
 
@@ -1557,6 +1580,10 @@ static int vduse_dev_init_vqs(struct vduse_dev *dev, u32 vq_align,
 		dev->vqs[i]->index = i;
 		dev->vqs[i]->dev = dev;
 		dev->vqs[i]->irq_affinity = IRQ_UNBOUND;
+		/* virtio-fs driver already uses workqueue in irq handler */
+		dev->vqs[i]->irq_use_wq = (dev->device_id == VIRTIO_ID_FS) ?
+					  false : true;
+
 		vringh_set_iotlb(&dev->vqs[i]->vring, dev->domain->iotlb,
 				 &dev->domain->iotlb_lock);
 		vringh_kiov_init(&dev->vqs[i]->out_iov, NULL, 0);
