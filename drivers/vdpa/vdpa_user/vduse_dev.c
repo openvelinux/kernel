@@ -47,7 +47,7 @@ struct vduse_virtqueue {
 	u16 index;
 	bool ready;
 	spinlock_t kick_lock;
-	spinlock_t irq_lock;
+	struct rw_semaphore irq_lock;
 	struct eventfd_ctx *kickfd;
 	struct vdpa_callback cb;
 	struct work_struct inject;
@@ -552,11 +552,11 @@ static void vduse_dev_reset(struct vduse_dev *dev)
 		vq->device_addr = 0;
 		vq->avail_index = 0;
 		vq->num = 0;
-		spin_lock(&vq->irq_lock);
+		down_write(&vq->irq_lock);
 		vq->ready = false;
 		vq->cb.callback = NULL;
 		vq->cb.private = NULL;
-		spin_unlock(&vq->irq_lock);
+		up_write(&vq->irq_lock);
 	}
 }
 
@@ -606,10 +606,10 @@ static void vduse_vdpa_set_vq_cb(struct vdpa_device *vdpa, u16 idx,
 	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
 	struct vduse_virtqueue *vq = dev->vqs[idx];
 
-	spin_lock(&vq->irq_lock);
+	down_write(&vq->irq_lock);
 	vq->cb.callback = cb->callback;
 	vq->cb.private = cb->private;
-	spin_unlock(&vq->irq_lock);
+	up_write(&vq->irq_lock);
 }
 
 static void vduse_vdpa_set_vq_num(struct vdpa_device *vdpa, u16 idx, u32 num)
@@ -993,23 +993,28 @@ static void vduse_dev_irq_inject(struct work_struct *work)
 				   dev->name, dev->status);
 }
 
-static void vduse_vq_irq_inject(struct work_struct *work)
+static void vduse_vq_irq_inject(struct vduse_virtqueue *vq)
+{
+	struct vduse_dev *dev = vq->dev;
+
+	if (!dev)
+		return;
+
+	down_read(&vq->irq_lock);
+	if ((dev->status & VIRTIO_CONFIG_S_DRIVER_OK) &&
+	    vq->cb.callback)
+		vq->cb.callback(vq->cb.private);
+	else
+		pr_err_ratelimited("Miss vduse [%s] vq%d irq, status: %d\n",
+				   dev->name, vq->index, dev->status);
+	up_read(&vq->irq_lock);
+}
+
+static void vduse_vq_irq_inject_work(struct work_struct *work)
 {
 	struct vduse_virtqueue *vq = container_of(work,
 					struct vduse_virtqueue, inject);
-	struct vduse_dev *dev = vq->dev;
-	bool missed = true;
-
-	spin_lock_irq(&vq->irq_lock);
-	if (dev && (dev->status & VIRTIO_CONFIG_S_DRIVER_OK) &&
-	    vq->cb.callback) {
-		vq->cb.callback(vq->cb.private);
-		missed = false;
-	}
-	spin_unlock_irq(&vq->irq_lock);
-	if (missed && dev)
-		pr_err_ratelimited("Miss vduse [%s] vq%d irq, status: %d\n",
-				   dev->name, vq->index, dev->status);
+	vduse_vq_irq_inject(vq);
 }
 
 static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
@@ -1127,10 +1132,7 @@ static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
 		ret = 0;
 
 		if (!vq->irq_use_wq) {
-			spin_lock_irq(&vq->irq_lock);
-			if (vq->ready && vq->cb.callback)
-				vq->cb.callback(vq->cb.private);
-			spin_unlock_irq(&vq->irq_lock);
+			vduse_vq_irq_inject(vq);
 			break;
 		}
 		if (vq->irq_affinity == -1)
@@ -1439,9 +1441,9 @@ static int vduse_dev_init_vqs(struct vduse_dev *dev, u32 vq_align,
 				 &dev->domain->iotlb_lock);
 		vringh_kiov_init(&dev->vqs[i]->out_iov, NULL, 0);
 		vringh_kiov_init(&dev->vqs[i]->in_iov, NULL, 0);
-		INIT_WORK(&dev->vqs[i]->inject, vduse_vq_irq_inject);
+		INIT_WORK(&dev->vqs[i]->inject, vduse_vq_irq_inject_work);
 		spin_lock_init(&dev->vqs[i]->kick_lock);
-		spin_lock_init(&dev->vqs[i]->irq_lock);
+		init_rwsem(&dev->vqs[i]->irq_lock);
 		kobject_init(&dev->vqs[i]->kobj, &vq_attr_type);
 		ret = kobject_add(&dev->vqs[i]->kobj,
 				  &dev->dev.kobj, "vq%d", i);
@@ -1684,10 +1686,7 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 				;
 		} while (!vringh_notify_enable_iotlb(&dev->vqs[i]->vring) &&
 			 ret >= 0);
-		spin_lock_irq(&dev->vqs[i]->irq_lock);
-		if (dev->vqs[i]->cb.callback)
-			dev->vqs[i]->cb.callback(dev->vqs[i]->cb.private);
-		spin_unlock_irq(&dev->vqs[i]->irq_lock);
+		vduse_vq_irq_inject(dev->vqs[i]);
 	}
 unlock:
 	mutex_unlock(&dev->lock);
