@@ -1969,9 +1969,43 @@ static ssize_t abort_conn_store(struct device *device,
 
 static DEVICE_ATTR_WO(abort_conn);
 
+static ssize_t enable_dead_handler_show(struct device *device,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct vduse_dev *dev = dev_get_drvdata(device);
+
+	return sprintf(buf, "%d\n", dev->dead_handler ? 1 : 0);
+}
+
+static ssize_t enable_dead_handler_store(struct device *device,
+					 struct device_attribute *attr,
+					 const char *buf, size_t count)
+{
+	struct vduse_dev *dev = dev_get_drvdata(device);
+	bool enable;
+	int ret;
+
+	ret = kstrtobool(buf, &enable);
+	if (ret)
+		return ret;
+
+	mutex_lock(&dev->lock);
+	if (enable)
+		vduse_set_dead_handler(dev);
+	else
+		dev->dead_handler = NULL;
+	mutex_unlock(&dev->lock);
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(enable_dead_handler);
+
 static struct attribute *vduse_dev_attrs[] = {
 	&dev_attr_msg_timeout.attr,
 	&dev_attr_abort_conn.attr,
+	&dev_attr_enable_dead_handler.attr,
 	NULL
 };
 
