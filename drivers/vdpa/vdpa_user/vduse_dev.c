@@ -110,6 +110,7 @@ struct vduse_dev {
 	u32 vq_align;
 	struct delayed_work timeout_work;
 	u16 dead_timeout;
+	int (*dead_handler)(struct vduse_dev *dev, struct vduse_virtqueue *vq);
 	void *shm_addr;
 	u8 dev_shm_size;
 	u8 vq_shm_off;
@@ -1682,6 +1683,30 @@ err:
 	return ret;
 }
 
+static int vduse_default_timeout_handler(struct vduse_dev *dev,
+					 struct vduse_virtqueue *vq)
+{
+	size_t len = 0;
+	unsigned short head;
+	int ret;
+
+	ret = vringh_getdesc_iotlb(&vq->vring, &vq->out_iov, &vq->in_iov,
+				   &head, GFP_ATOMIC);
+	if (ret != 1)
+		return ret;
+
+	ret = vringh_complete_iotlb(&vq->vring, head, len);
+	if (ret) {
+		pr_err("VDUSE: update used vring failed\n");
+		goto err;
+	}
+
+	return 1;
+err:
+	vringh_abandon_iotlb(&vq->vring, 1);
+	return ret;
+}
+
 /* Returns 0 if there was no request, 1 if there was, or -errno. */
 static int vduse_req_timeout_handler(struct vduse_dev *dev,
 				      struct vduse_virtqueue *vq)
@@ -1696,11 +1721,7 @@ retry:
 		return ret;
 	}
 
-	if (dev->device_id == VIRTIO_ID_BLOCK)
-		ret = vduse_blk_timeout_handler(dev, vq);
-	else if (dev->device_id == VIRTIO_ID_FS)
-		ret = vduse_fs_timeout_handler(dev, vq);
-
+	ret = dev->dead_handler(dev, vq);
 	if (ret < 0 && do_retry) {
 		do_retry = false;
 		goto retry;
@@ -1760,12 +1781,8 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 	}
 	spin_unlock(&dev->msg_lock);
 
-	if (dev->device_id != VIRTIO_ID_BLOCK &&
-	    dev->device_id != VIRTIO_ID_FS) {
-		pr_warn("VDUSE: unsupported device type %d in %s\n",
-			dev->device_id, dev_name(dev->dev));
+	if (!dev->dead_handler)
 		goto unlock;
-	}
 
 	if (!dev->shm_addr && check_inflight) {
 		check_inflight = false;
@@ -1797,6 +1814,16 @@ static void vduse_dev_timeout_work(struct work_struct *work)
 	}
 unlock:
 	mutex_unlock(&dev->lock);
+}
+
+static void vduse_set_dead_handler(struct vduse_dev *dev)
+{
+	if (dev->device_id == VIRTIO_ID_FS)
+		dev->dead_handler = vduse_fs_timeout_handler;
+	else if (dev->device_id == VIRTIO_ID_BLOCK)
+		dev->dead_handler = vduse_blk_timeout_handler;
+	else
+		dev->dead_handler = vduse_default_timeout_handler;
 }
 
 static struct vduse_dev *vduse_dev_create(void)
@@ -1999,6 +2026,7 @@ static int vduse_create_dev(struct vduse_dev_config *config,
 	if (ret)
 		goto err_vqs;
 
+	vduse_set_dead_handler(dev);
 	__module_get(THIS_MODULE);
 
 	return 0;
