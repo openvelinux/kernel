@@ -6,6 +6,7 @@
 
 #include "lapic.h"
 #include "x86.h"
+#include "cpuid.h"
 
 extern bool __read_mostly enable_vpid;
 extern bool __read_mostly flexpriority_enabled;
@@ -396,6 +397,9 @@ static inline u64 vmx_get_perf_capabilities(void)
 
 	if (!enable_pmu)
 		return perf_cap;
+
+	if (!enable_pmu)
+		return 0;
 
 	if (boot_cpu_has(X86_FEATURE_PDCM))
 		rdmsrl(MSR_IA32_PERF_CAPABILITIES, perf_cap);
