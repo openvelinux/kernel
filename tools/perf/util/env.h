@@ -42,10 +42,10 @@ struct hybrid_node {
 	char	*cpus;
 };
 
-struct hybrid_cpc_node {
-	int		nr_cpu_pmu_caps;
+struct pmu_caps {
+	int		nr_caps;
 	unsigned int    max_branches;
-	char            **cpu_pmu_caps;
+	char            **caps;
 	char            *pmu_name;
 };
 
@@ -73,7 +73,7 @@ struct perf_env {
 	int			nr_groups;
 	int			nr_cpu_pmu_caps;
 	int			nr_hybrid_nodes;
-	int			nr_hybrid_cpc_nodes;
+	int			nr_pmus_with_caps;
 	char			*cmdline;
 	const char		**cmdline_argv;
 	char			*sibling_cores;
@@ -93,7 +93,7 @@ struct perf_env {
 	struct memory_node	*memory_nodes;
 	unsigned long long	 memory_bsize;
 	struct hybrid_node	*hybrid_nodes;
-	struct hybrid_cpc_node	*hybrid_cpc_nodes;
+	struct pmu_caps		*pmu_caps;
 #ifdef HAVE_LIBBPF_SUPPORT
 	/*
 	 * bpf_info_lock protects bpf rbtrees. This is needed because the
@@ -175,4 +175,6 @@ struct btf_node *perf_env__find_btf(struct perf_env *env, __u32 btf_id);
 struct btf_node *__perf_env__find_btf(struct perf_env *env, __u32 btf_id);
 
 int perf_env__numa_node(struct perf_env *env, int cpu);
+char *perf_env__find_pmu_cap(struct perf_env *env, const char *pmu_name,
+			     const char *cap);
 #endif /* __PERF_ENV_H */
