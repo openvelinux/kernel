@@ -8,6 +8,7 @@
 #include <linux/spinlock.h>
 #include <linux/device.h>
 #include <linux/mod_devicetable.h>
+#include <linux/dma-mapping.h>
 #include <linux/gfp.h>
 
 /**
@@ -57,6 +58,14 @@ int virtqueue_add_sgs(struct virtqueue *vq,
 		      void *data,
 		      gfp_t gfp);
 
+int virtqueue_add_mapped_buf_split(struct virtqueue *_vq,
+				   struct scatterlist *sgs[],
+				   unsigned int total_sg,
+				   unsigned int out_sgs,
+				   unsigned int in_sgs,
+				   void *data, void *ctx,
+				   gfp_t gfp);
+
 bool virtqueue_kick(struct virtqueue *vq);
 
 bool virtqueue_kick_prepare(struct virtqueue *vq);
@@ -67,6 +76,10 @@ void *virtqueue_get_buf(struct virtqueue *vq, unsigned int *len);
 
 void *virtqueue_get_buf_ctx(struct virtqueue *vq, unsigned int *len,
 			    void **ctx);
+
+void *virtqueue_get_mapped_buf_split(struct virtqueue *_vq,
+				     unsigned int *len,
+				     void **ctx);
 
 void virtqueue_disable_cb(struct virtqueue *vq);
 
@@ -79,6 +92,8 @@ bool virtqueue_poll(struct virtqueue *vq, unsigned);
 bool virtqueue_enable_cb_delayed(struct virtqueue *vq);
 
 void *virtqueue_detach_unused_buf(struct virtqueue *vq);
+
+void *virtqueue_detach_unused_mapped_buf_split(struct virtqueue *_vq);
 
 unsigned int virtqueue_get_vring_size(struct virtqueue *vq);
 
@@ -139,6 +154,18 @@ int virtio_device_restore(struct virtio_device *dev);
 #endif
 
 size_t virtio_max_dma_size(struct virtio_device *vdev);
+
+dma_addr_t virtio_dma_map_sg(struct virtio_device *dev,
+			     struct scatterlist *sg,
+			     enum dma_data_direction direction);
+
+dma_addr_t virtio_dma_map(struct virtio_device *dev, void *addr,
+			  unsigned int length, enum dma_data_direction dir);
+
+int virtio_dma_mapping_error(struct virtio_device *dev, dma_addr_t addr);
+
+void virtio_dma_unmap(struct virtio_device *dev, dma_addr_t dma,
+		      unsigned int length, enum dma_data_direction dir);
 
 #define virtio_device_for_each_vq(vdev, vq) \
 	list_for_each_entry(vq, &vdev->vqs, list)
