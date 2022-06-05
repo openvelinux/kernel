@@ -6009,7 +6009,7 @@ static int io_close(struct io_kiocb *req, unsigned int issue_flags)
 	struct files_struct *files = current->files;
 	struct io_close *close = &req->close;
 	struct fdtable *fdt;
-	struct file *file = NULL;
+	struct file *file;
 	int ret = -EBADF;
 
 	if (req->close.file_slot) {
@@ -6028,7 +6028,6 @@ static int io_close(struct io_kiocb *req, unsigned int issue_flags)
 			lockdep_is_held(&files->file_lock));
 	if (!file || file->f_op == &io_uring_fops) {
 		spin_unlock(&files->file_lock);
-		file = NULL;
 		goto err;
 	}
 
@@ -6048,8 +6047,6 @@ static int io_close(struct io_kiocb *req, unsigned int issue_flags)
 err:
 	if (ret < 0)
 		req_set_fail(req);
-	if (file)
-		fput(file);
 	__io_req_complete(req, issue_flags, ret, 0);
 	return 0;
 }
