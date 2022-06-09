@@ -3814,6 +3814,14 @@ int proto_register(struct proto *prot, int alloc_slab)
 {
 	int ret = -ENOBUFS;
 
+	if (prot->memory_allocated && !prot->sysctl_mem) {
+		pr_err("%s: missing sysctl_mem\n", prot->name);
+		return -EINVAL;
+	}
+	if (prot->memory_allocated && !prot->per_cpu_fw_alloc) {
+		pr_err("%s: missing per_cpu_fw_alloc\n", prot->name);
+		return -EINVAL;
+	}
 	if (alloc_slab) {
 		prot->slab = kmem_cache_create_usercopy(prot->name,
 					prot->obj_size, 0,
