@@ -1627,24 +1627,17 @@ static inline void sk_mem_charge(struct sock *sk, int size)
 	sk->sk_forward_alloc -= size;
 }
 
+/* the following macros control memory reclaiming in mptcp_rmem_uncharge()
+ */
+#define SK_RECLAIM_THRESHOLD	(1 << 21)
+#define SK_RECLAIM_CHUNK	(1 << 20)
+
 static inline void sk_mem_uncharge(struct sock *sk, int size)
 {
-	int reclaimable;
-
 	if (!sk_has_account(sk))
 		return;
 	sk->sk_forward_alloc += size;
-	reclaimable = sk->sk_forward_alloc - sk_unused_reserved_mem(sk);
-
-	/* Avoid a possible overflow.
-	 * TCP send queues can make this happen, if sk_mem_reclaim()
-	 * is not called and more than 2 GBytes are released at once.
-	 *
-	 * If we reach 2 MBytes, reclaim 1 MBytes right now, there is
-	 * no need to hold that much forward allocation anyway.
-	 */
-	if (unlikely(reclaimable >= 1 << 21))
-		__sk_mem_reclaim(sk, 1 << 20);
+	sk_mem_reclaim(sk);
 }
 
 static inline void sk_wmem_free_skb(struct sock *sk, struct sk_buff *skb)
@@ -1660,6 +1653,7 @@ static inline void sock_release_ownership(struct sock *sk)
 
 	/* The sk_lock has mutex_unlock() semantics: */
 	mutex_release(&sk->sk_lock.dep_map, _RET_IP_);
+	sk_mem_reclaim(sk);
 }
 
 /*
