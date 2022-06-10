@@ -2677,6 +2677,13 @@ err:
 	return err;
 }
 
+static inline bool pos_same_compound_page(loff_t pos1, loff_t pos2, struct page *head)
+{
+	unsigned int shift = page_shift(head);
+
+	return (pos1 >> shift == pos2 >> shift);
+}
+
 /**
  * filemap_read - Read data from the page cache.
  * @iocb: The iocb to read.
@@ -2754,11 +2761,11 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		writably_mapped = mapping_writably_mapped(mapping);
 
 		/*
-		 * When a sequential read accesses a page several times, only
+		 * When a read accesses the same compound pages several times, only
 		 * mark it as accessed the first time.
 		 */
-		if (iocb->ki_pos >> PAGE_SHIFT !=
-		    ra->prev_pos >> PAGE_SHIFT)
+		if (!pos_same_compound_page(iocb->ki_pos, ra->prev_pos - 1,
+				compound_head(pvec.pages[0])))
 			mark_page_accessed(pvec.pages[0]);
 
 		for (i = 0; i < pagevec_count(&pvec); i++) {
