@@ -646,6 +646,20 @@ void del_gendisk(struct gendisk *disk)
 
 	blk_sync_queue(q);
 	blk_flush_integrity();
+	blk_mq_cancel_work_sync(q);
+
+	blk_mq_quiesce_queue(q);
+	if (q->elevator) {
+		ioc_clear_queue(q);
+		
+		mutex_lock(&q->sysfs_lock);
+		blk_mq_sched_free_rqs(q);
+		__elevator_exit(q, q->elevator);
+		mutex_unlock(&q->sysfs_lock);
+	}
+	rq_qos_exit(q);
+	blk_mq_unquiesce_queue(q);
+
 	/*
 	 * Allow using passthrough request again after the queue is torn down.
 	 */
@@ -1111,34 +1125,6 @@ static const struct attribute_group *disk_attr_groups[] = {
 	NULL
 };
 
-static void disk_release_mq(struct request_queue *q)
-{
-	blk_mq_cancel_work_sync(q);
-
-	/*
-	 * There can't be any non non-passthrough bios in flight here, but
-	 * requests stay around longer, including passthrough ones so we
-	 * still need to freeze the queue here.
-	 */
-	blk_mq_freeze_queue(q);
-
-	/*
-	 * Since the I/O scheduler exit code may access cgroup information,
-	 * perform I/O scheduler exit before disassociating from the block
-	 * cgroup controller.
-	 */
-	if (q->elevator) {
-		ioc_clear_queue(q);
-
-		mutex_lock(&q->sysfs_lock);
-		blk_mq_sched_free_rqs(q);
-		__elevator_exit(q, q->elevator);
-		mutex_unlock(&q->sysfs_lock);
-	}
-	rq_qos_exit(q);
-	__blk_mq_unfreeze_queue(q, true);
-}
-
 /**
  * disk_release - releases all allocated resources of the gendisk
  * @dev: the device representing this disk
@@ -1159,9 +1145,6 @@ static void disk_release(struct device *dev)
 
 	might_sleep();
 	WARN_ON_ONCE(disk_live(disk));
-
-	if (queue_is_mq(disk->queue))
-		disk_release_mq(disk->queue);
 
 	blkcg_exit_queue(disk->queue);
 
