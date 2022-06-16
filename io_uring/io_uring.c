@@ -2458,6 +2458,8 @@ static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
 	io_destroy_buffers(ctx);
 	if (ctx->sq_creds)
 		put_cred(ctx->sq_creds);
+	if (ctx->submitter_task)
+		put_task_struct(ctx->submitter_task);
 
 	/* there are no registered resources left, nobody uses it */
 	if (ctx->rsrc_node)
@@ -3190,7 +3192,7 @@ static int io_uring_install_fd(struct io_ring_ctx *ctx, struct file *file)
 	if (fd < 0)
 		return fd;
 
-	ret = io_uring_add_tctx_node(ctx);
+	ret = __io_uring_add_tctx_node(ctx, false);
 	if (ret) {
 		put_unused_fd(fd);
 		return ret;
@@ -3410,7 +3412,8 @@ static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 			IORING_SETUP_CLAMP | IORING_SETUP_ATTACH_WQ |
 			IORING_SETUP_R_DISABLED | IORING_SETUP_SUBMIT_ALL |
 			IORING_SETUP_COOP_TASKRUN | IORING_SETUP_TASKRUN_FLAG |
-			IORING_SETUP_SQE128 | IORING_SETUP_CQE32))
+			IORING_SETUP_SQE128 | IORING_SETUP_CQE32 |
+			IORING_SETUP_SINGLE_ISSUER))
 		return -EINVAL;
 
 	return io_uring_create(entries, &p, params);
