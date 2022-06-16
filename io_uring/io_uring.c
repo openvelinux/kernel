@@ -81,7 +81,6 @@
 
 #include "io-wq.h"
 
-#include "io_uring_types.h"
 #include "io_uring.h"
 #include "opdef.h"
 #include "refs.h"
