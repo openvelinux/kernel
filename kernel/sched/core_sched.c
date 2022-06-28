@@ -58,7 +58,6 @@ unsigned long sched_core_update_cookie(struct task_struct *p, unsigned long cook
 	unsigned long old_cookie;
 	struct rq_flags rf;
 	struct rq *rq;
-	bool enqueued;
 
 	rq = task_rq_lock(p, &rf);
 
@@ -70,14 +69,16 @@ unsigned long sched_core_update_cookie(struct task_struct *p, unsigned long cook
 	 */
 	SCHED_WARN_ON((p->core_cookie || cookie) && !sched_core_enabled(rq));
 
-	enqueued = sched_core_enqueued(p);
-	if (enqueued)
+	if (sched_core_enqueued(p))
 		sched_core_dequeue(rq, p, DEQUEUE_SAVE);
 
 	old_cookie = p->core_cookie;
 	p->core_cookie = cookie;
 
-	if (enqueued)
+	/*
+	 * Consider the cases: !prev_cookie and !cookie.
+	 */
+	if (cookie && task_on_rq_queued(p))
 		sched_core_enqueue(rq, p);
 
 	/*
