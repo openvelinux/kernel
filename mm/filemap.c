@@ -1935,6 +1935,10 @@ no_page:
 			gfp_mask |= __GFP_WRITE;
 		if (fgp_flags & FGP_NOFS)
 			gfp_mask &= ~__GFP_FS;
+		if (fgp_flags & FGP_NOWAIT) {
+			gfp_mask &= ~GFP_KERNEL;
+			gfp_mask |= GFP_NOWAIT | __GFP_NOWARN;
+		}
 
 		page = __page_cache_alloc(gfp_mask);
 		if (!page)
