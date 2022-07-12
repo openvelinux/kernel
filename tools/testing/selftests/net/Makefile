@@ -49,6 +49,7 @@ TEST_GEN_FILES += gro
 TEST_GEN_PROGS = reuseport_bpf reuseport_bpf_cpu reuseport_bpf_numa
 TEST_GEN_PROGS += reuseport_dualstack reuseaddr_conflict tls
 TEST_GEN_FILES += toeplitz
+TEST_GEN_FILES += io_uring_zerocopy_tx
 
 TEST_FILES := settings
 
