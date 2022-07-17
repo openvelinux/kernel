@@ -1614,14 +1614,17 @@ static int vduse_blk_timeout_handler(struct vduse_dev *dev,
 {
 	size_t len = 0;
 	ssize_t bytes;
-	unsigned short head;
+	unsigned short head = vq->vring.vring.num;
 	u8 status;
 	int ret;
 
 	ret = vringh_getdesc_iotlb(&vq->vring, &vq->out_iov, &vq->in_iov,
 				   &head, GFP_ATOMIC);
-	if (ret != 1)
+	if (ret != 1) {
+		if (ret < 0 && head != vq->vring.vring.num)
+			goto err;
 		return ret;
+	}
 
 	if (vq->out_iov.used < 1 || vq->in_iov.used < 1) {
 		pr_err("VDUSE: missing headers - out_iov: %u in_iov %u\n",
@@ -1667,14 +1670,17 @@ static int vduse_fs_timeout_handler(struct vduse_dev *dev,
 {
 	size_t len = 0;
 	ssize_t bytes;
-	unsigned short head;
+	unsigned short head = vq->vring.vring.num;
 	int ret;
 	struct fuse_out_header out;
 
 	ret = vringh_getdesc_iotlb(&vq->vring, &vq->out_iov, &vq->in_iov,
 				   &head, GFP_ATOMIC);
-	if (ret != 1)
+	if (ret != 1) {
+		if (ret < 0 && head != vq->vring.vring.num)
+			goto err;
 		return ret;
+	}
 
 	len = vringh_kiov_length(&vq->in_iov);
 	if (!len)
