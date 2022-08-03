@@ -232,4 +232,27 @@ struct vduse_vq_info {
 /* Get the specified virtqueue's information. Caller should set index field. */
 #define VDUSE_VQ_GET_INFO	_IOWR(VDUSE_BASE, 0x15, struct vduse_vq_info)
 
+/**
+ * struct vduse_iova_umem - userspace memory configuration for one IOVA region
+ * @uaddr: start address of userspace memory, it must be aligned to page size
+ * @iova: start of the IOVA region
+ * @size: size of the IOVA region
+ * @reserved: for future use, needs to be initialized to zero
+ *
+ * Structure used by VDUSE_IOTLB_REG_UMEM and VDUSE_IOTLB_DEREG_UMEM
+ * ioctls to register/de-register userspace memory for IOVA regions
+ */
+struct vduse_iova_umem {
+	__u64 uaddr;
+	__u64 iova;
+	__u64 size;
+	__u64 reserved[3];
+};
+
+/* Register userspace memory for IOVA regions */
+#define VDUSE_IOTLB_REG_UMEM	_IOW(VDUSE_BASE, 0x18, struct vduse_iova_umem)
+
+/* De-register the userspace memory. Caller should set iova and size field. */
+#define VDUSE_IOTLB_DEREG_UMEM	_IOW(VDUSE_BASE, 0x19, struct vduse_iova_umem)
+
 #endif /* _UAPI_VDUSE_H_ */
