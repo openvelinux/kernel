@@ -651,7 +651,7 @@ static inline u64 amd_pmu_get_global_status(void)
 	/* PerfCntrGlobalStatus is read-only */
 	rdmsrl(MSR_AMD64_PERF_CNTR_GLOBAL_STATUS, status);
 
-	return status & amd_pmu_global_cntr_mask;
+	return status;
 }
 
 static inline void amd_pmu_ack_global_status(u64 status)
@@ -662,8 +662,6 @@ static inline void amd_pmu_ack_global_status(u64 status)
 	 * clears the same bit in PerfCntrGlobalStatus
 	 */
 
-	/* Only allow modifications to PerfCntrGlobalStatus.PerfCntrOvfl */
-	status &= amd_pmu_global_cntr_mask;
 	wrmsrl(MSR_AMD64_PERF_CNTR_GLOBAL_STATUS_CLR, status);
 }
 
@@ -776,9 +774,15 @@ static void amd_pmu_v2_enable_event(struct perf_event *event)
 	__x86_pmu_enable_event(hwc, ARCH_PERFMON_EVENTSEL_ENABLE);
 }
 
-static void amd_pmu_v2_enable_all(int added)
+static __always_inline void amd_pmu_core_enable_all(void)
 {
 	amd_pmu_set_global_ctl(amd_pmu_global_cntr_mask);
+}
+
+static void amd_pmu_v2_enable_all(int added)
+{
+	amd_pmu_lbr_enable_all();
+	amd_pmu_core_enable_all();
 }
 
 static void amd_pmu_disable_event(struct perf_event *event)
@@ -805,10 +809,15 @@ static void amd_pmu_disable_all(void)
 	amd_pmu_check_overflow();
 }
 
+static __always_inline void amd_pmu_core_disable_all(void)
+{
+	amd_pmu_set_global_ctl(0);
+}
+
 static void amd_pmu_v2_disable_all(void)
 {
-	/* Disable all PMCs */
-	amd_pmu_set_global_ctl(0);
+	amd_pmu_core_disable_all();
+	amd_pmu_lbr_disable_all();
 	amd_pmu_check_overflow();
 }
 
@@ -910,8 +919,8 @@ static int amd_pmu_v2_handle_irq(struct pt_regs *regs)
 	pmu_enabled = cpuc->enabled;
 	cpuc->enabled = 0;
 
-	/* Stop counting */
-	amd_pmu_v2_disable_all();
+	/* Stop counting but do not disable LBR */
+	amd_pmu_core_disable_all();
 
 	status = amd_pmu_get_global_status();
 
@@ -919,13 +928,11 @@ static int amd_pmu_v2_handle_irq(struct pt_regs *regs)
 	if (!status)
 		goto done;
 
-	reserved = status & ~amd_pmu_global_cntr_mask;
-	if (reserved)
-		pr_warn_once("Reserved PerfCntrGlobalStatus bits are set (0x%llx), please consider updating microcode\n",
-			     reserved);
-
-	/* Clear any reserved bits set by buggy microcode */
-	status &= amd_pmu_global_cntr_mask;
+	/* Read branch records before unfreezing */
+	if (status & GLOBAL_STATUS_LBRS_FROZEN) {
+		amd_pmu_lbr_read();
+		status &= ~GLOBAL_STATUS_LBRS_FROZEN;
+	}
 
 	for (idx = 0; idx < x86_pmu.num_counters; idx++) {
 		if (!test_bit(idx, cpuc->active_mask))
@@ -947,6 +954,9 @@ static int amd_pmu_v2_handle_irq(struct pt_regs *regs)
 		if (!x86_perf_event_set_period(event))
 			continue;
 
+		if (has_branch_stack(event))
+			data.br_stack = &cpuc->lbr_stack;
+
 		if (perf_event_overflow(event, &data, regs))
 			x86_pmu_stop(event, 0);
 	}
@@ -958,7 +968,7 @@ static int amd_pmu_v2_handle_irq(struct pt_regs *regs)
 	 */
 	WARN_ON(status > 0);
 
-	/* Clear overflow bits */
+	/* Clear overflow and freeze bits */
 	amd_pmu_ack_global_status(~status);
 
 	/*
@@ -972,7 +982,7 @@ done:
 
 	/* Resume counting only if PMU is active */
 	if (pmu_enabled)
-		amd_pmu_v2_enable_all(0);
+		amd_pmu_core_enable_all();
 
 	return amd_pmu_adjust_nmi_window(handled);
 }
@@ -1415,7 +1425,14 @@ static int __init amd_core_pmu_init(void)
 	}
 
 	/* LBR and BRS are mutually exclusive features */
-	if (amd_pmu_lbr_init() && !amd_brs_init()) {
+	if (!amd_pmu_lbr_init()) {
+		/* LBR requires flushing on context switch */
+		x86_pmu.sched_task = amd_pmu_lbr_sched_task;
+		static_call_update(amd_pmu_branch_hw_config, amd_pmu_lbr_hw_config);
+		static_call_update(amd_pmu_branch_reset, amd_pmu_lbr_reset);
+		static_call_update(amd_pmu_branch_add, amd_pmu_lbr_add);
+		static_call_update(amd_pmu_branch_del, amd_pmu_lbr_del);
+	} else if (!amd_brs_init()) {
 		/*
 		 * BRS requires special event constraints and flushing on ctxsw.
 		 */
