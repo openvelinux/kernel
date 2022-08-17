@@ -81,6 +81,8 @@ struct ipv6_bpf_stub {
 				     const struct in6_addr *daddr, __be16 dport,
 				     int dif, int sdif, struct udp_table *tbl,
 				     struct sk_buff *skb);
+	int (*ipv6_setsockopt)(struct sock *sk, int level, int optname,
+			       sockptr_t optval, unsigned int optlen);
 	int (*ipv6_dev_get_saddr)(struct net *net,
 				  const struct net_device *dst_dev,
 				  const struct in6_addr *daddr,
