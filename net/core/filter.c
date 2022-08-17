@@ -4861,8 +4861,7 @@ static int _bpf_setsockopt(struct sock *sk, int level, int optname,
 		default:
 			ret = -EINVAL;
 		}
-#ifdef CONFIG_INET
-	} else if (level == SOL_IP) {
+	} else if (IS_ENABLED(CONFIG_INET) && level == SOL_IP) {
 		if (optlen != sizeof(int) || sk->sk_family != AF_INET)
 			return -EINVAL;
 
@@ -4883,8 +4882,7 @@ static int _bpf_setsockopt(struct sock *sk, int level, int optname,
 		default:
 			ret = -EINVAL;
 		}
-#if IS_ENABLED(CONFIG_IPV6)
-	} else if (level == SOL_IPV6) {
+	} else if (IS_ENABLED(CONFIG_IPV6) && level == SOL_IPV6) {
 		if (optlen != sizeof(int) || sk->sk_family != AF_INET6)
 			return -EINVAL;
 
@@ -4905,8 +4903,7 @@ static int _bpf_setsockopt(struct sock *sk, int level, int optname,
 		default:
 			ret = -EINVAL;
 		}
-#endif
-	} else if (level == SOL_TCP &&
+	} else if (IS_ENABLED(CONFIG_INET) && level == SOL_TCP &&
 		   sk->sk_prot->setsockopt == tcp_setsockopt) {
 		if (optname == TCP_CONGESTION) {
 			char name[TCP_CA_NAME_MAX];
@@ -4998,7 +4995,6 @@ static int _bpf_setsockopt(struct sock *sk, int level, int optname,
 				ret = -EINVAL;
 			}
 		}
-#endif
 	} else {
 		ret = -EINVAL;
 	}
