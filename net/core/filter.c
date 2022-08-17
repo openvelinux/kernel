@@ -4770,6 +4770,7 @@ static int sol_socket_setsockopt(struct sock *sk, int optname,
 				 char *optval, int optlen)
 {
 	switch (optname) {
+	case SO_REUSEADDR:
 	case SO_SNDBUF:
 	case SO_RCVBUF:
 	case SO_KEEPALIVE:
@@ -4845,11 +4846,14 @@ static int sol_tcp_setsockopt(struct sock *sk, int optname,
 		return -EINVAL;
 
 	switch (optname) {
+	case TCP_NODELAY:
+	case TCP_MAXSEG:
 	case TCP_KEEPIDLE:
 	case TCP_KEEPINTVL:
 	case TCP_KEEPCNT:
 	case TCP_SYNCNT:
 	case TCP_WINDOW_CLAMP:
+	case TCP_THIN_LINEAR_TIMEOUTS:
 	case TCP_USER_TIMEOUT:
 	case TCP_NOTSENT_LOWAT:
 	case TCP_SAVE_SYN:
@@ -4893,6 +4897,7 @@ static int sol_ipv6_setsockopt(struct sock *sk, int optname,
 
 	switch (optname) {
 	case IPV6_TCLASS:
+	case IPV6_AUTOFLOWLABEL:
 		if (optlen != sizeof(int))
 			return -EINVAL;
 		break;
