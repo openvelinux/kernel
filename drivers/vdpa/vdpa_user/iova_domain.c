@@ -258,7 +258,6 @@ vduse_domain_free_bounce_pages(struct vduse_iova_domain *domain)
 	struct vduse_bounce_map *map;
 	unsigned long pfn, bounce_pfns;
 
-	spin_lock(&domain->iotlb_lock);
 	bounce_pfns = domain->bounce_size >> PAGE_SHIFT;
 
 	for (pfn = 0; pfn < bounce_pfns; pfn++) {
@@ -272,7 +271,6 @@ vduse_domain_free_bounce_pages(struct vduse_iova_domain *domain)
 		__free_page(map->bounce_page);
 		map->bounce_page = NULL;
 	}
-	spin_unlock(&domain->iotlb_lock);
 }
 
 void vduse_domain_reset_bounce_map(struct vduse_iova_domain *domain)
@@ -485,8 +483,10 @@ static int vduse_domain_release(struct inode *inode, struct file *file)
 {
 	struct vduse_iova_domain *domain = file->private_data;
 
-	vduse_domain_reset_bounce_map(domain);
+	spin_lock(&domain->iotlb_lock);
+	vduse_iotlb_del_range(domain, 0, ULLONG_MAX);
 	vduse_domain_free_bounce_pages(domain);
+	spin_unlock(&domain->iotlb_lock);
 	put_iova_domain(&domain->stream_iovad);
 	put_iova_domain(&domain->consistent_iovad);
 	vhost_iotlb_free(domain->iotlb);
