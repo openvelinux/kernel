@@ -923,6 +923,7 @@ void blk_execute_rq_nowait(struct gendisk *, struct request *, int,
 		rq_end_io_fn *);
 blk_status_t blk_execute_rq(struct gendisk *bd_disk, struct request *rq,
 		int at_head);
+bool blk_rq_is_poll(struct request *rq);
 
 struct req_iterator {
 	struct bvec_iter iter;
