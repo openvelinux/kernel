@@ -118,9 +118,12 @@
 #define INTEL_FAM6_RAPTORLAKE_P		0xBA
 #define INTEL_FAM6_RAPTORLAKE_S		0xBF
 
-#define INTEL_FAM6_LUNARLAKE_M		0xBD
+#define INTEL_FAM6_METEORLAKE		0xAC
+#define INTEL_FAM6_METEORLAKE_L		0xAA
 
 #define INTEL_FAM6_ARROWLAKE		0xC6
+
+#define INTEL_FAM6_LUNARLAKE_M		0xBD
 
 /* "Small Core" Processors (Atom/E-Core) */
 
