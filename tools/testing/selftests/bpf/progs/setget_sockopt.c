@@ -316,6 +316,7 @@ static int bpf_test_tcp_sockopt(int i, void *ctx, struct sock *sk)
 	if (t->opt == TCP_CONGESTION) {
 		char old_cc[16], tmp_cc[16];
 		const char *new_cc;
+		int new_cc_len;
 		int i;
 
 		if (bpf_getsockopt(ctx, IPPROTO_TCP, TCP_CONGESTION, old_cc, sizeof(old_cc)))
@@ -327,12 +328,15 @@ static int bpf_test_tcp_sockopt(int i, void *ctx, struct sock *sk)
 			if (old_cc[i] != cubic_cc[i])
 				break;
 		}
-		if (i == 5)
+		if (i == 5) {
 			new_cc = reno_cc;
-		else
+			new_cc_len = sizeof(reno_cc);
+		} else {
 			new_cc = cubic_cc;
+			new_cc_len = sizeof(cubic_cc);
+		}
 		if (bpf_setsockopt(ctx, IPPROTO_TCP, TCP_CONGESTION, (void *)new_cc,
-				   sizeof(new_cc)))
+				   new_cc_len))
 			return 1;
 		if (bpf_getsockopt(ctx, IPPROTO_TCP, TCP_CONGESTION, tmp_cc, sizeof(tmp_cc)))
 			return 1;
