@@ -884,7 +884,7 @@ static struct arm_pmu *__armpmu_alloc(gfp_t flags)
 		 * and we have taken ctx sharing into account (e.g. with our
 		 * pmu::filter callback and pmu::event_init group validation).
 		 */
-		.capabilities	= PERF_PMU_CAP_HETEROGENEOUS_CPUS,
+		.capabilities	= PERF_PMU_CAP_HETEROGENEOUS_CPUS | PERF_PMU_CAP_EXTENDED_REGS,
 	};
 
 	pmu->attr_groups[ARMPMU_ATTR_GROUP_COMMON] =
