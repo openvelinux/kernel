@@ -83,6 +83,8 @@ struct ipv6_bpf_stub {
 				     struct sk_buff *skb);
 	int (*ipv6_setsockopt)(struct sock *sk, int level, int optname,
 			       sockptr_t optval, unsigned int optlen);
+	int (*ipv6_getsockopt)(struct sock *sk, int level, int optname,
+			       sockptr_t optval, sockptr_t optlen);
 	int (*ipv6_dev_get_saddr)(struct net *net,
 				  const struct net_device *dst_dev,
 				  const struct in6_addr *daddr,
