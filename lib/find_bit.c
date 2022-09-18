@@ -19,6 +19,97 @@
 #include <linux/minmax.h>
 #include <linux/swab.h>
 
+#define FIND_NTH_BIT(FETCH, size, num)						\
+({										\
+	unsigned long sz = (size), nr = (num), idx, w, tmp;			\
+										\
+	for (idx = 0; (idx + 1) * BITS_PER_LONG <= sz; idx++) {			\
+		if (idx * BITS_PER_LONG + nr >= sz)				\
+			goto out;						\
+										\
+		tmp = (FETCH);							\
+		w = hweight_long(tmp);						\
+		if (w > nr)							\
+			goto found;						\
+										\
+		nr -= w;							\
+	}									\
+										\
+	if (sz % BITS_PER_LONG)							\
+		tmp = (FETCH) & BITMAP_LAST_WORD_MASK(sz);			\
+found:										\
+	sz = min(idx * BITS_PER_LONG + fns(tmp, nr), sz);			\
+out:										\
+	sz;									\
+})
+
+unsigned long __find_nth_bit(const unsigned long *addr, unsigned long size, unsigned long n)
+{
+	return FIND_NTH_BIT(addr[idx], size, n);
+}
+EXPORT_SYMBOL(__find_nth_bit);
+
+unsigned long __find_nth_and_bit(const unsigned long *addr1, const unsigned long *addr2,
+				 unsigned long size, unsigned long n)
+{
+	return FIND_NTH_BIT(addr1[idx] & addr2[idx], size, n);
+}
+EXPORT_SYMBOL(__find_nth_and_bit);
+
+unsigned long __find_nth_andnot_bit(const unsigned long *addr1, const unsigned long *addr2,
+				 unsigned long size, unsigned long n)
+{
+	return FIND_NTH_BIT(addr1[idx] & ~addr2[idx], size, n);
+}
+EXPORT_SYMBOL(__find_nth_andnot_bit);
+
+unsigned long find_nth_bit(const unsigned long *addr, unsigned long size, unsigned long n)
+{
+	if (n >= size)
+		return size;
+
+	if (small_const_nbits(size)) {
+		unsigned long val =  *addr & GENMASK(size - 1, 0);
+
+		return val ? fns(val, n) : size;
+	}
+
+	return __find_nth_bit(addr, size, n);
+}
+EXPORT_SYMBOL(find_nth_bit);
+
+unsigned long find_nth_and_bit(const unsigned long *addr1, const unsigned long *addr2,
+				unsigned long size, unsigned long n)
+{
+	if (n >= size)
+		return size;
+
+	if (small_const_nbits(size)) {
+		unsigned long val =  *addr1 & *addr2 & GENMASK(size - 1, 0);
+
+		return val ? fns(val, n) : size;
+	}
+
+	return __find_nth_and_bit(addr1, addr2, size, n);
+}
+EXPORT_SYMBOL(find_nth_and_bit);
+
+unsigned long find_nth_andnot_bit(const unsigned long *addr1, const unsigned long *addr2,
+				unsigned long size, unsigned long n)
+{
+	if (n >= size)
+		return size;
+
+	if (small_const_nbits(size)) {
+		unsigned long val =  *addr1 & (~*addr2) & GENMASK(size - 1, 0);
+
+		return val ? fns(val, n) : size;
+	}
+
+	return __find_nth_andnot_bit(addr1, addr2, size, n);
+}
+EXPORT_SYMBOL(find_nth_andnot_bit);
+
 #if !defined(find_next_bit) || !defined(find_next_zero_bit) ||			\
 	!defined(find_next_bit_le) || !defined(find_next_zero_bit_le) ||	\
 	!defined(find_next_and_bit)
