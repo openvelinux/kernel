@@ -2,6 +2,48 @@
 #ifndef _ASM_GENERIC_BITOPS_FIND_H_
 #define _ASM_GENERIC_BITOPS_FIND_H_
 
+/**
+ * find_nth_bit - find N'th set bit in a memory region
+ * @addr: The address to start the search at
+ * @size: The maximum number of bits to search
+ * @n: The number of set bit, which position is needed, counting from 0
+ *
+ * The following is semantically equivalent:
+ *	 idx = find_nth_bit(addr, size, 0);
+ *	 idx = find_first_bit(addr, size);
+ *
+ * Returns the bit number of the N'th set bit.
+ * If no such, returns @size.
+ */
+extern unsigned long find_nth_bit(const unsigned long *addr, unsigned long size, unsigned long n);
+
+/**
+ * find_nth_and_bit - find N'th set bit in 2 memory regions
+ * @addr1: The 1st address to start the search at
+ * @addr2: The 2nd address to start the search at
+ * @size: The maximum number of bits to search
+ * @n: The number of set bit, which position is needed, counting from 0
+ *
+ * Returns the bit number of the N'th set bit.
+ * If no such, returns @size.
+ */
+extern unsigned long find_nth_and_bit(const unsigned long *addr1, const unsigned long *addr2,
+					unsigned long size, unsigned long n);
+
+/**
+ * find_nth_andnot_bit - find N'th set bit in 2 memory regions,
+ *			 flipping bits in 2nd region
+ * @addr1: The 1st address to start the search at
+ * @addr2: The 2nd address to start the search at
+ * @size: The maximum number of bits to search
+ * @n: The number of set bit, which position is needed, counting from 0
+ *
+ * Returns the bit number of the N'th set bit.
+ * If no such, returns @size.
+ */
+extern unsigned long find_nth_andnot_bit(const unsigned long *addr1, const unsigned long *addr2,
+					unsigned long size, unsigned long n);
+
 extern unsigned long _find_next_bit(const unsigned long *addr1,
 		const unsigned long *addr2, unsigned long nbits,
 		unsigned long start, unsigned long invert, unsigned long le);
