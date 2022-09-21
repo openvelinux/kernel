@@ -849,7 +849,8 @@ inline void __blk_mq_end_request(struct request *rq, blk_status_t error)
 
 	if (rq->end_io) {
 		rq_qos_done(rq->q, rq);
-		rq->end_io(rq, error);
+		if (rq->end_io(rq, error) == RQ_END_IO_FREE)
+			blk_mq_free_request(rq);
 	} else {
 		blk_mq_free_request(rq);
 	}
@@ -1103,7 +1104,7 @@ EXPORT_SYMBOL(blk_mq_start_request);
  * @rq: request to complete
  * @error: end I/O status of the request
  */
-static void blk_end_sync_rq(struct request *rq, blk_status_t error)
+static enum rq_end_io_ret blk_end_sync_rq(struct request *rq, blk_status_t error)
 {
 	struct completion *waiting = rq->end_io_data;
 
@@ -1114,6 +1115,7 @@ static void blk_end_sync_rq(struct request *rq, blk_status_t error)
 	 * the rq pointer) could be invalid right after this complete()
 	 */
 	complete(waiting);
+	return RQ_END_IO_NONE;
 }
 
 /*
@@ -1423,10 +1425,12 @@ static bool blk_mq_req_expired(struct request *rq, unsigned long *next)
 
 void blk_mq_put_rq_ref(struct request *rq)
 {
-	if (is_flush_rq(rq))
-		rq->end_io(rq, 0);
-	else if (refcount_dec_and_test(&rq->ref))
+	if (is_flush_rq(rq)) {
+		if (rq->end_io(rq, 0) == RQ_END_IO_FREE)
+			blk_mq_free_request(rq);
+	} else if (refcount_dec_and_test(&rq->ref)) {
 		__blk_mq_free_request(rq);
+	}
 }
 
 static bool blk_mq_check_expired(struct request *rq, void *priv, bool reserved)
