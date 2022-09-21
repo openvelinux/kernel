@@ -88,7 +88,19 @@ static inline struct blk_mq_hw_ctx *blk_mq_map_queue_type(struct request_queue *
 {
 	return q->queue_hw_ctx[q->tag_set->map[type].mq_map[cpu]];
 }
+static inline enum hctx_type blk_mq_get_hctx_type(unsigned int opf)
+{
+	enum hctx_type type = HCTX_TYPE_DEFAULT;
 
+	/*
+	 * The caller ensure that if REQ_POLLED, poll must be enabled.
+	 */
+	if (opf & REQ_POLLED)
+		type = HCTX_TYPE_POLL;
+	else if ((opf & REQ_OP_MASK) == REQ_OP_READ)
+		type = HCTX_TYPE_READ;
+	return type;
+}
 /*
  * blk_mq_map_queue() - map (cmd_flags,type) to hardware queue
  * @q: request queue
