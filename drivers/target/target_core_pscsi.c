@@ -40,7 +40,7 @@ static inline struct pscsi_dev_virt *PSCSI_DEV(struct se_device *dev)
 }
 
 static sense_reason_t pscsi_execute_cmd(struct se_cmd *cmd);
-static void pscsi_req_done(struct request *, blk_status_t);
+static enum rq_end_io_ret pscsi_req_done(struct request *, blk_status_t);
 
 /*	pscsi_attach_hba():
  *
@@ -1039,7 +1039,7 @@ static sector_t pscsi_get_blocks(struct se_device *dev)
 	return 0;
 }
 
-static void pscsi_req_done(struct request *req, blk_status_t status)
+static enum rq_end_io_ret pscsi_req_done(struct request *req, blk_status_t status)
 {
 	struct se_cmd *cmd = req->end_io_data;
 	struct pscsi_plugin_task *pt = cmd->priv;
@@ -1069,6 +1069,7 @@ static void pscsi_req_done(struct request *req, blk_status_t status)
 
 	blk_put_request(req);
 	kfree(pt);
+	return RQ_END_IO_NONE;
 }
 
 static const struct target_backend_ops pscsi_ops = {
