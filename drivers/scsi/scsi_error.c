@@ -2001,9 +2001,10 @@ maybe_retry:
 	}
 }
 
-static void eh_lock_door_done(struct request *req, blk_status_t status)
+static enum rq_end_io_ret eh_lock_door_done(struct request *req, blk_status_t status)
 {
 	blk_put_request(req);
+	return RQ_END_IO_NONE;
 }
 
 /**

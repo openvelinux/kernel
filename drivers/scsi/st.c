@@ -511,7 +511,7 @@ static void st_do_stats(struct scsi_tape *STp, struct request *req)
 	atomic64_dec(&STp->stats->in_flight);
 }
 
-static void st_scsi_execute_end(struct request *req, blk_status_t status)
+static enum rq_end_io_ret st_scsi_execute_end(struct request *req, blk_status_t status)
 {
 	struct st_request *SRpnt = req->end_io_data;
 	struct scsi_request *rq = scsi_req(req);
@@ -531,6 +531,7 @@ static void st_scsi_execute_end(struct request *req, blk_status_t status)
 
 	blk_rq_unmap_user(tmp);
 	blk_put_request(req);
+	return RQ_END_IO_NONE;
 }
 
 static int st_scsi_execute(struct st_request *SRpnt, const unsigned char *cmd,
