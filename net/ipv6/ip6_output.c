@@ -1595,7 +1595,7 @@ emsgsize:
 				paged = true;
 				zc = true;
 			} else {
-				uarg->zerocopy = 0;
+				uarg_to_msgzc(uarg)->zerocopy = 0;
 				skb_zcopy_set(skb, uarg, &extra_uref);
 			}
 		}
