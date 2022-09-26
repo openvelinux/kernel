@@ -237,7 +237,7 @@ fi
 
 if [ -n "$BUILD_TOOLS" ] ; then
 	# Build perf
-	$MAKE -C $srctree/tools/perf LDFLAGS= srctree=$(pwd) prefix=$(pwd)/$tools_dir/usr install
+	$MAKE -C $srctree/tools/perf LDFLAGS= srctree=$(pwd) DESTDIR=$(pwd)/$tools_dir prefix=/usr install
 
 	# Build bpftool
 	$MAKE -C $srctree/tools/bpf/bpftool srctree=$(pwd)
@@ -246,7 +246,12 @@ if [ -n "$BUILD_TOOLS" ] ; then
 	mkdir -p $tools_dir/usr/share/bash-completion/completions
 	cp $srctree/tools/bpf/bpftool/bash-completion/bpftool $tools_dir/usr/share/bash-completion/completions
 
-	dpkg-shlibdeps $tools_dir/usr/sbin/bpftool $tools_dir/usr/bin/* $tools_dir/usr/lib64/traceevent/plugins/*
+	if [ "$(uname -m)" = "x86_64" ]; then
+		LIB=lib64
+	else
+		LIB=lib
+	fi
+	dpkg-shlibdeps $tools_dir/usr/sbin/bpftool $tools_dir/usr/bin/* $tools_dir/usr/$LIB/traceevent/plugins/*
 
 	create_package linux-tools "$tools_dir"
 fi
