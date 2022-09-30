@@ -230,10 +230,24 @@ out_bmd:
 	return ret;
 }
 
+static struct bio *blk_rq_map_bio_alloc(struct request *rq,
+		unsigned int nr_vecs, gfp_t gfp_mask)
+{
+	struct bio *bio;
+
+	bio = bio_kmalloc(gfp_mask, nr_vecs);
+	if (!bio)
+		return NULL;
+	bio->bi_opf |= req_op(rq);
+
+	return bio;
+}
+
 static int bio_map_user_iov(struct request *rq, struct iov_iter *iter,
 		gfp_t gfp_mask)
 {
 	unsigned int max_sectors = queue_max_hw_sectors(rq->q);
+	unsigned int nr_vecs = iov_iter_npages(iter, BIO_MAX_VECS);
 	struct bio *bio;
 	int ret;
 	int j;
@@ -241,10 +255,9 @@ static int bio_map_user_iov(struct request *rq, struct iov_iter *iter,
 	if (!iov_iter_count(iter))
 		return -EINVAL;
 
-	bio = bio_kmalloc(gfp_mask, iov_iter_npages(iter, BIO_MAX_VECS));
-	if (!bio)
+	bio = blk_rq_map_bio_alloc(rq, nr_vecs, gfp_mask);
+	if (bio == NULL)
 		return -ENOMEM;
-	bio->bi_opf |= req_op(rq);
 
 	while (iov_iter_count(iter)) {
 		struct page **pages;
