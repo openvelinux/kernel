@@ -133,14 +133,18 @@ Shared Policy
 	the object share the policy, and all pages allocated for the
 	shared object, by any task, will obey the shared policy.
 
-	As of 2.6.22, only shared memory segments, created by shmget() or
-	mmap(MAP_ANONYMOUS|MAP_SHARED), support shared policy.  When shared
-	policy support was added to Linux, the associated data structures were
-	added to hugetlbfs shmem segments.  At the time, hugetlbfs did not
-	support allocation at fault time--a.k.a lazy allocation--so hugetlbfs
-	shmem segments were never "hooked up" to the shared policy support.
-	Although hugetlbfs segments now support lazy allocation, their support
-	for shared policy has not been completed.
+	As of 2.6.22, only shared memory segments, created by shmget() without
+	SHM_HUGETLB flag or mmap(MAP_ANONYMOUS|MAP_SHARED) without MAP_HUGETLB
+	flag, support shared policy. When shared policy support was added to Linux,
+	the associated data structures were added to hugetlbfs shmem segments.
+	At the time, hugetlbfs did not support allocation at fault time--a.k.a
+	lazy allocation--so hugetlbfs shmem segments were never "hooked up" to
+	the shared policy support. Although hugetlbfs segments now support lazy
+	allocation, their support for shared policy has not been completed.
+
+	after we hooked up hugetlb_vm_ops(set/get_policy):
+	both the shared memory segments created by shmget() with SHM_HUGETLB flag
+	and mmap(MAP_SHARED|MAP_HUGETLB), also support shared policy.
 
 	As mentioned above in :ref:`VMA policies <vma_policy>` section,
 	allocations of page cache pages for regular files mmap()ed
