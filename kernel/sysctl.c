@@ -2877,6 +2877,15 @@ static struct ctl_table vm_table[] = {
 		.mode           = 0644,
 		.proc_handler   = &hugetlb_mempolicy_sysctl_handler,
 	},
+	{
+		.procname       = "hugepages_share_mempolicy_enable",
+		.data           = &sysctl_hugepages_share_mempolicy_enable,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
 #endif
 	 {
 		.procname	= "hugetlb_shm_group",

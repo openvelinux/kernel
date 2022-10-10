@@ -24,6 +24,8 @@ typedef struct { unsigned long pd; } hugepd_t;
 #define __hugepd(x) ((hugepd_t) { (x) })
 #endif
 
+extern int sysctl_hugepages_share_mempolicy_enable;
+
 #ifdef CONFIG_HUGETLB_PAGE
 
 #include <linux/mempolicy.h>
