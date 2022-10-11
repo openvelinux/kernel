@@ -141,4 +141,5 @@ static inline void local_daif_inherit(struct pt_regs *regs)
 	 */
 	write_sysreg(flags, daif);
 }
+
 #endif
