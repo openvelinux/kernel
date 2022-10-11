@@ -8,6 +8,7 @@
 
 struct pt_regs;
 
+int set_handle_nmi_irq(void (*handle_irq)(struct pt_regs *));
 int set_handle_irq(void (*handle_irq)(struct pt_regs *));
 #define set_handle_irq	set_handle_irq
 int set_handle_fiq(void (*handle_fiq)(struct pt_regs *));
