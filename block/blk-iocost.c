@@ -3195,6 +3195,7 @@ static ssize_t ioc_qos_write(struct kernfs_open_file *of, char *input,
 			     size_t nbytes, loff_t off)
 {
 	struct block_device *bdev;
+	struct gendisk *disk;
 	struct ioc *ioc;
 	u32 qos[NR_QOS_PARAMS];
 	bool enable, user;
@@ -3204,6 +3205,7 @@ static ssize_t ioc_qos_write(struct kernfs_open_file *of, char *input,
 	bdev = blkcg_conf_open_bdev(&input);
 	if (IS_ERR(bdev))
 		return PTR_ERR(bdev);
+	disk = bdev->bd_disk;
 
 	ioc = q_to_ioc(bdev_get_queue(bdev));
 	if (!ioc) {
@@ -3290,9 +3292,11 @@ static ssize_t ioc_qos_write(struct kernfs_open_file *of, char *input,
 		blk_stat_enable_accounting(ioc->rqos.q);
 		blk_queue_flag_set(QUEUE_FLAG_RQ_ALLOC_TIME, ioc->rqos.q);
 		ioc->enabled = true;
+		wbt_disable_default(disk->queue);
 	} else {
 		blk_queue_flag_clear(QUEUE_FLAG_RQ_ALLOC_TIME, ioc->rqos.q);
 		ioc->enabled = false;
+		wbt_enable_default(disk->queue);
 	}
 
 	if (user) {
