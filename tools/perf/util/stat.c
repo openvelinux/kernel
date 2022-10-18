@@ -127,18 +127,36 @@ static void evsel__reset_stat_priv(struct evsel *evsel)
 {
 	int i;
 	struct perf_stat_evsel *ps = evsel->stats;
+	struct perf_stat_aggr *aggr = ps->aggr;
 
 	for (i = 0; i < 3; i++)
 		init_stats(&ps->res_stats[i]);
 
 	perf_stat_evsel_id_init(evsel);
+
+	if (aggr)
+		memset(aggr, 0, sizeof(*aggr) * ps->nr_aggr);
 }
 
-static int evsel__alloc_stat_priv(struct evsel *evsel)
+
+static int evsel__alloc_stat_priv(struct evsel *evsel, int nr_aggr)
 {
-	evsel->stats = zalloc(sizeof(struct perf_stat_evsel));
-	if (evsel->stats == NULL)
+	struct perf_stat_evsel *ps;
+
+	ps = zalloc(sizeof(*ps));
+	if (ps == NULL)
 		return -ENOMEM;
+
+	if (nr_aggr) {
+		ps->nr_aggr = nr_aggr;
+		ps->aggr = calloc(nr_aggr, sizeof(*ps->aggr));
+		if (ps->aggr == NULL) {
+			free(ps);
+			return -ENOMEM;
+		}
+	}
+
+	evsel->stats = ps;
 	evsel__reset_stat_priv(evsel);
 	return 0;
 }
@@ -147,8 +165,10 @@ static void evsel__free_stat_priv(struct evsel *evsel)
 {
 	struct perf_stat_evsel *ps = evsel->stats;
 
-	if (ps)
+	if (ps) {
+		zfree(&ps->aggr);
 		zfree(&ps->group_data);
+	}
 	zfree(&evsel->stats);
 }
 
@@ -175,12 +195,12 @@ static void evsel__reset_prev_raw_counts(struct evsel *evsel)
 		perf_counts__reset(evsel->prev_raw_counts);
 }
 
-static int evsel__alloc_stats(struct evsel *evsel, bool alloc_raw)
+static int evsel__alloc_stats(struct evsel *evsel, int nr_aggr, bool alloc_raw)
 {
 	int ncpus = evsel__nr_cpus(evsel);
 	int nthreads = perf_thread_map__nr(evsel->core.threads);
 
-	if (evsel__alloc_stat_priv(evsel) < 0 ||
+	if (evsel__alloc_stat_priv(evsel, nr_aggr) < 0 ||
 	    evsel__alloc_counts(evsel, ncpus, nthreads) < 0 ||
 	    (alloc_raw && evsel__alloc_prev_raw_counts(evsel, ncpus, nthreads) < 0))
 		return -ENOMEM;
@@ -193,7 +213,7 @@ int evlist__alloc_stats(struct evlist *evlist, bool alloc_raw)
 	struct evsel *evsel;
 
 	evlist__for_each_entry(evlist, evsel) {
-		if (evsel__alloc_stats(evsel, alloc_raw))
+		if (evsel__alloc_stats(evsel, 0, alloc_raw))
 			goto out_free;
 	}
 
