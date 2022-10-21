@@ -118,7 +118,10 @@ extern unsigned int __max_die_per_package;
 #define topology_sibling_cpumask(cpu)		(per_cpu(cpu_sibling_map, cpu))
 
 extern unsigned int __max_logical_packages;
+extern unsigned int logical_packages;
 #define topology_max_packages()			(__max_logical_packages)
+
+extern unsigned int logical_packages;
 
 static inline int topology_max_die_per_package(void)
 {
@@ -140,6 +143,7 @@ bool topology_is_primary_thread(unsigned int cpu);
 bool topology_smt_supported(void);
 #else
 #define topology_max_packages()			(1)
+#define logical_packages 			(1)
 static inline int
 topology_update_package_map(unsigned int apicid, unsigned int cpu) { return 0; }
 static inline int
