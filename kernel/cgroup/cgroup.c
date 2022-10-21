@@ -104,6 +104,7 @@ bool cgroup_debug __read_mostly;
  * grabbing cgroup_mutex.
  */
 static DEFINE_SPINLOCK(cgroup_idr_lock);
+struct static_key_false v1_writeback_enabled_key;
 
 /*
  * Protects cgroup_file->kn for !self csses.  It synchronizes notifications
@@ -232,6 +233,16 @@ static const char *cgroup_opt_feature_names[OPT_FEATURE_COUNT] = {
 	"pressure",
 #endif
 };
+
+#if defined(CONFIG_MEMCG) && defined(CONFIG_BLK_CGROUP)
+#define v1_mem_io_unimnt() \
+	(io_cgrp_subsys.root && \
+	(io_cgrp_subsys.root != &cgrp_dfl_root) && \
+	(memory_cgrp_subsys.root != &cgrp_dfl_root) && \
+	(io_cgrp_subsys.root == memory_cgrp_subsys.root))
+#else
+	#define v1_mem_io_unimnt()  (false)
+#endif
 
 static u16 cgroup_feature_disable_mask __read_mostly;
 
@@ -1875,6 +1886,11 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		if (ss->bind)
 			ss->bind(css);
 	} while_each_subsys_mask();
+
+	if (v1_mem_io_unimnt() && !static_branch_likely(&v1_writeback_enabled_key))
+		static_branch_enable(&v1_writeback_enabled_key);
+	else if (!v1_mem_io_unimnt() && static_branch_likely(&v1_writeback_enabled_key))
+		static_branch_disable(&v1_writeback_enabled_key);
 
 	kernfs_activate(dcgrp->kn);
 	return 0;
