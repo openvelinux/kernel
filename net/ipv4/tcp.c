@@ -461,6 +461,7 @@ void tcp_init_sock(struct sock *sk)
 	WRITE_ONCE(sk->sk_rcvbuf, READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_rmem[1]));
 	tcp_scaling_ratio_init(sk);
 
+	set_bit(SOCK_SUPPORT_ZC, &sk->sk_socket->flags);
 	sk_sockets_allocated_inc(sk);
 	sk->sk_route_forced_caps = NETIF_F_GSO;
 	xa_init_flags(&sk->sk_pagepool, XA_FLAGS_ALLOC1);
