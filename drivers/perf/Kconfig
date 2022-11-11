@@ -139,4 +139,6 @@ config ARM_DMC620_PMU
 
 source "drivers/perf/hisilicon/Kconfig"
 
+source "drivers/perf/arm_cspmu/Kconfig"
+
 endmenu
