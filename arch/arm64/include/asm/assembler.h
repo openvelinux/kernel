@@ -51,11 +51,13 @@ alternative_else_nop_endif
 	.endm
 
 	.macro disable_daif
+	disable_allint
 	msr	daifset, #0xf
 	.endm
 
 	.macro enable_daif
 	msr	daifclr, #0xf
+	enable_allint
 	.endm
 
 /*
