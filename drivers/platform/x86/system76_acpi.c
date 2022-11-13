@@ -350,7 +350,7 @@ static int system76_add(struct acpi_device *acpi_dev)
 }
 
 // Remove a System76 ACPI device
-static int system76_remove(struct acpi_device *acpi_dev)
+static void system76_remove(struct acpi_device *acpi_dev)
 {
 	struct system76_data *data;
 
@@ -363,8 +363,6 @@ static int system76_remove(struct acpi_device *acpi_dev)
 	devm_led_classdev_unregister(&acpi_dev->dev, &data->kb_led);
 
 	system76_get(data, "FINI");
-
-	return 0;
 }
 
 static struct acpi_driver system76_driver = {
