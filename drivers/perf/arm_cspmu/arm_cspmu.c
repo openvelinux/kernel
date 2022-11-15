@@ -1303,3 +1303,5 @@ static void __exit arm_cspmu_exit(void)
 
 module_init(arm_cspmu_init);
 module_exit(arm_cspmu_exit);
+
+MODULE_LICENSE("GPL v2");
