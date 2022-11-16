@@ -38,6 +38,7 @@ struct test __weak arch_tests[] = {
 
 static struct test_workload *workloads[] = {
 	&workload__noploop,
+	&workload__brstack,
 };
 
 static struct test generic_tests[] = {
