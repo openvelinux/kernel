@@ -5,10 +5,12 @@
  * Copyright (c) 2021 HiSilicon Technologies Co., Ltd.
  */
 
+#include <linux/acpi.h>
 #include <linux/bits.h>
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -107,6 +109,9 @@ struct hisi_i2c_controller {
 	struct i2c_timings t;
 	u32 clk_rate_khz;
 	u32 spk_len;
+
+	/* Bus recovery method */
+	struct i2c_bus_recovery_info rinfo;
 };
 
 static void hisi_i2c_enable_int(struct hisi_i2c_controller *ctlr, u32 mask)
@@ -444,6 +449,77 @@ static void hisi_i2c_configure_bus(struct hisi_i2c_controller *ctlr)
 	writel(reg, ctlr->iobase + HISI_I2C_FIFO_CTRL);
 }
 
+#ifdef CONFIG_ACPI
+#define HISI_I2C_PIN_MUX_METHOD	"PMUX"
+
+/**
+ * i2c_dw_acpi_pin_mux_change - Change the I2C controller's pin mux through ACPI
+ * @dev: device owns the SCL/SDA pin
+ * @to_gpio: true to switch to GPIO, false to switch to SCL/SDA
+ *
+ * The function invokes the specific ACPI method "PMUX" for changing the
+ * pin mux of I2C controller between SCL/SDA and GPIO in order to help on
+ * the generic GPIO recovery process.
+ */
+static void i2c_hisi_pin_mux_change(struct device *dev, bool to_gpio)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	struct acpi_object_list arg_list;
+	unsigned long long data;
+	union acpi_object arg;
+
+	arg.type = ACPI_TYPE_INTEGER;
+	arg.integer.value = to_gpio;
+	arg_list.count = 1;
+	arg_list.pointer = &arg;
+
+	acpi_evaluate_integer(handle, HISI_I2C_PIN_MUX_METHOD, &arg_list, &data);
+}
+
+static void i2c_hisi_prepare_recovery(struct i2c_adapter *adap)
+{
+	struct hisi_i2c_controller *ctlr = i2c_get_adapdata(adap);
+
+	i2c_hisi_pin_mux_change(ctlr->dev, true);
+}
+
+static void i2c_hisi_unprepare_recovery(struct i2c_adapter *adap)
+{
+	struct hisi_i2c_controller *ctlr = i2c_get_adapdata(adap);
+
+	i2c_hisi_pin_mux_change(ctlr->dev, false);
+}
+
+static void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr)
+{
+	struct i2c_bus_recovery_info *rinfo = &ctlr->rinfo;
+	struct acpi_device *adev = ACPI_COMPANION(ctlr->dev);
+	struct gpio_desc *gpio;
+
+	if (!acpi_has_method(adev->handle, HISI_I2C_PIN_MUX_METHOD))
+		return;
+
+	gpio = devm_gpiod_get_optional(ctlr->dev, "scl", GPIOD_OUT_HIGH);
+	if (IS_ERR_OR_NULL(gpio))
+		return;
+
+	rinfo->scl_gpiod = gpio;
+
+	gpio = devm_gpiod_get_optional(ctlr->dev, "sda", GPIOD_IN);
+	if (IS_ERR(gpio))
+		return;
+
+	rinfo->sda_gpiod = gpio;
+	rinfo->recover_bus = i2c_generic_scl_recovery;
+	rinfo->prepare_recovery =  i2c_hisi_prepare_recovery;
+	rinfo->unprepare_recovery = i2c_hisi_unprepare_recovery;
+
+	ctlr->adapter.bus_recovery_info = rinfo;
+}
+#else
+static inline void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr) { }
+#endif /* CONFIG_ACPI */
+
 static int hisi_i2c_probe(struct platform_device *pdev)
 {
 	struct hisi_i2c_controller *ctlr;
@@ -493,6 +569,8 @@ static int hisi_i2c_probe(struct platform_device *pdev)
 	adapter->algo = &hisi_i2c_algo;
 	adapter->dev.parent = dev;
 	i2c_set_adapdata(adapter, ctlr);
+
+	hisi_i2c_init_recovery_info(ctlr);
 
 	ret = devm_i2c_add_adapter(dev, adapter);
 	if (ret)
