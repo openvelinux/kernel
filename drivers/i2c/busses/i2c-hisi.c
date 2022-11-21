@@ -504,7 +504,8 @@ static void i2c_hisi_pin_mux_change(struct device *dev, bool to_gpio)
 	arg_list.count = 1;
 	arg_list.pointer = &arg;
 
-	acpi_evaluate_integer(handle, HISI_I2C_PIN_MUX_METHOD, &arg_list, &data);
+	acpi_evaluate_integer(handle, HISI_I2C_PIN_MUX_METHOD,
+			      &arg_list, &data);
 }
 
 static void i2c_hisi_prepare_recovery(struct i2c_adapter *adap)
@@ -559,7 +560,8 @@ static void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr)
 	ctlr->adapter.bus_recovery_info = rinfo;
 }
 #else
-static inline void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr) { }
+static inline
+void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr) { }
 #endif /* CONFIG_ACPI */
 
 static int hisi_i2c_probe(struct platform_device *pdev)
