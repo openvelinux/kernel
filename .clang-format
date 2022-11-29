@@ -425,6 +425,7 @@ ForEachMacros:
   - 'pcl_for_each_segment'
   - 'pcm_for_each_format'
   - 'ping_portaddr_for_each_entry'
+  - 'ping_portaddr_for_each_entry_rcu'
   - 'plist_for_each'
   - 'plist_for_each_continue'
   - 'plist_for_each_entry'
