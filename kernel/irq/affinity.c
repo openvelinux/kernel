@@ -487,6 +487,7 @@ irq_create_affinity_masks(unsigned int nvecs, struct irq_affinity *affd)
 
 	return masks;
 }
+EXPORT_SYMBOL_GPL(irq_create_affinity_masks);
 
 /**
  * irq_calc_affinity_vectors - Calculate the optimal number of vectors
