@@ -631,6 +631,17 @@ static int uc_decode_notifier(struct notifier_block *nb, unsigned long val,
 	if (!memory_failure(pfn, 0)) {
 		set_mce_nospec(pfn);
 		mce->kflags |= MCE_HANDLED_UC;
+	} else {
+		/*
+		 * S (Signaling) flag, bit 56 - Indicates (when set)
+		 * that a machine check exception was generated for
+		 * the UCR error reported in this MC bank.
+		 * When the S flag in the IA32_MCi_STATUS register
+		 * is clear, this UCR error was not signaled via a
+		 * corrected machine check (CMC).
+		 */
+		mcestat_record(NULL, mce->addr, 0,
+			       !(mce->status & MCI_STATUS_S));
 	}
 
 	return NOTIFY_OK;
