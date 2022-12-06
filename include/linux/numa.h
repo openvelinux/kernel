@@ -3,6 +3,7 @@
 #define _LINUX_NUMA_H
 #include <linux/init.h>
 #include <linux/types.h>
+#include <linux/bitops.h>
 
 #ifdef CONFIG_NODES_SHIFT
 #define NODES_SHIFT     CONFIG_NODES_SHIFT
@@ -26,6 +27,8 @@ static inline bool numa_valid_node(int nid)
 #else
 #define __initdata_or_meminfo __initdata
 #endif
+
+typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
 
 #ifdef CONFIG_NUMA
 #include <asm/sparsemem.h>
