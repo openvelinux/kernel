@@ -410,7 +410,8 @@ static void throtl_pd_init(struct blkg_policy_data *pd)
 	 * regardless of the position of the group in the hierarchy.
 	 */
 	sq->parent_sq = &td->service_queue;
-	if (cgroup_subsys_on_dfl(io_cgrp_subsys) && blkg->parent)
+	if ((cgroup_subsys_on_dfl(io_cgrp_subsys) || v1_writeback_enabled()) &&
+		blkg->parent)
 		sq->parent_sq = &blkg_to_tg(blkg->parent)->service_queue;
 	tg->td = td;
 }
