@@ -21,6 +21,7 @@ extern char __exittext_begin[], __exittext_end[];
 extern char __irqentry_text_start[], __irqentry_text_end[];
 extern char __mmuoff_data_start[], __mmuoff_data_end[];
 extern char __entry_tramp_text_start[], __entry_tramp_text_end[];
+extern char __sym_code_functions_start[], __sym_code_functions_end[];
 
 static inline size_t entry_tramp_text_size(void)
 {
