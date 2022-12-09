@@ -1916,8 +1916,11 @@ static int vduse_default_timeout_handler(struct vduse_dev *dev,
 
 	ret = vringh_getdesc_iotlb(&vq->vring, &vq->out_iov, &vq->in_iov,
 				   &head, GFP_ATOMIC);
-	if (ret != 1)
+	if (ret != 1) {
+		if (ret < 0 && head != vq->vring.vring.num)
+			goto err;
 		return ret;
+	}
 
 	ret = vringh_complete_iotlb(&vq->vring, head, len);
 	if (ret) {
