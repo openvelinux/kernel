@@ -30,6 +30,11 @@
 #define VIRTIO_BLK_INLINE_SG_CNT	2
 #endif
 
+static bool force_remove;
+module_param(force_remove, bool, 0644);
+MODULE_PARM_DESC(force_remove,
+	"Enable removing device regardless of inflight I/Os");
+
 static int major;
 static DEFINE_IDA(vd_index_ida);
 
@@ -743,6 +748,16 @@ static enum blk_eh_timer_return virtblk_timeout(struct request *req,
 		return BLK_EH_DONE;
 	}
 
+	if (force_remove && blk_queue_dying(req->q)) {
+		dev_warn(disk_to_dev(vblk->disk),
+			 "Abort Request: %p: %llu,%uB\n", req,
+			 (unsigned long long)blk_rq_pos(req) << 9,
+			 blk_rq_bytes(req));
+		vbr->status = VIRTIO_BLK_S_IOERR;
+		blk_mq_complete_request(req);
+		return BLK_EH_DONE;
+	}
+
 	dev_info(disk_to_dev(vblk->disk),
 		 "Possible stuck request %p: %llu,%uB. Runtime %u seconds\n",
 		 req, (unsigned long long)blk_rq_pos(req) << 9,
@@ -988,6 +1003,7 @@ out:
 static void virtblk_remove(struct virtio_device *vdev)
 {
 	struct virtio_blk *vblk = vdev->priv;
+	int i;
 
 	/* Make sure no work handler is accessing the device. */
 	flush_work(&vblk->config_work);
@@ -997,6 +1013,14 @@ static void virtblk_remove(struct virtio_device *vdev)
 	blk_mq_free_tag_set(&vblk->tag_set);
 
 	mutex_lock(&vblk->vdev_mutex);
+
+	for (i = 0; i < vblk->num_vqs; i++) {
+		if (!force_remove)
+			continue;
+
+		while (virtqueue_detach_unused_buf(vblk->vqs[i].vq))
+			;
+	}
 
 	/* Stop all the virtqueues. */
 	vdev->config->reset(vdev);
