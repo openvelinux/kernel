@@ -247,6 +247,15 @@ static void __sched arm64_preempt_schedule_irq(void)
 		return;
 
 	/*
+	 * Architected NMIs are unmasked prior to handling regular
+	 * IRQs and masked while handling FIQs. If ALLINT is set then
+	 * we are in a NMI or other preempting context so skip
+	 * preemption.
+	 */
+	if (system_uses_nmi() && (read_sysreg_s(SYS_ALLINT) & ALLINT_ALLINT))
+		return;
+
+	/*
 	 * DAIF.DA are cleared at the start of IRQ/FIQ handling, and when GIC
 	 * priority masking is used the GIC irqchip driver will clear DAIF.IF
 	 * using gic_arch_enable_irqs() for normal IRQs. If anything is set in
