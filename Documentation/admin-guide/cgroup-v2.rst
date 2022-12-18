@@ -2346,6 +2346,13 @@ Cpuset Interface Files
 	to "cpuset.cpus.partition" without the need to do continuous
 	polling.
 
+  cpuset.memory_migrate
+	A read-write single value file which exists on non-root
+	cpuset-enabled cgroups. Same with cgroup v1, once set, when the
+	'cpuset.mems' setting is changed, any memory page in use by any
+	process in the cpuset that is on a memory node that is no longer
+	allowed will be migrated to a memory node that is allowed
+	synchronously.
 
 Device controller
 -----------------
