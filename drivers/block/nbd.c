@@ -1343,7 +1343,7 @@ static int nbd_start_device(struct nbd_device *nbd)
 
 		worker = kthread_create(recv_work, args, "knbd%d.%d-recv",
 					nbd->index, i);
-		if (!worker) {
+		if (IS_ERR(worker)) {
 			kfree(args);
 			goto err;
 		}
