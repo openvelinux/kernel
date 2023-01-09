@@ -69,6 +69,15 @@
 		SYM_FUNC_END_ALIAS(__pi_##x)
 
 /*
+ * Annotate sym code that only executed by user space
+ */
+#define SYM_CODE_START_USER(name)			\
+	SYM_CODE_START(name)
+
+#define SYM_CODE_END_USER(name)			\
+	SYM_END(name, SYM_T_NONE)
+
+/*
  * Record the address range of each SYM_CODE function in a struct code_range
  * in a special section.
  */
