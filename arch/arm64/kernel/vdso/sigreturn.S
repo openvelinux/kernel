@@ -68,13 +68,13 @@
  * unwinder. Thankfully, this function is only ever called from a RET and so
  * omitting the landing pad is perfectly fine.
  */
-SYM_CODE_START(__kernel_rt_sigreturn)
+SYM_CODE_START_USER(__kernel_rt_sigreturn)
 //	PLEASE DO NOT MODIFY
 	mov	x8, #__NR_rt_sigreturn
 //	PLEASE DO NOT MODIFY
 	svc	#0
 //	PLEASE DO NOT MODIFY
 //	.cfi_endproc
-SYM_CODE_END(__kernel_rt_sigreturn)
+SYM_CODE_END_USER(__kernel_rt_sigreturn)
 
 emit_aarch64_feature_1_and
