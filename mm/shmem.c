@@ -472,15 +472,14 @@ static bool shmem_confirm_swap(struct address_space *mapping,
 
 static int shmem_huge __read_mostly = SHMEM_HUGE_NEVER;
 
-bool shmem_is_huge(struct vm_area_struct *vma,
-		   struct inode *inode, pgoff_t index)
+bool shmem_is_huge(struct inode *inode, pgoff_t index,
+			struct mm_struct *mm, unsigned long vm_flags)
 {
 	loff_t i_size;
 
 	if (shmem_huge == SHMEM_HUGE_DENY)
 		return false;
-	if (vma && ((vma->vm_flags & VM_NOHUGEPAGE) ||
-	    test_bit(MMF_DISABLE_THP, &vma->vm_mm->flags)))
+	if (mm && ((vm_flags & VM_NOHUGEPAGE) || test_bit(MMF_DISABLE_THP, &mm->flags)))
 		return false;
 	if (shmem_huge == SHMEM_HUGE_FORCE)
 		return true;
@@ -495,7 +494,7 @@ bool shmem_is_huge(struct vm_area_struct *vma,
 			return true;
 		fallthrough;
 	case SHMEM_HUGE_ADVISE:
-		if (vma && (vma->vm_flags & VM_HUGEPAGE))
+		if (mm && (vm_flags & VM_HUGEPAGE))
 			return true;
 		fallthrough;
 	default:
@@ -677,8 +676,8 @@ static long shmem_unused_huge_count(struct super_block *sb,
 
 #define shmem_huge SHMEM_HUGE_DENY
 
-bool shmem_is_huge(struct vm_area_struct *vma,
-		   struct inode *inode, pgoff_t index)
+bool shmem_is_huge(struct inode *inode, pgoff_t index,
+		   struct mm_struct *mm, unsigned long vm_flags)
 {
 	return false;
 }
@@ -1078,7 +1077,7 @@ static int shmem_getattr(struct user_namespace *mnt_userns,
 	}
 	generic_fillattr(&init_user_ns, inode, stat);
 
-	if (shmem_is_huge(NULL, inode, 0))
+	if (shmem_is_huge(inode, 0, NULL, 0))
 		stat->blksize = HPAGE_PMD_SIZE;
 
 	return 0;
@@ -1894,7 +1893,8 @@ repeat:
 	/* Never use a huge page for shmem_symlink() */
 	if (S_ISLNK(inode->i_mode))
 		goto alloc_nohuge;
-	if (!shmem_is_huge(vma, inode, index))
+	if (!shmem_is_huge(inode, index, vma ? vma->vm_mm : NULL,
+				vma ? vma->vm_flags : 0))
 		goto alloc_nohuge;
 
 	huge_gfp = vma_thp_gfp_mask(vma);

@@ -85,7 +85,7 @@ bool transparent_hugepage_active(struct vm_area_struct *vma)
 	if (vma_is_anonymous(vma))
 		return __transparent_hugepage_enabled(vma);
 	if (vma_is_shmem(vma))
-		return shmem_huge_enabled(vma);
+		return shmem_huge_enabled(vma, vma->vm_flags);
 	if (IS_ENABLED(CONFIG_READ_ONLY_THP_FOR_FS))
 		return file_thp_enabled(vma);
 

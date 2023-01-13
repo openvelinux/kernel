@@ -451,7 +451,7 @@ static bool hugepage_vma_check(struct vm_area_struct *vma,
 
 	/* Enabled via shmem mount options or sysfs settings. */
 	if (shmem_file(vma->vm_file))
-		return shmem_huge_enabled(vma);
+		return shmem_huge_enabled(vma, vm_flags);
 
 	/* THP settings require madvise. */
 	if (!(vm_flags & VM_HUGEPAGE) && !khugepaged_always())
@@ -2216,7 +2216,7 @@ skip:
 		if (khugepaged_scan.address < hstart)
 			khugepaged_scan.address = hstart;
 		VM_BUG_ON(khugepaged_scan.address & ~HPAGE_PMD_MASK);
-		if (shmem_file(vma->vm_file) && !shmem_huge_enabled(vma))
+		if (shmem_file(vma->vm_file) && !shmem_huge_enabled(vma, vma->vm_flags))
 			goto skip;
 
 		while (khugepaged_scan.address < hend) {
