@@ -359,4 +359,5 @@ struct kvm_pmu_ops amd_pmu_ops __initdata = {
 	.refresh = amd_pmu_refresh,
 	.init = amd_pmu_init,
 	.reset = amd_pmu_reset,
+	.MAX_NR_GP_COUNTERS = KVM_AMD_PMC_MAX_GENERIC,
 };
