@@ -92,6 +92,8 @@ static inline void netif_set_gso_max_size(struct net_device *dev,
 {
 	/* dev->gso_max_size is read locklessly from sk_setup_caps() */
 	WRITE_ONCE(dev->gso_max_size, size);
+	if (size <= GSO_LEGACY_MAX_SIZE)
+		WRITE_ONCE(dev->gso_ipv4_max_size, size);
 }
 
 static inline void netif_set_gso_max_segs(struct net_device *dev,
@@ -106,6 +108,22 @@ static inline void netif_set_gro_max_size(struct net_device *dev,
 {
 	/* This pairs with the READ_ONCE() in skb_gro_receive() */
 	WRITE_ONCE(dev->gro_max_size, size);
+	if (size <= GRO_LEGACY_MAX_SIZE)
+		WRITE_ONCE(dev->gro_ipv4_max_size, size);
+}
+
+static inline void netif_set_gso_ipv4_max_size(struct net_device *dev,
+					       unsigned int size)
+{
+	/* dev->gso_ipv4_max_size is read locklessly from sk_setup_caps() */
+	WRITE_ONCE(dev->gso_ipv4_max_size, size);
+}
+
+static inline void netif_set_gro_ipv4_max_size(struct net_device *dev,
+					       unsigned int size)
+{
+	/* This pairs with the READ_ONCE() in skb_gro_receive() */
+	WRITE_ONCE(dev->gro_ipv4_max_size, size);
 }
 
 #endif
