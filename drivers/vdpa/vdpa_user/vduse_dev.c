@@ -73,7 +73,9 @@ struct vduse_dev;
 
 struct vduse_vdpa {
 	struct vdpa_device vdpa;
+	struct list_head vdpa_list;
 	struct vduse_dev *dev;
+	struct mutex lock;
 };
 
 struct vduse_umem {
@@ -155,6 +157,7 @@ MODULE_PARM_DESC(max_iova_size, "Maximum iova space size (default: 2G)");
 
 static DEFINE_MUTEX(vduse_lock);
 static DEFINE_IDR(vduse_idr);
+static LIST_HEAD(vdpa_devs);
 
 static dev_t vduse_major;
 static struct class *vduse_class;
@@ -2445,6 +2448,7 @@ static int vduse_dev_init_vdpa(struct vduse_dev *dev, const char *name)
 
 	dev->vdev = vdev;
 	vdev->dev = dev;
+	mutex_init(&vdev->lock);
 	vdev->vdpa.dev.dma_mask = &vdev->vdpa.dev.coherent_dma_mask;
 	ret = dma_set_mask_and_coherent(&vdev->vdpa.dev, DMA_BIT_MASK(64));
 	if (ret) {
@@ -2454,6 +2458,7 @@ static int vduse_dev_init_vdpa(struct vduse_dev *dev, const char *name)
 	set_dma_ops(&vdev->vdpa.dev, &vduse_dev_dma_ops);
 	vdev->vdpa.dma_dev = &vdev->vdpa.dev;
 	vdev->vdpa.mdev = &vduse_mgmt->mgmt_dev;
+	list_add(&vdev->vdpa_list, &vdpa_devs);
 
 	return 0;
 }
@@ -2474,8 +2479,13 @@ static int vdpa_dev_add(struct vdpa_mgmt_dev *mdev, const char *name)
 	if (ret)
 		return ret;
 
+	mutex_lock(&dev->vdev->lock);
 	ret = _vdpa_register_device(&dev->vdev->vdpa, dev->vq_num);
+	mutex_unlock(&dev->vdev->lock);
 	if (ret) {
+		mutex_lock(&vduse_lock);
+		list_del(&dev->vdev->vdpa_list);
+		mutex_unlock(&vduse_lock);
 		put_device(&dev->vdev->vdpa.dev);
 		return ret;
 	}
@@ -2483,8 +2493,8 @@ static int vdpa_dev_add(struct vdpa_mgmt_dev *mdev, const char *name)
 	return 0;
 }
 
-static void vdpa_dev_del(struct vdpa_mgmt_dev *mdev,
-			 struct vdpa_device *dev, int timeout)
+static void vdpa_dev_del_common(struct vdpa_mgmt_dev *mdev,
+				struct vdpa_device *dev, int timeout)
 {
 	struct vduse_dev *vdev = vdpa_to_vduse(dev);
 
@@ -2493,12 +2503,49 @@ static void vdpa_dev_del(struct vdpa_mgmt_dev *mdev,
 		mod_delayed_work(system_wq, &vdev->timeout_work,
 				 msecs_to_jiffies(timeout * 1000));
 	}
+	mutex_lock(&vdev->vdev->lock);
 	_vdpa_unregister_device(dev);
+	mutex_unlock(&vdev->vdev->lock);
+}
+
+static void vdpa_dev_del(struct vdpa_mgmt_dev *mdev,
+			 struct vdpa_device *dev, int timeout)
+{
+	struct vduse_dev *vdev = vdpa_to_vduse(dev);
+
+	mutex_lock(&vduse_lock);
+	list_del(&vdev->vdev->vdpa_list);
+	mutex_unlock(&vduse_lock);
+	vdpa_dev_del_common(mdev, dev, timeout);
+}
+
+static int vdpa_dev_del_parallel(struct vdpa_mgmt_dev *mdev,
+				 struct vdpa_device *dev, int timeout)
+{
+	struct vduse_vdpa *tmp = NULL;
+	struct vduse_dev *vdev = vdpa_to_vduse(dev);
+
+	mutex_lock(&vduse_lock);
+	list_for_each_entry(tmp, &vdpa_devs, vdpa_list) {
+		if (tmp == vdev->vdev)
+			break;
+	}
+	if (!tmp || tmp != vdev->vdev) {
+		mutex_unlock(&vduse_lock);
+		return -ENODEV;
+	}
+	list_del(&vdev->vdev->vdpa_list);
+	mutex_unlock(&vduse_lock);
+	vdpa_dev_del_common(mdev, dev, timeout);
+
+	return 0;
 }
 
 static const struct vdpa_mgmtdev_ops vdpa_dev_mgmtdev_ops = {
 	.dev_add = vdpa_dev_add,
 	.dev_del = vdpa_dev_del,
+	.dev_add_parallel = vdpa_dev_add,
+	.dev_del_parallel = vdpa_dev_del_parallel,
 };
 
 static struct virtio_device_id id_table[] = {
