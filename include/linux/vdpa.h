@@ -221,6 +221,13 @@ struct vdpa_map_file {
  *				@vdev: vdpa device
  *				@idx: virtqueue index
  *				Returns the irq affinity mask
+ * @set_irq_affinity:		Pass the irq affinity hint (best effort)
+ *				from the virtio device driver to vdpa
+ *				driver (optional).
+ *				Needed by the interrupt affinity spreading
+ *				mechanism.
+ *				@vdev: vdpa device
+ *				@desc: irq affinity hint
  * @set_map:			Set device memory mapping (optional)
  *				Needed for device that using device
  *				specific DMA translation (on-chip IOMMU)
@@ -293,6 +300,8 @@ struct vdpa_config_ops {
 			       const struct cpumask *cpu_mask);
 	const struct cpumask *(*get_vq_affinity)(struct vdpa_device *vdev,
 						 u16 idx);
+	void (*set_irq_affinity)(struct vdpa_device *vdev,
+				 struct irq_affinity *desc);
 
 	/* DMA ops */
 	int (*set_map)(struct vdpa_device *vdev, struct vhost_iotlb *iotlb);
