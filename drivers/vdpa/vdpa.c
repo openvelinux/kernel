@@ -16,6 +16,10 @@
 #include <linux/mod_devicetable.h>
 #include <linux/virtio_ids.h>
 
+static bool enable_parallel_ops = true;
+module_param(enable_parallel_ops, bool, 0644);
+MODULE_PARM_DESC(enable_parallel_ops, "Enable parallel operations");
+
 static LIST_HEAD(mdev_head);
 /* A global mutex that protects vdpa management device and device level operations. */
 static DECLARE_RWSEM(vdpa_dev_lock);
@@ -223,10 +227,15 @@ static int vdpa_name_match(struct device *dev, const void *data)
 static int __vdpa_register_device(struct vdpa_device *vdev, u32 nvqs)
 {
 	struct device *dev;
+	struct vdpa_mgmt_dev *mdev = vdev->mdev;
 
 	vdev->nvqs = nvqs;
+	vdev->parallel_ops = (enable_parallel_ops && mdev &&
+			     mdev->ops->dev_add_parallel &&
+			     mdev->ops->dev_del_parallel);
 
-	lockdep_assert_held(&vdpa_dev_lock);
+	if (!vdev->parallel_ops)
+		lockdep_assert_held(&vdpa_dev_lock);
 	dev = bus_find_device(&vdpa_bus, NULL, dev_name(&vdev->dev), vdpa_name_match);
 	if (dev) {
 		put_device(dev);
@@ -281,7 +290,8 @@ EXPORT_SYMBOL_GPL(vdpa_register_device);
  */
 void _vdpa_unregister_device(struct vdpa_device *vdev)
 {
-	lockdep_assert_held(&vdpa_dev_lock);
+	if (!vdev->parallel_ops)
+		lockdep_assert_held(&vdpa_dev_lock);
 	WARN_ON(!vdev->mdev);
 	device_unregister(&vdev->dev);
 }
@@ -695,6 +705,12 @@ static int vdpa_nl_cmd_dev_add_set_doit(struct sk_buff *skb, struct genl_info *i
 		goto err;
 	}
 
+	if (enable_parallel_ops && mdev->ops->dev_add_parallel &&
+	    mdev->ops->dev_del_parallel) {
+		up_write(&vdpa_dev_lock);
+		err = mdev->ops->dev_add_parallel(mdev, name, &config);
+		return err;
+	}
 	err = mdev->ops->dev_add(mdev, name, &config);
 err:
 	up_write(&vdpa_dev_lock);
@@ -731,6 +747,13 @@ static int vdpa_nl_cmd_dev_del_set_doit(struct sk_buff *skb, struct genl_info *i
 		goto mdev_err;
 	}
 	mdev = vdev->mdev;
+	if (vdev->parallel_ops) {
+		up_write(&vdpa_dev_lock);
+		err = mdev->ops->dev_del_parallel(mdev, vdev, timeout);
+		put_device(dev);
+		return err;
+	}
+
 	mdev->ops->dev_del(mdev, vdev, timeout);
 mdev_err:
 	put_device(dev);
@@ -1297,6 +1320,7 @@ static struct genl_family vdpa_nl_family __ro_after_init = {
 	.version = VDPA_GENL_VERSION,
 	.maxattr = VDPA_ATTR_MAX,
 	.policy = vdpa_nl_policy,
+	.parallel_ops = true,
 	.netnsok = false,
 	.module = THIS_MODULE,
 	.ops = vdpa_nl_ops,

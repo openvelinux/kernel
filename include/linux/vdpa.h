@@ -80,6 +80,7 @@ struct vdpa_mgmt_dev;
  * @ngroups: the number of virtqueue groups
  * @nas: the number of address spaces
  * @use_va: indicate whether virtual address must be used by this device
+ * @parallel_ops: indicate whether parallel operation is supported by the device
  * @nvqs: maximum number of supported virtqueues
  * @mdev: management device pointer; caller must setup when registering device as part
  *	  of dev_add() mgmtdev ops callback before invoking _vdpa_register_device().
@@ -93,6 +94,7 @@ struct vdpa_device {
 	unsigned int index;
 	bool features_valid;
 	bool use_va;
+	bool parallel_ops;
 	u32 nvqs;
 	struct vdpa_mgmt_dev *mdev;
 	unsigned int ngroups;
@@ -546,6 +548,10 @@ struct vdpa_mgmtdev_ops {
 		       const struct vdpa_dev_set_config *config);
 	void (*dev_del)(struct vdpa_mgmt_dev *mdev,
 			struct vdpa_device *dev, int timeout);
+	int (*dev_add_parallel)(struct vdpa_mgmt_dev *mdev, const char *name,
+				const struct vdpa_dev_set_config *config);
+	int (*dev_del_parallel)(struct vdpa_mgmt_dev *mdev,
+				struct vdpa_device *dev, int timeout);
 };
 
 /**
