@@ -269,8 +269,12 @@ static int virtio_vdpa_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 	struct virtio_vdpa_device *vd_dev = to_virtio_vdpa_device(vdev);
 	struct vdpa_device *vdpa = vd_get_vdpa(vdev);
 	const struct vdpa_config_ops *ops = vdpa->config;
+	struct irq_affinity default_affd = { 0 };
 	struct vdpa_callback cb;
 	int i, err, queue_idx = 0;
+
+	if (ops->set_irq_affinity)
+		ops->set_irq_affinity(vdpa, desc ? desc : &default_affd);
 
 	for (i = 0; i < nvqs; ++i) {
 		if (!names[i]) {
