@@ -24,6 +24,7 @@
 #include <linux/vringh.h>
 #include <linux/vmalloc.h>
 #include <linux/sched/mm.h>
+#include <linux/interrupt.h>
 #include <uapi/linux/vduse.h>
 #include <uapi/linux/vdpa.h>
 #include <uapi/linux/virtio_config.h>
@@ -61,7 +62,8 @@ struct vduse_virtqueue {
 	struct work_struct inject;
 	struct work_struct kick;
 	struct kobject kobj;
-	int irq_affinity;
+	int irq_effective_cpu;
+	struct cpumask affinity;
 	bool irq_use_wq;
 	struct vringh vring;
 	struct vringh_kiov in_iov;
@@ -946,6 +948,22 @@ static u32 vduse_vdpa_get_generation(struct vdpa_device *vdpa)
 	return dev->generation;
 }
 
+static void vduse_vdpa_set_irq_affinity(struct vdpa_device *vdpa,
+					struct irq_affinity *desc)
+{
+	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
+	struct irq_affinity_desc *affd;
+	int i;
+
+	affd = irq_create_affinity_masks(dev->vq_num, desc);
+	if (!affd)
+		return;
+
+	for (i = 0; i < dev->vq_num; i++)
+		cpumask_copy(&dev->vqs[i]->affinity, &affd[i].mask);
+	kfree(affd);
+}
+
 static int vduse_vdpa_set_map(struct vdpa_device *vdpa,
 				struct vhost_iotlb *iotlb)
 {
@@ -1006,6 +1024,7 @@ static const struct vdpa_config_ops vduse_vdpa_config_ops = {
 	.set_config		= vduse_vdpa_set_config,
 	.get_generation		= vduse_vdpa_get_generation,
 	.reset			= vduse_vdpa_reset,
+	.set_irq_affinity       = vduse_vdpa_set_irq_affinity,
 	.set_map		= vduse_vdpa_set_map,
 	.free			= vduse_vdpa_free,
 };
@@ -1416,7 +1435,7 @@ static long vduse_dev_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		ret = vduse_dev_queue_irq_work(dev, &dev->vqs[index]->inject,
-					       vq->irq_affinity);
+					       vq->irq_effective_cpu);
 		break;
 	}
 	case VDUSE_IOTLB_REG_UMEM: {
@@ -1624,7 +1643,7 @@ static ssize_t irq_use_wq_store(struct vduse_virtqueue *vq,
 
 static ssize_t irq_affinity_show(struct vduse_virtqueue *vq, char *buf)
 {
-	return sprintf(buf, "%d\n", vq->irq_affinity);
+	return sprintf(buf, "%d\n", vq->irq_effective_cpu);
 }
 
 static ssize_t irq_affinity_store(struct vduse_virtqueue *vq,
@@ -1638,7 +1657,7 @@ static ssize_t irq_affinity_store(struct vduse_virtqueue *vq,
 	if (!(val == -1 || (val <= nr_cpu_ids && val >= 0 && cpu_online(val))))
 		return -EINVAL;
 
-	vq->irq_affinity = val;
+	vq->irq_effective_cpu = val;
 
 	return count;
 }
@@ -1773,7 +1792,8 @@ static int vduse_dev_init_vqs(struct vduse_dev *dev, u32 vq_align,
 
 		dev->vqs[i]->index = i;
 		dev->vqs[i]->dev = dev;
-		dev->vqs[i]->irq_affinity = IRQ_UNBOUND;
+		dev->vqs[i]->irq_effective_cpu = IRQ_UNBOUND;
+		cpumask_setall(&dev->vqs[i]->affinity);
 		/* virtio-fs driver already uses workqueue in irq handler */
 		dev->vqs[i]->irq_use_wq = (dev->device_id == VIRTIO_ID_FS) ?
 					  false : true;
