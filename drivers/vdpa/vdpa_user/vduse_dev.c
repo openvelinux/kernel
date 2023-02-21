@@ -1829,7 +1829,7 @@ static void vduse_dev_deinit_vqs(struct vduse_dev *dev)
 }
 
 static int vduse_dev_init_vqs(struct vduse_dev *dev, u32 vq_align,
-			      u16 vq_size_max, u32 vq_num)
+			      u16 vq_size_max, u32 vq_num, bool irq_use_wq)
 {
 	int ret, i;
 
@@ -1852,9 +1852,7 @@ static int vduse_dev_init_vqs(struct vduse_dev *dev, u32 vq_align,
 		dev->vqs[i]->irq_effective_cpu = IRQ_UNBOUND;
 		dev->vqs[i]->automatic_affinity = true;
 		cpumask_setall(&dev->vqs[i]->affinity);
-		/* virtio-fs driver already uses workqueue in irq handler */
-		dev->vqs[i]->irq_use_wq = (dev->device_id == VIRTIO_ID_FS) ?
-					  false : true;
+		dev->vqs[i]->irq_use_wq = irq_use_wq;
 
 		vringh_set_iotlb(&dev->vqs[i]->vring, dev->domain->iotlb,
 				 &dev->domain->iotlb_lock);
@@ -2121,11 +2119,23 @@ unlock:
 	mutex_unlock(&dev->lock);
 }
 
-static void vduse_set_dead_handler(struct vduse_dev *dev)
+static int vduse_dead_handler_id(struct vduse_dev *dev)
 {
-	if (dev->device_id == VIRTIO_ID_FS)
+	if (dev->dead_handler == vduse_fs_timeout_handler)
+		return VIRTIO_ID_FS;
+	else if (dev->dead_handler == vduse_blk_timeout_handler)
+		return VIRTIO_ID_BLOCK;
+	else if (dev->dead_handler == NULL)
+		return 0;
+
+	return -1;
+}
+
+static void vduse_set_dead_handler(struct vduse_dev *dev, uint32_t device_id)
+{
+	if (device_id == VIRTIO_ID_FS)
 		dev->dead_handler = vduse_fs_timeout_handler;
-	else if (dev->device_id == VIRTIO_ID_BLOCK)
+	else if (device_id == VIRTIO_ID_BLOCK)
 		dev->dead_handler = vduse_blk_timeout_handler;
 	else
 		dev->dead_handler = vduse_default_timeout_handler;
@@ -2234,6 +2244,9 @@ static bool vduse_validate_config(struct vduse_dev_config *config)
 	if (!device_is_allowed(config->device_id))
 		return false;
 
+	if (!config->vduse_dev_id)
+		config->vduse_dev_id = config->device_id;
+
 	return true;
 }
 
@@ -2281,7 +2294,7 @@ static ssize_t enable_dead_handler_show(struct device *device,
 {
 	struct vduse_dev *dev = dev_get_drvdata(device);
 
-	return sprintf(buf, "%d\n", dev->dead_handler ? 1 : 0);
+	return sprintf(buf, "%d\n", vduse_dead_handler_id(dev));
 }
 
 static ssize_t enable_dead_handler_store(struct device *device,
@@ -2289,16 +2302,16 @@ static ssize_t enable_dead_handler_store(struct device *device,
 					 const char *buf, size_t count)
 {
 	struct vduse_dev *dev = dev_get_drvdata(device);
-	bool enable;
+	int value;
 	int ret;
 
-	ret = kstrtobool(buf, &enable);
+	ret = kstrtoint(buf, 0, &value);
 	if (ret)
 		return ret;
 
 	mutex_lock(&dev->lock);
-	if (enable)
-		vduse_set_dead_handler(dev);
+	if (value)
+		vduse_set_dead_handler(dev, value);
 	else
 		dev->dead_handler = NULL;
 	mutex_unlock(&dev->lock);
@@ -2387,12 +2400,15 @@ static int vduse_create_dev(struct vduse_dev_config *config,
 		goto err_dev;
 	}
 
+	/* virtio-fs driver already uses workqueue in irq handler */
 	ret = vduse_dev_init_vqs(dev, config->vq_align,
-				 config->vq_size_max, config->vq_num);
+				 config->vq_size_max,
+				 config->vq_num,
+				 !(config->vduse_dev_id == VIRTIO_ID_FS));
 	if (ret)
 		goto err_vqs;
 
-	vduse_set_dead_handler(dev);
+	vduse_set_dead_handler(dev, config->vduse_dev_id);
 	__module_get(THIS_MODULE);
 
 	return 0;
