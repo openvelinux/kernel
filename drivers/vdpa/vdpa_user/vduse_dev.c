@@ -44,7 +44,7 @@
 #define VDUSE_MSG_DEFAULT_TIMEOUT 30
 #define IRQ_UNBOUND -1
 
-#define MIN_CUSTOM_VIRTIO_ID 63
+#define MIN_CUSTOM_VIRTIO_ID 48
 
 struct vduse_virtqueue {
 	u16 index;
