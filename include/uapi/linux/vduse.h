@@ -31,6 +31,8 @@
  * @vq_align: the allocation alignment of virtqueue's metadata
  * @config_size: the size of the configuration space
  * @reserved: for future use, needs to be initialized to zero
+ * @reserved2: for future use
+ * @vduse_dev_id: virtio device id for vduse usage
  * @req_cached: cached request mask
  * @dev_shm_size: size of device shared memory
  * @vq_shm_off: offset of virtqueue shared memory
@@ -49,7 +51,9 @@ struct vduse_dev_config {
 	__u32 vq_num;
 	__u32 vq_align;
 	__u32 config_size;
-	__u32 reserved[5];
+	__u32 reserved[4];
+	__u16 reserved2;
+	__u16 vduse_dev_id;
 	__u16 req_cached;
 	__u16 dev_shm_size;
 	__u16 vq_shm_off;
