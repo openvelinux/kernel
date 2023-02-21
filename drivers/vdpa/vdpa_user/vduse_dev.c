@@ -45,7 +45,7 @@
 #define VDUSE_DEV_MAX (1U << MINORBITS)
 #define VDUSE_REQUEST_TIMEOUT 30
 
-#define MIN_CUSTOM_VIRTIO_ID 63
+#define MIN_CUSTOM_VIRTIO_ID 48
 
 struct vduse_dev;
 
