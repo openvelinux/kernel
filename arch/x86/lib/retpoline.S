@@ -17,7 +17,7 @@
 	ANNOTATE_INTRA_FUNCTION_CALL
 	call    .Ldo_rop_\@
 .Lspec_trap_\@:
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_UNDEFINED
 	pause
 	lfence
 	jmp .Lspec_trap_\@
@@ -31,7 +31,7 @@
 
 	.align RETPOLINE_THUNK_SIZE
 SYM_INNER_LABEL(__x86_indirect_thunk_\reg, SYM_L_GLOBAL)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_UNDEFINED
 
 	ALTERNATIVE_2 __stringify(RETPOLINE \reg), \
 		      __stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg; int3), X86_FEATURE_RETPOLINE_LFENCE, \

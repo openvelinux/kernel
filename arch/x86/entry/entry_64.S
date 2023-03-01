@@ -204,7 +204,7 @@ syscall_return_via_sysret:
 	 */
 	movq	%rsp, %rdi
 	movq	PER_CPU_VAR(cpu_tss_rw + TSS_sp0), %rsp
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_END_OF_STACK
 
 	pushq	RSP-RDI(%rdi)	/* RSP */
 	pushq	(%rdi)		/* RDI */
@@ -279,7 +279,7 @@ SYM_FUNC_END(__switch_to_asm)
  */
 .pushsection .text, "ax"
 SYM_CODE_START(ret_from_fork)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_END_OF_STACK
 	movq	%rax, %rdi
 	call	schedule_tail			/* rdi: 'prev' task parameter */
 
@@ -294,7 +294,7 @@ SYM_CODE_START(ret_from_fork)
 
 1:
 	/* kernel thread */
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_END_OF_STACK
 	movq	%r12, %rdi
 	CALL_NOSPEC rbx
 	/*
@@ -618,7 +618,7 @@ SYM_INNER_LABEL(swapgs_restore_regs_and_return_to_usermode, SYM_L_GLOBAL)
 	 */
 	movq	%rsp, %rdi
 	movq	PER_CPU_VAR(cpu_tss_rw + TSS_sp0), %rsp
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_END_OF_STACK
 
 	/* Copy the IRET frame to the trampoline stack. */
 	pushq	6*8(%rdi)	/* SS */
@@ -837,7 +837,7 @@ SYM_CODE_END(exc_xen_hypervisor_callback)
  * with its current contents: any discrepancy means we in category 1.
  */
 SYM_CODE_START(xen_failsafe_callback)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_UNDEFINED
 	movl	%ds, %ecx
 	cmpw	%cx, 0x10(%rsp)
 	jne	1f
@@ -1484,7 +1484,7 @@ SYM_CODE_END(asm_exc_nmi)
  * MSRs to fully disable 32-bit SYSCALL.
  */
 SYM_CODE_START(entry_SYSCALL32_ignore)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_END_OF_STACK
 	ENDBR
 	mov	$-ENOSYS, %eax
 	sysretl

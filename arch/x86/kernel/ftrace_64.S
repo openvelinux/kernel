@@ -334,6 +334,7 @@ SYM_FUNC_START(ftrace_graph_caller)
 SYM_FUNC_END(ftrace_graph_caller)
 
 SYM_FUNC_START(return_to_handler)
+	UNWIND_HINT_UNDEFINED
 	subq  $16, %rsp
 
 	/* Save the return values */

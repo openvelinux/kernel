@@ -160,7 +160,7 @@ xen_pv_trap asm_exc_xen_hypervisor_callback
 SYM_CODE_START(xen_early_idt_handler_array)
 	i = 0
 	.rept NUM_EXCEPTION_VECTORS
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_UNDEFINED
 	pop %rcx
 	pop %r11
 	jmp early_idt_handler_array + i*EARLY_IDT_HANDLER_SIZE
@@ -187,7 +187,7 @@ hypercall_iret = hypercall_page + __HYPERVISOR_iret * 32
  * rsp->rax		}
  */
 SYM_CODE_START(xen_iret)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_UNDEFINED
 	pushq $0
 	jmp hypercall_iret
 SYM_CODE_END(xen_iret)
