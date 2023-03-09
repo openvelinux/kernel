@@ -199,6 +199,7 @@ struct kernfs_root {
 
 	wait_queue_head_t	deactivate_waitq;
 	struct rw_semaphore	kernfs_rwsem;
+	struct rw_semaphore	kernfs_iattr_rwsem;
 };
 
 struct kernfs_open_file {
