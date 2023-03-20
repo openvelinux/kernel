@@ -341,7 +341,7 @@ static void arm_spe__synth_data_source_neoverse(const struct arm_spe_record *rec
 	 * We have no data on the hit level or data source for stores in the
 	 * Neoverse SPE records.
 	 */
-	if (record->op & ARM_SPE_ST) {
+	if (record->op & ARM_SPE_OP_ST) {
 		data_src->mem_lvl = PERF_MEM_LVL_NA;
 		data_src->mem_lvl_num = PERF_MEM_LVLNUM_NA;
 		data_src->mem_snoop = PERF_MEM_SNOOP_NA;
@@ -522,13 +522,13 @@ static void arm_spe__synth_data_source_hisi_hip(const struct arm_spe_record *rec
 
 static u64 arm_spe__synth_data_source(const struct arm_spe_record *record, u64 midr)
 {
-	union perf_mem_data_src	data_src = { 0 };
-	bool is_neoverse = is_midr_in_range(midr, neoverse_spe);
+	union perf_mem_data_src	data_src = { .mem_op = PERF_MEM_OP_NA };
+	bool is_neoverse = is_midr_in_range_list(midr, neoverse_spe);
 	bool is_hisilicon = is_midr_in_range_list(midr, hisi_hip_ds_encoding_cpus);
 
-	if (record->op == ARM_SPE_LD)
+	if (record->op & ARM_SPE_OP_LD)
 		data_src.mem_op = PERF_MEM_OP_LOAD;
-	else if (record->op == ARM_SPE_ST)
+	else if (record->op & ARM_SPE_OP_ST)
 		data_src.mem_op = PERF_MEM_OP_STORE;
 	else
 		return 0;
