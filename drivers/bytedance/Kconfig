@@ -50,6 +50,17 @@ config BYTEDANCE_HOT_INSPECTOR
 
 	      /sys/kernel/debug/hot_inspector/cpu/[N]
 
+config BYTEDANCE_CORE_SCHED_HELPER
+	tristate "bytedance core scheduling helper"
+	depends on BYTEDANCE && SCHED_CORE
+	default n
+	help
+	  This option will give you an ioctl interface that you can use to
+	  create or destroy a cookied kernel helper thread. This kernel
+	  helper thread will sleeps until destroyed.
+
+	  Bytedance TCE will use this thread to mark some threads.
+
 if BYTEDANCE
 source "drivers/bytedance/hookbind/Kconfig"
 source "drivers/bytedance/blackholefs/Kconfig"
