@@ -2841,7 +2841,7 @@ static void calculate_tsc_tweak()
 
 void prewake_cstate_probe(unsigned int family, unsigned int model);
 
-static void dump_nhm_platform_info(void)
+static void dump_platform_info(void)
 {
 	unsigned long long msr;
 	unsigned int ratio;
@@ -3077,7 +3077,7 @@ static void dump_knl_turbo_ratio_limits(void)
 				ratio[i], bclk, ratio[i] * bclk, cores[i]);
 }
 
-static void dump_nhm_cst_cfg(void)
+static void dump_cst_cfg(void)
 {
 	unsigned long long msr;
 
@@ -4450,9 +4450,9 @@ static void dump_cstate_pstate_config_info(unsigned int family, unsigned int mod
 	if (!platform->has_nhm_msrs)
 		return;
 
-	dump_nhm_platform_info();
+	dump_platform_info();
 	dump_turbo_ratio_info(family, model);
-	dump_nhm_cst_cfg();
+	dump_cst_cfg();
 }
 
 static int read_sysfs_int(char *path)
