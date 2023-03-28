@@ -33,6 +33,7 @@
 #include <linux/poll.h>
 #include <linux/nmi.h>
 #include <linux/cpu.h>
+#include <linux/mce.h>
 #include <linux/ras.h>
 #include <linux/smp.h>
 #include <linux/fs.h>
@@ -1245,6 +1246,7 @@ static void kill_me_now(struct callback_head *ch)
 	struct task_struct *p = container_of(ch, struct task_struct, mce_kill_me);
 
 	p->mce_count = 0;
+	mcestat_record(current, current->mce_addr, SIGBUS, false);
 	force_sig(SIGBUS);
 }
 
