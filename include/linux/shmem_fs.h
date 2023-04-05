@@ -93,8 +93,14 @@ static inline bool shmem_huge_enabled(struct vm_area_struct *vma, unsigned long 
 {
 	return shmem_is_huge(file_inode(vma->vm_file), vma->vm_pgoff, vma->vm_mm, vm_flags);
 }
-
+#ifdef CONFIG_SHMEM
 extern unsigned long shmem_swap_usage(struct vm_area_struct *vma);
+#else
+static inline unsigned long shmem_swap_usage(struct vm_area_struct *vma)
+{
+	return 0;
+}
+#endif
 extern unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 						pgoff_t start, pgoff_t end);
 
