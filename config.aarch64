@@ -2161,7 +2161,7 @@ CONFIG_PROC_EVENTS=y
 # end of ARM System Control and Management Interface Protocol
 
 # CONFIG_ARM_SCPI_PROTOCOL is not set
-# CONFIG_ARM_SDE_INTERFACE is not set
+CONFIG_ARM_SDE_INTERFACE=y
 # CONFIG_FIRMWARE_MEMMAP is not set
 CONFIG_DMIID=y
 CONFIG_DMI_SYSFS=y
