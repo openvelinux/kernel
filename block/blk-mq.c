@@ -1215,7 +1215,7 @@ static void __blk_execute_rq_nowait(struct gendisk *bd_disk, struct request *rq,
 
 	blk_account_io_start(rq);
 
-	if (use_plug && current->plug) {
+	if (use_plug && current->plug && !at_head) {
 		blk_add_rq_to_plug(current->plug, rq);
 		return;
 	}
