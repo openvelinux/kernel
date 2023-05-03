@@ -113,8 +113,10 @@ err:
 
 void __exit skx_adxl_put(void)
 {
-	kfree(adxl_values);
-	kfree(adxl_msg);
+	if (adxl_component_count) {
+		kfree(adxl_values);
+		kfree(adxl_msg);
+	}
 }
 
 static bool skx_adxl_decode(struct decoded_addr *res, bool error_in_1st_level_mem)

@@ -74,7 +74,7 @@ static struct list_head *i10nm_edac_list;
 
 static struct res_config *res_cfg;
 static int retry_rd_err_log;
-static int decoding_via_mca;
+static int decoding_via_mca = 1;
 static bool mem_cfg_2lm;
 
 static u32 offsets_scrub_icx[]  = {0x22c60, 0x22c54, 0x22c5c, 0x22c58, 0x22c28, 0x20ed8};
@@ -862,7 +862,7 @@ static int __init i10nm_init(void)
 	}
 
 	rc = skx_adxl_get();
-	if (rc)
+	if (rc && rc != -ENODEV)
 		goto fail;
 
 	opstate_init();
@@ -930,7 +930,7 @@ static const struct kernel_param_ops decoding_via_mca_param_ops = {
 };
 
 module_param_cb(decoding_via_mca, &decoding_via_mca_param_ops, &decoding_via_mca, 0644);
-MODULE_PARM_DESC(decoding_via_mca, "decoding_via_mca: 0=off(default), 1=enable");
+MODULE_PARM_DESC(decoding_via_mca, "decoding_via_mca: 0=off, 1=enable(default)");
 
 module_param(retry_rd_err_log, int, 0444);
 MODULE_PARM_DESC(retry_rd_err_log, "retry_rd_err_log: 0=off(default), 1=bios(Linux doesn't reset any control bits, but just reports values.), 2=linux(Linux tries to take control and resets mode bits, clear valid/UC bits after reading.)");
