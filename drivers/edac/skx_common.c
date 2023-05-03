@@ -89,7 +89,7 @@ int skx_adxl_get(void)
 
 	adxl_values = kcalloc(adxl_component_count, sizeof(*adxl_values),
 			      GFP_KERNEL);
-	if (!adxl_values) {
+	if (ZERO_OR_NULL_PTR(adxl_values)) {
 		adxl_component_count = 0;
 		return -ENOMEM;
 	}
@@ -115,9 +115,11 @@ EXPORT_SYMBOL_GPL(skx_adxl_get);
 
 void skx_adxl_put(void)
 {
-	adxl_component_count = 0;
-	kfree(adxl_values);
-	kfree(adxl_msg);
+	if (adxl_component_count) {
+		adxl_component_count = 0;
+		kfree(adxl_values);
+		kfree(adxl_msg);
+	}
 }
 EXPORT_SYMBOL_GPL(skx_adxl_put);
 
