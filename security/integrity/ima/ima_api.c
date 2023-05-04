@@ -152,7 +152,7 @@ void ima_add_violation(struct file *file, const unsigned char *filename,
 		goto err_out;
 	}
 	result = ima_store_template(entry, violation, inode,
-				    filename, CONFIG_IMA_MEASURE_PCR_IDX);
+				    filename, IMA_PCR_OR_RTMR_IDX);
 	if (result < 0)
 		ima_free_template_entry(entry);
 err_out:
