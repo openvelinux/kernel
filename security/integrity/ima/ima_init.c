@@ -23,6 +23,7 @@
 /* name for boot aggregate entry */
 const char boot_aggregate_name[] = "boot_aggregate";
 struct tpm_chip *ima_tpm_chip;
+struct tpm_chip *ima_tdx_device;
 
 /* Add the boot aggregate to the IMA measurement list and extend
  * the PCR register.
@@ -85,7 +86,7 @@ static int __init ima_add_boot_aggregate(void)
 
 	result = ima_store_template(entry, violation, NULL,
 				    boot_aggregate_name,
-				    CONFIG_IMA_MEASURE_PCR_IDX);
+				    IMA_PCR_OR_RTMR_IDX);
 	if (result < 0) {
 		ima_free_template_entry(entry);
 		audit_cause = "store_entry";
@@ -118,6 +119,20 @@ int __init ima_init(void)
 	int rc;
 
 	ima_tpm_chip = tpm_default_chip();
+#ifdef CONFIG_INTEL_TDX_GUEST
+	if (!ima_tpm_chip) {
+		pr_info("No TPM chip found, Checking TDX instead!\n");
+		/* Only support RTMR case while setting ima_hash=sha384
+		 * in kernel cmdline
+		 */
+		if (ima_hash_algo == HASH_ALGO_SHA384)
+			ima_tpm_chip = tdx_rtmr_device();
+		if (ima_tpm_chip) {
+			pr_info("TDX found.\n");
+			ima_tdx_device = ima_tpm_chip;
+		}
+	}
+#endif
 	if (!ima_tpm_chip)
 		pr_info("No TPM chip found, activating TPM-bypass!\n");
 
