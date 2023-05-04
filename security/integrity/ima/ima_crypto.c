@@ -134,7 +134,14 @@ int __init ima_init_crypto(void)
 			ima_hash_algo_idx = i;
 	}
 
-	if (ima_sha1_idx < 0) {
+	if (ima_tdx_device && ima_hash_algo_idx < 0) {
+		rc = 0;
+		goto out;
+	}
+	/* in TDX case, SHA1 is not mandatory. Just check the case when TDX is
+	 * not available.
+	 */
+	if (ima_sha1_idx < 0 && !ima_tdx_device) {
 		ima_sha1_idx = NR_BANKS(ima_tpm_chip) + ima_extra_slots++;
 		if (ima_hash_algo == HASH_ALGO_SHA1)
 			ima_hash_algo_idx = ima_sha1_idx;
@@ -630,11 +637,15 @@ int ima_calc_field_array_hash(struct ima_field_data *field_data,
 	u16 alg_id;
 	int rc, i;
 
-	rc = ima_calc_field_array_hash_tfm(field_data, entry, ima_sha1_idx);
-	if (rc)
-		return rc;
+	/* Skip the calculation of SHA1 digest in TDX RTMR case */
+	if (!ima_tdx_device) {
+		rc = ima_calc_field_array_hash_tfm(field_data, entry, ima_sha1_idx);
+		if (rc)
+			return rc;
+	}
 
-	entry->digests[ima_sha1_idx].alg_id = TPM_ALG_SHA1;
+	if (!ima_tdx_device)
+		entry->digests[ima_sha1_idx].alg_id = TPM_ALG_SHA1;
 
 	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++) {
 		if (i == ima_sha1_idx)
@@ -814,6 +825,29 @@ static int ima_calc_boot_aggregate_tfm(char *digest, u16 alg_id,
 	if (rc != 0)
 		return rc;
 
+	/* read boot measurements from MRTD, RTMR[0/1/2] and
+	 * do crypto_shash_update and crypto_shash_final
+	 */
+	if (ima_tdx_device) {
+		struct tdx_boot_digests boot_digests;
+
+		rc = tdx_get_boot_measurements(&boot_digests);
+		if (rc != 0)
+			return rc;
+
+		/* update num of boot digest into shash*/
+		int num = sizeof(boot_digests.boot_digest) /
+			  sizeof(boot_digests.boot_digest[0]);
+		for (i = 0; i < num; i++) {
+			rc = crypto_shash_update(shash,
+						 boot_digests.boot_digest[i],
+						 crypto_shash_digestsize(tfm));
+			if (rc != 0)
+				return rc;
+		}
+		goto save;
+	}
+
 	/* cumulative digest over TPM registers 0-7 */
 	for (i = TPM_PCR0; i < TPM_PCR8; i++) {
 		ima_pcrread(i, &d);
@@ -836,6 +870,8 @@ static int ima_calc_boot_aggregate_tfm(char *digest, u16 alg_id,
 						crypto_shash_digestsize(tfm));
 		}
 	}
+
+save:
 	if (!rc)
 		crypto_shash_final(shash, digest);
 	return rc;
@@ -851,6 +887,11 @@ int ima_calc_boot_aggregate(struct ima_digest_data *hash)
 		crypto_id = ima_tpm_chip->allocated_banks[i].crypto_id;
 		if (crypto_id == hash->algo) {
 			bank_idx = i;
+			break;
+		}
+
+		if (ima_tdx_device) {
+			bank_idx = ima_hash_algo_idx;
 			break;
 		}
 

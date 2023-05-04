@@ -148,6 +148,18 @@ static int ima_pcr_extend(struct tpm_digest *digests_arg, int pcr)
 	return result;
 }
 
+#ifdef CONFIG_INTEL_TDX_GUEST
+static int ima_tdx_extend(struct tpm_digest *digests_arg, int rtmr)
+{
+	int result = 0;
+
+	result = ima_extend_rtmr(ima_tpm_chip, rtmr, digests_arg);
+	if (result != 0)
+		pr_err("Error Communicating to RTMR, result: %d\n", result);
+	return result;
+}
+#endif
+
 /*
  * Add template entry to the measurement list and hash table, and
  * extend the pcr.
@@ -186,6 +198,21 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 
 	if (violation)		/* invalidate pcr */
 		digests_arg = digests;
+
+#ifdef CONFIG_INTEL_TDX_GUEST
+	if (ima_tdx_device) {
+		pr_debug("Message for debugging: extending IMA measurement to RTMR.\n");
+		result = ima_tdx_extend(digests_arg, entry->pcr);
+		if (result != 0) {
+			snprintf(tpm_audit_cause, AUDIT_CAUSE_LEN_MAX,
+				 "TDX_RTMR_error(%d)", result);
+			audit_cause = tpm_audit_cause;
+			audit_info = 0;
+		}
+
+		goto out;
+	}
+#endif
 
 	tpmresult = ima_pcr_extend(digests_arg, entry->pcr);
 	if (tpmresult != 0) {
