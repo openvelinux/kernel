@@ -150,8 +150,12 @@ int ima_measurements_show(struct seq_file *m, void *v)
 	pcr = !ima_canonical_fmt ? e->pcr : (__force u32)cpu_to_le32(e->pcr);
 	ima_putc(m, &pcr, sizeof(e->pcr));
 
-	/* 2nd: template digest */
-	ima_putc(m, e->digests[ima_sha1_idx].digest, TPM_DIGEST_SIZE);
+	/* 2nd: template digest, use SHA384 instead of SHA1 in TDX RTMR case */
+	if (ima_tdx_device)
+		ima_putc(m, e->digests[ima_hash_algo_idx].digest,
+			 SHA384_DIGEST_SIZE);
+	else
+		ima_putc(m, e->digests[ima_sha1_idx].digest, TPM_DIGEST_SIZE);
 
 	/* 3rd: template name size */
 	namelen = !ima_canonical_fmt ? strlen(template_name) :
@@ -233,8 +237,14 @@ static int ima_ascii_measurements_show(struct seq_file *m, void *v)
 	/* 1st: PCR used (config option) */
 	seq_printf(m, "%2d ", e->pcr);
 
-	/* 2nd: SHA1 template hash */
-	ima_print_digest(m, e->digests[ima_sha1_idx].digest, TPM_DIGEST_SIZE);
+	/* 2nd: SHA1 template hash, use SHA384 instead of SHA1 in TDX RTMR case */
+	if (ima_tdx_device) {
+		ima_print_digest(m, e->digests[ima_hash_algo_idx].digest,
+				 SHA384_DIGEST_SIZE);
+	} else {
+		ima_print_digest(m, e->digests[ima_sha1_idx].digest,
+				 TPM_DIGEST_SIZE);
+	}
 
 	/* 3th:  template name */
 	seq_printf(m, " %s", template_name);
