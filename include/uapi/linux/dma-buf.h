@@ -75,6 +75,12 @@ struct dma_buf_sync {
 	__u64 flags;
 };
 
+struct dma_buf_create_pages_info {
+	__u64 pci_bdf[3];
+	__s32 dma_buf_fd;
+	__s32 create_page_pool;
+};
+
 #define DMA_BUF_SYNC_READ      (1 << 0)
 #define DMA_BUF_SYNC_WRITE     (2 << 0)
 #define DMA_BUF_SYNC_RW        (DMA_BUF_SYNC_READ | DMA_BUF_SYNC_WRITE)
@@ -94,5 +100,7 @@ struct dma_buf_sync {
 #define DMA_BUF_SET_NAME	_IOW(DMA_BUF_BASE, 1, const char *)
 #define DMA_BUF_SET_NAME_A	_IOW(DMA_BUF_BASE, 1, __u32)
 #define DMA_BUF_SET_NAME_B	_IOW(DMA_BUF_BASE, 1, __u64)
+
+#define DMA_BUF_CREATE_PAGES	_IOW(DMA_BUF_BASE, 2, struct dma_buf_create_pages_info)
 
 #endif
