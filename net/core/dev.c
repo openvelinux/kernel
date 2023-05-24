@@ -6116,6 +6116,9 @@ static void gro_pull_from_frag0(struct sk_buff *skb, int grow)
 {
 	struct skb_shared_info *pinfo = skb_shinfo(skb);
 
+	if (WARN_ON_ONCE(skb_frags_not_readable(skb)))
+		return;
+
 	BUG_ON(skb->end - skb->tail < grow);
 
 	memcpy(skb_tail_pointer(skb), NAPI_GRO_CB(skb)->frag0, grow);
@@ -6245,7 +6248,7 @@ static enum gro_result dev_gro_receive(struct napi_struct *napi, struct sk_buff 
 
 pull:
 	grow = skb_gro_offset(skb) - skb_headlen(skb);
-	if (grow > 0)
+	if (grow > 0 && !skb_frags_not_readable(skb))
 		gro_pull_from_frag0(skb, grow);
 ok:
 	if (gro_list->count) {

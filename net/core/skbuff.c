@@ -864,11 +864,16 @@ void skb_dump(const char *level, const struct sk_buff *skb, bool full_pkt)
 				      skb_frag_size(frag), p, p_off, p_len,
 				      copied) {
 			seg_len = min_t(int, p_len, len);
-			vaddr = kmap_atomic(p);
-			print_hex_dump(level, "skb frag:     ",
-				       DUMP_PREFIX_OFFSET,
-				       16, 1, vaddr + p_off, seg_len, false);
-			kunmap_atomic(vaddr);
+			if (!is_dma_buf_page(p)) {
+				vaddr = kmap_atomic(p);
+				print_hex_dump(level, "skb frag:     ",
+					       DUMP_PREFIX_OFFSET, 16, 1,
+					       vaddr + p_off, seg_len, false);
+				kunmap_atomic(vaddr);
+			} else {
+				printk("%sskb frag: devmem", level);
+			}
+
 			len -= seg_len;
 			if (!len)
 				break;
@@ -1455,6 +1460,9 @@ int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
 	if (skb_shared(skb) || skb_unclone(skb, gfp_mask))
 		return -EINVAL;
 
+	if (skb_frags_not_readable(skb))
+		return -EFAULT;
+
 	if (!num_frags)
 		goto release;
 
@@ -1624,8 +1632,10 @@ struct sk_buff *skb_copy(const struct sk_buff *skb, gfp_t gfp_mask)
 {
 	int headerlen = skb_headroom(skb);
 	unsigned int size = skb_end_offset(skb) + skb->data_len;
-	struct sk_buff *n = __alloc_skb(size, gfp_mask,
-					skb_alloc_rx_flag(skb), NUMA_NO_NODE);
+	struct sk_buff *n = skb_frags_not_readable(skb) ? NULL :
+					  __alloc_skb(size, gfp_mask,
+						      skb_alloc_rx_flag(skb),
+						      NUMA_NO_NODE);
 
 	if (!n)
 		return NULL;
@@ -1938,9 +1948,10 @@ struct sk_buff *skb_copy_expand(const struct sk_buff *skb,
 	/*
 	 *	Allocate the copy buffer
 	 */
-	struct sk_buff *n = __alloc_skb(newheadroom + skb->len + newtailroom,
-					gfp_mask, skb_alloc_rx_flag(skb),
-					NUMA_NO_NODE);
+	struct sk_buff *n = skb_frags_not_readable(skb) ? NULL :
+			      __alloc_skb(newheadroom + skb->len + newtailroom,
+					  gfp_mask, skb_alloc_rx_flag(skb),
+					  NUMA_NO_NODE);
 	int oldheadroom = skb_headroom(skb);
 	int head_copy_len, head_copy_off;
 
@@ -2257,6 +2268,9 @@ void *__pskb_pull_tail(struct sk_buff *skb, int delta)
 	 */
 	int i, k, eat = (skb->tail + delta) - skb->end;
 
+	if (skb_frags_not_readable(skb))
+		return NULL;
+
 	if (eat > 0 || skb_cloned(skb)) {
 		if (pskb_expand_head(skb, 0, eat > 0 ? eat + 128 : 0,
 				     GFP_ATOMIC))
@@ -2410,6 +2424,9 @@ int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)
 		to     += copy;
 	}
 
+	if (skb_frags_not_readable(skb))
+		goto fault;
+
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		int end;
 		skb_frag_t *f = &skb_shinfo(skb)->frags[i];
@@ -2483,7 +2500,7 @@ static struct page *linear_to_page(struct page *page, unsigned int *len,
 {
 	struct page_frag *pfrag = sk_page_frag(sk);
 
-	if (!sk_page_frag_refill(sk, pfrag))
+	if (!sk_page_frag_refill(sk, pfrag) || is_dma_buf_page(pfrag->page))
 		return NULL;
 
 	*len = min_t(unsigned int, *len, pfrag->size - pfrag->offset);
@@ -2812,6 +2829,9 @@ int skb_store_bits(struct sk_buff *skb, int offset, const void *from, int len)
 		from += copy;
 	}
 
+	if (skb_frags_not_readable(skb))
+		goto fault;
+
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 		int end;
@@ -2890,6 +2910,9 @@ __wsum __skb_checksum(const struct sk_buff *skb, int offset, int len,
 		offset += copy;
 		pos	= copy;
 	}
+
+	if (WARN_ON_ONCE(skb_frags_not_readable(skb)))
+		return -EFAULT;
 
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		int end;
@@ -2990,6 +3013,9 @@ __wsum skb_copy_and_csum_bits(const struct sk_buff *skb, int offset,
 		to     += copy;
 		pos	= copy;
 	}
+
+	if (WARN_ON_ONCE(skb_frags_not_readable(skb)))
+		return -EFAULT;
 
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		int end;
@@ -3450,7 +3476,9 @@ static inline void skb_split_inside_header(struct sk_buff *skb,
 		skb_shinfo(skb1)->frags[i] = skb_shinfo(skb)->frags[i];
 
 	skb_shinfo(skb1)->nr_frags = skb_shinfo(skb)->nr_frags;
+	skb1->devmem		   = skb->devmem;
 	skb_shinfo(skb)->nr_frags  = 0;
+	skb->devmem		   = 0;
 	skb1->data_len		   = skb->data_len;
 	skb1->len		   += skb1->data_len;
 	skb->data_len		   = 0;
@@ -3464,11 +3492,13 @@ static inline void skb_split_no_header(struct sk_buff *skb,
 {
 	int i, k = 0;
 	const int nfrags = skb_shinfo(skb)->nr_frags;
+	const bool devmem = skb->devmem;
 
 	skb_shinfo(skb)->nr_frags = 0;
 	skb1->len		  = skb1->data_len = skb->len - len;
 	skb->len		  = len;
 	skb->data_len		  = len - pos;
+	skb->devmem		  = skb1->devmem = 0;
 
 	for (i = 0; i < nfrags; i++) {
 		int size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
@@ -3497,6 +3527,12 @@ static inline void skb_split_no_header(struct sk_buff *skb,
 		pos += size;
 	}
 	skb_shinfo(skb1)->nr_frags = k;
+
+	if (skb_shinfo(skb)->nr_frags)
+		skb->devmem = devmem;
+
+	if (skb_shinfo(skb1)->nr_frags)
+		skb1->devmem = devmem;
 }
 
 /**
@@ -3733,6 +3769,9 @@ next_skb:
 		*data = st->cur_skb->data + (abs_offset - st->stepped_offset);
 		return block_limit - abs_offset;
 	}
+
+	if (skb_frags_not_readable(st->cur_skb))
+		return 0;
 
 	if (st->frag_idx == 0 && !st->frag_data)
 		st->stepped_offset += skb_headlen(st->cur_skb);
@@ -5311,7 +5350,10 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
 	    (from->pp_recycle && skb_cloned(from)))
 		return false;
 
-	if (len <= skb_tailroom(to)) {
+	if (skb_frags_not_readable(from) != skb_frags_not_readable(to))
+		return false;
+
+	if (len <= skb_tailroom(to) && !skb_frags_not_readable(from)) {
 		if (len)
 			BUG_ON(skb_copy_bits(from, 0, skb_put(to, len), len));
 		*delta_truesize = 0;
@@ -5626,6 +5668,9 @@ int skb_ensure_writable(struct sk_buff *skb, int write_len)
 {
 	if (!pskb_may_pull(skb, write_len))
 		return -ENOMEM;
+
+	if (skb_frags_not_readable(skb))
+		return -EFAULT;
 
 	if (!skb_cloned(skb) || skb_clone_writable(skb, write_len))
 		return 0;
@@ -6301,7 +6346,7 @@ void skb_condense(struct sk_buff *skb)
 {
 	if (skb->data_len) {
 		if (skb->data_len > skb->end - skb->tail ||
-		    skb_cloned(skb))
+				skb_cloned(skb) || skb_frags_not_readable(skb))
 			return;
 
 		/* Nice, we can free page frag(s) right now */
