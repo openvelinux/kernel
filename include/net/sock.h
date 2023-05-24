@@ -347,6 +347,7 @@ struct bpf_local_storage;
   *	@sk_txtime_deadline_mode: set deadline mode for SO_TXTIME
   *	@sk_txtime_report_errors: set report errors mode for SO_TXTIME
   *	@sk_txtime_unused: unused txtime flags
+  *	@sk_pagepool: page pool associated with this socket.
   */
 struct sock {
 	/*
@@ -533,6 +534,7 @@ struct sock {
 	struct bpf_local_storage __rcu	*sk_bpf_storage;
 #endif
 	struct rcu_head		sk_rcu;
+	struct xarray		sk_pagepool;
 };
 
 enum sk_pacing {
