@@ -4747,6 +4747,56 @@ static struct netdev_rx_queue *netif_get_rxqueue(struct sk_buff *skb)
 	return rxqueue;
 }
 
+struct page *
+__netdev_rxq_alloc_page_from_dmabuf_pool(struct netdev_rx_queue *rxq,
+					 unsigned int order)
+{
+	struct dma_buf_pages_file_priv *priv;
+	struct file *dmabuf_pages_file;
+	unsigned long kvirt;
+	struct page *pg;
+	size_t offset;
+
+	rcu_read_lock();
+	dmabuf_pages_file = rcu_dereference(rxq->dmabuf_pages);
+	if (!dmabuf_pages_file || !get_file_rcu(dmabuf_pages_file)) {
+		rcu_read_unlock();
+		return NULL;
+	}
+	rcu_read_unlock();
+
+	priv = dmabuf_pages_file->private_data;
+	kvirt = gen_pool_alloc(priv->page_pool, PAGE_SIZE * (1 << order));
+	if (!kvirt)
+		goto out_err_put;
+
+	if (!PAGE_ALIGNED(kvirt)) {
+		net_err_ratelimited("dmabuf page pool allocation not aligned");
+		gen_pool_free(priv->page_pool, kvirt, PAGE_SIZE * (1 << order));
+		goto out_err_put;
+	}
+
+	/* - 1 is due to the fact that we want to avoid 0 virt address
+	 * returned from the gen_pool. See comment in dma_buf_create_pages()
+	 * for details.
+	 */
+	offset = (kvirt >> PAGE_SHIFT) - 1;
+	pg = &priv->pages[offset];
+
+	/* pg->private holds the order of the page for freeing. */
+	pg->private = order;
+	percpu_ref_get(&pg->pgmap->ref);
+	fput(dmabuf_pages_file);
+	get_page(pg);
+	return pg;
+
+out_err_put:
+	fput(dmabuf_pages_file);
+
+	return NULL;
+}
+EXPORT_SYMBOL(__netdev_rxq_alloc_page_from_dmabuf_pool);
+
 u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
 			     struct bpf_prog *xdp_prog)
 {

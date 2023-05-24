@@ -48,6 +48,7 @@
 #include <uapi/linux/pkt_cls.h>
 #include <linux/hashtable.h>
 #include <linux/rbtree.h>
+#include <linux/dma-buf.h>
 
 struct netpoll_info;
 struct device;
@@ -766,6 +767,38 @@ struct netdev_rx_queue {
 #endif
 	struct file __rcu		*dmabuf_pages;
 } ____cacheline_aligned_in_smp;
+
+struct page *
+__netdev_rxq_alloc_page_from_dmabuf_pool(struct netdev_rx_queue *rxq,
+					 unsigned int order);
+
+static inline struct page *netdev_rxq_alloc_dma_buf_page(struct netdev_rx_queue *rxq,
+						 unsigned int order)
+{
+
+	/* Return NULL if we can't allocate a dma_buf page, instead of trying
+	 * to fallback to alloc_page(). The reason we do this is because we
+	 * don't want to confuse the caller with respect to whether the page
+	 * they are getting is a dma_buf page or otherwise. dma_buf pages and
+	 * devmem skbs require special handling, so the distinction is
+	 * important. Let the caller fall back to allocating a non-dma_buf page
+	 * if they know what they're doing.
+	 */
+	if (unlikely(!rcu_access_pointer(rxq->dmabuf_pages)))
+		return NULL;
+
+	return __netdev_rxq_alloc_page_from_dmabuf_pool(rxq, order);
+}
+
+static inline void netdev_rxq_free_page(struct page *pg)
+{
+	if (is_dma_buf_page(pg)) {
+		put_page(pg);
+		return;
+	}
+
+	__free_page(pg);
+}
 
 /*
  * RX queue sysfs structures and functions.
