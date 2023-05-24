@@ -37,6 +37,7 @@
 #include <linux/page_idle.h>
 #include <linux/local_lock.h>
 #include <linux/buffer_head.h>
+#include <linux/dma-buf.h>
 
 #include "internal.h"
 
@@ -114,6 +115,10 @@ static void __put_compound_page(struct page *page)
 void __put_page(struct page *page)
 {
 	if (is_zone_device_page(page)) {
+		if (is_dma_buf_page(page)) {
+			page->pgmap->ops->page_free(page);
+			return;
+		}
 		put_dev_pagemap(page->pgmap);
 
 		/*
@@ -1142,6 +1147,11 @@ void put_devmap_managed_page(struct page *page)
 
 	if (WARN_ON_ONCE(!page_is_devmap_managed(page)))
 		return;
+	if (WARN_ON_ONCE(is_dma_buf_page(page))) {
+		if (put_page_testzero(page))
+			__put_page(page);
+		return;
+	}
 
 	count = page_ref_dec_return(page);
 
