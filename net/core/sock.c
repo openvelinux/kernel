@@ -2634,6 +2634,12 @@ int __sock_cmsg_send(struct sock *sk, struct msghdr *msg, struct cmsghdr *cmsg,
 			return -EINVAL;
 		sockc->transmit_time = get_unaligned((u64 *)CMSG_DATA(cmsg));
 		break;
+	case SCM_DEVMEM_OFFSET:
+		if (cmsg->cmsg_len != CMSG_LEN(2 * sizeof(u32)))
+			return -EINVAL;
+		sockc->devmem_fd = ((u32 *)CMSG_DATA(cmsg))[0];
+		sockc->devmem_offset = ((u32 *)CMSG_DATA(cmsg))[1];
+		break;
 	/* SCM_RIGHTS and SCM_CREDENTIALS are semantically in SOL_UNIX. */
 	case SCM_RIGHTS:
 	case SCM_CREDENTIALS:
