@@ -1595,6 +1595,12 @@ static inline void skb_zcopy_clear(struct sk_buff *skb, bool zerocopy_success)
 	}
 }
 
+/* Return true if frags in this skb are not readable by the host. */
+static inline bool skb_frags_not_readable(const struct sk_buff *skb)
+{
+	return skb->devmem;
+}
+
 static inline void skb_mark_not_on_list(struct sk_buff *skb)
 {
 	skb->next = NULL;

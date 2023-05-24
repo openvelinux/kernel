@@ -2309,7 +2309,8 @@ static bool tcp_can_coalesce_send_queue_head(struct sock *sk, int len)
 		if (len <= skb->len)
 			break;
 
-		if (unlikely(TCP_SKB_CB(skb)->eor) || tcp_has_tx_tstamp(skb))
+		if (unlikely(TCP_SKB_CB(skb)->eor) || tcp_has_tx_tstamp(skb) ||
+		    skb->devmem != next->devmem)
 			return false;
 
 		len -= skb->len;
@@ -3092,6 +3093,8 @@ static bool tcp_can_collapse(const struct sock *sk, const struct sk_buff *skb)
 	if (tcp_skb_pcount(skb) > 1)
 		return false;
 	if (skb_cloned(skb))
+		return false;
+	if (skb_frags_not_readable(skb))
 		return false;
 	/* Some heuristics for collapsing over SACK'd could be invented */
 	if (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_ACKED)
