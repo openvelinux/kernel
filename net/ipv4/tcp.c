@@ -1417,15 +1417,14 @@ new_segment:
 				goto wait_for_space;
 
 			if (devmem_file) {
-				err = skb_zerocopy_iter_stream(sk, skb,
-							       &devmem_tx_iter,
-							       copy, uarg);
+				err = skb_devmem_iter_stream(sk, skb,
+							     &devmem_tx_iter,
+							     copy, uarg);
 				skb->devmem = 1;
 				if (err > 0)
 					iov_iter_advance(&msg->msg_iter, err);
 			} else {
-				err = skb_zerocopy_iter_stream(sk, skb,
-							       &msg->msg_iter,
+				err = skb_zerocopy_iter_stream(sk, skb, msg,
 							       copy, uarg);
 			}
 			if (err == -EMSGSIZE || err == -EEXIST) {

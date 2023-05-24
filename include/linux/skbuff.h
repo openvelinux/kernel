@@ -546,8 +546,11 @@ void msg_zerocopy_callback(struct sk_buff *skb, struct ubuf_info *uarg,
 
 int skb_zerocopy_iter_dgram(struct sk_buff *skb, struct msghdr *msg, int len);
 int skb_zerocopy_iter_stream(struct sock *sk, struct sk_buff *skb,
-			     struct iov_iter *iov_iter, int len,
+			     struct msghdr *msg, int len,
 			     struct ubuf_info *uarg);
+int skb_devmem_iter_stream(struct sock *sk, struct sk_buff *skb,
+			   struct iov_iter *iov_iter, int len,
+			   struct ubuf_info *uarg);
 
 /* This data is invariant across clones and lives at
  * the end of the header data, ie. at skb->end.
