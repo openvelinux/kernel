@@ -2290,7 +2290,7 @@ static void tcp_xa_pool_commit(struct sock *sk, struct tcp_xa_pool *p,
 	if (!p->max)
 		return;
 	if (lock)
-		xa_lock(&sk->sk_pagepool);
+		xa_lock_bh(&sk->sk_pagepool);
 	/* Commit part that has been copied to user space. */
 	for (i = 0; i < p->idx; i++)
 		__xa_cmpxchg(&sk->sk_pagepool,
@@ -2302,7 +2302,7 @@ static void tcp_xa_pool_commit(struct sock *sk, struct tcp_xa_pool *p,
 	for (; i < p->max; i++)
 		__xa_erase(&sk->sk_pagepool, p->tokens[i]);
 	if (lock)
-		xa_unlock(&sk->sk_pagepool);
+		xa_unlock_bh(&sk->sk_pagepool);
 	p->max = 0;
 	p->idx = 0;
 }
@@ -2315,7 +2315,7 @@ static int tcp_xa_pool_refill(struct sock *sk, struct tcp_xa_pool *p,
 	if (p->idx < p->max)
 		return 0;
 
-	xa_lock(&sk->sk_pagepool);
+	xa_lock_bh(&sk->sk_pagepool);
 
 	tcp_xa_pool_commit(sk, p, false);
 	for (k = 0; k < max_frags; k++) {
@@ -2325,7 +2325,7 @@ static int tcp_xa_pool_refill(struct sock *sk, struct tcp_xa_pool *p,
 			break;
 	}
 
-	xa_unlock(&sk->sk_pagepool);
+	xa_unlock_bh(&sk->sk_pagepool);
 
 	p->max = k;
 	p->idx = 0;
