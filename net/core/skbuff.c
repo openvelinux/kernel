@@ -1348,9 +1348,9 @@ int skb_zerocopy_iter_dgram(struct sk_buff *skb, struct msghdr *msg, int len)
 }
 EXPORT_SYMBOL_GPL(skb_zerocopy_iter_dgram);
 
-int skb_zerocopy_iter_stream(struct sock *sk, struct sk_buff *skb,
-			     struct iov_iter *iov_iter, int len,
-			     struct ubuf_info *uarg)
+int skb_devmem_iter_stream(struct sock *sk, struct sk_buff *skb,
+			   struct iov_iter *iov_iter, int len,
+			   struct ubuf_info *uarg)
 {
 	struct ubuf_info *orig_uarg = skb_zcopy(skb);
 	struct iov_iter orig_iter = *iov_iter;
@@ -1368,6 +1368,37 @@ int skb_zerocopy_iter_stream(struct sock *sk, struct sk_buff *skb,
 
 		/* Streams do not free skb on error. Reset to prev state. */
 		*iov_iter = orig_iter;
+		skb->sk = sk;
+		___pskb_trim(skb, orig_len);
+		skb->sk = save_sk;
+		return err;
+	}
+
+	skb_zcopy_set(skb, uarg, NULL);
+	return skb->len - orig_len;
+}
+EXPORT_SYMBOL_GPL(skb_devmem_iter_stream);
+
+int skb_zerocopy_iter_stream(struct sock *sk, struct sk_buff *skb,
+			     struct msghdr *msg, int len,
+			     struct ubuf_info *uarg)
+{
+	struct ubuf_info *orig_uarg = skb_zcopy(skb);
+	struct iov_iter orig_iter = msg->msg_iter;
+	int err, orig_len = skb->len;
+
+	/* An skb can only point to one uarg. This edge case happens when
+	 * TCP appends to an skb, but zerocopy_realloc triggered a new alloc.
+	 */
+	if (orig_uarg && uarg != orig_uarg)
+		return -EEXIST;
+
+	err = __zerocopy_sg_from_iter(sk, skb, &msg->msg_iter, len);
+	if (err == -EFAULT || (err == -EMSGSIZE && skb->len == orig_len)) {
+		struct sock *save_sk = skb->sk;
+
+		/* Streams do not free skb on error. Reset to prev state. */
+		msg->msg_iter = orig_iter;
 		skb->sk = sk;
 		___pskb_trim(skb, orig_len);
 		skb->sk = save_sk;
