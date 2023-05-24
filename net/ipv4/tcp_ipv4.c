@@ -2271,6 +2271,14 @@ void tcp_v4_destroy_sock(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
+	unsigned long index;
+	struct page *page;
+
+	xa_for_each(&sk->sk_pagepool, index, page)
+		put_page(page);
+
+	xa_destroy(&sk->sk_pagepool);
+
 	trace_tcp_destroy_sock(sk);
 
 	tcp_clear_xmit_timers(sk);

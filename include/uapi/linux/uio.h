@@ -20,6 +20,14 @@ struct iovec
 	__kernel_size_t iov_len; /* Must be size_t (1003.1g) */
 };
 
+struct devmemvec {
+	__u32 frag_offset;
+	__u32 frag_size;
+	__u32 frag_token; /* The token is only 31 bits long. The last bit is
+			   * reserved to indicate the end of pagelist.
+			   */
+};
+
 /*
  *	UIO_MAXIOV shall be at least 16 1003.1g (5.4.1.1)
  */
