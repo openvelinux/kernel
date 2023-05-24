@@ -981,6 +981,75 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 
 	valbool = val ? 1 : 0;
 
+	/* handle options that do not need to lock the socket */
+	switch (optname) {
+	case SO_DEVMEM_DONTNEED:
+	{
+		struct devmemtoken singleton_token, *tokens;
+		unsigned int num_tokens, i, j, k, pg_num = 0;
+		struct page *pgs[16];
+
+		if (sk->sk_type != SOCK_STREAM || sk->sk_protocol != IPPROTO_TCP)
+			return -EBADF;
+
+		if (optlen < sizeof(*tokens) || optlen % sizeof(*tokens))
+			return -EINVAL;
+
+		if (optlen == sizeof(*tokens)) {
+			if (copy_from_sockptr(&singleton_token, optval,
+					      sizeof(*tokens))) {
+				return -EFAULT;
+			}
+			num_tokens = 1;
+			tokens = &singleton_token;
+		} else {
+			if (optlen > 4096)
+				return -EINVAL;
+			num_tokens = optlen / sizeof(*tokens);
+			tokens = kmalloc(optlen, GFP_KERNEL);
+			if (!tokens)
+				return -ENOMEM;
+			if (copy_from_sockptr(tokens, optval, optlen)) {
+				kfree(tokens);
+				return -EFAULT;
+			}
+		}
+
+		ret = 0;
+
+		xa_lock_bh(&sk->sk_pagepool);
+		for (i = 0; i < num_tokens; i++) {
+			for (j = 0; j < tokens[i].token_count; j++) {
+				struct page *pg = __xa_erase(&sk->sk_pagepool,
+							   tokens[i].token_start + j);
+
+				if (pg) {
+					pgs[pg_num++] = pg;
+					if (pg_num == ARRAY_SIZE(pgs)) {
+						xa_unlock_bh(&sk->sk_pagepool);
+						for (k = 0; k < pg_num; k++)
+							put_page(pgs[k]);
+						pg_num = 0;
+						xa_lock_bh(&sk->sk_pagepool);
+					}
+				} else {
+					/* -EINTR here notifies the userspace
+					 * that not all tokens passed to it have
+					 * been freed.
+					 */
+					ret = -EINTR;
+				}
+			}
+		}
+		xa_unlock_bh(&sk->sk_pagepool);
+		for (k = 0; k < pg_num; k++)
+			put_page(pgs[k]);
+		if (num_tokens > 1)
+			kfree(tokens);
+
+		return ret;
+	}
+	}
 	lock_sock(sk);
 
 	switch (optname) {
