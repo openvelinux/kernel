@@ -24,6 +24,7 @@
 #include <linux/wait.h>
 #include <linux/uio.h>
 #include <linux/genalloc.h>
+#include <linux/xarray.h>
 
 struct device;
 struct dma_buf;
@@ -563,6 +564,7 @@ struct dma_buf_pages_file_priv {
 
 	/* fields for Rx */
 	struct gen_pool *page_pool;
+	struct xarray bound_rxq_list;
 };
 
 /**
