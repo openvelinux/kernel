@@ -370,6 +370,10 @@ static struct test generic_tests[] = {
 		.func = test__dlfilter,
 	},
 	{
+		.desc = "Intersect cpu map",
+		.func = test__cpu_map_intersect,
+	},
+	{
 		.func = NULL,
 	},
 };
