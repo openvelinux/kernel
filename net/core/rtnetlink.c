@@ -2321,6 +2321,25 @@ static int validate_linkmsg(struct net_device *dev, struct nlattr *tb[],
 		if (tb[IFLA_BROADCAST] &&
 		    nla_len(tb[IFLA_BROADCAST]) < dev->addr_len)
 			return -EINVAL;
+
+		if (tb[IFLA_GSO_MAX_SIZE] &&
+		    nla_get_u32(tb[IFLA_GSO_MAX_SIZE]) > dev->tso_max_size) {
+			NL_SET_ERR_MSG(extack, "too big gso_max_size");
+			return -EINVAL;
+		}
+
+		if (tb[IFLA_GSO_MAX_SEGS] &&
+		    (nla_get_u32(tb[IFLA_GSO_MAX_SEGS]) > GSO_MAX_SEGS ||
+		     nla_get_u32(tb[IFLA_GSO_MAX_SEGS]) > dev->tso_max_segs)) {
+			NL_SET_ERR_MSG(extack, "too big gso_max_segs");
+			return -EINVAL;
+		}
+
+		if (tb[IFLA_GRO_MAX_SIZE] &&
+		    nla_get_u32(tb[IFLA_GRO_MAX_SIZE]) > GRO_MAX_SIZE) {
+			NL_SET_ERR_MSG(extack, "too big gro_max_size");
+			return -EINVAL;
+		}
 	}
 
 	if (tb[IFLA_AF_SPEC]) {
