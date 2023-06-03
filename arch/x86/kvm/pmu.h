@@ -37,6 +37,7 @@ struct kvm_pmu_ops {
 	void (*deliver_pmi)(struct kvm_vcpu *vcpu);
 	void (*cleanup)(struct kvm_vcpu *vcpu);
 	const int MAX_NR_GP_COUNTERS;
+	const int MIN_NR_GP_COUNTERS;
 };
 
 void kvm_pmu_ops_update(const struct kvm_pmu_ops *pmu_ops);
@@ -174,14 +175,20 @@ extern struct x86_pmu_capability kvm_pmu_cap;
 static inline void kvm_init_pmu_capability(const struct kvm_pmu_ops *pmu_ops)
 {
 	bool is_intel = boot_cpu_data.x86_vendor == X86_VENDOR_INTEL;
+	int min_nr_gp_ctrs = pmu_ops->MIN_NR_GP_COUNTERS;
 
 	perf_get_x86_pmu_capability(&kvm_pmu_cap);
 
-	 /*
-	  * For Intel, only support guest architectural pmu
-	  * on a host with architectural pmu.
-	  */
-	if ((is_intel && !kvm_pmu_cap.version) || !kvm_pmu_cap.num_counters_gp)
+	/*
+	 * WARN if perf did NOT disable hardware PMU if the number of
+	 * architecturally required GP counters aren't present, i.e. if
+	 * there are a non-zero number of counters, but fewer than what
+	 * is architecturally required.
+	 */
+	if (!kvm_pmu_cap.num_counters_gp ||
+	    WARN_ON_ONCE(kvm_pmu_cap.num_counters_gp < min_nr_gp_ctrs))
+		enable_pmu = false;
+	else if (is_intel && !kvm_pmu_cap.version)
 		enable_pmu = false;
 
 	if (!enable_pmu) {
