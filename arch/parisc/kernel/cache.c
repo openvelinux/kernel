@@ -577,6 +577,7 @@ void flush_cache_mm(struct mm_struct *mm)
 			if (!ptep)
 				continue;
 			pfn = pte_pfn(*ptep);
+			pte_unmap(ptep);
 			if (!pfn_valid(pfn))
 				continue;
 			if (unlikely(mm->context)) {
@@ -618,6 +619,7 @@ void flush_cache_range(struct vm_area_struct *vma,
 		if (!ptep)
 			continue;
 		pfn = pte_pfn(*ptep);
+		pte_unmap(ptep);
 		if (pfn_valid(pfn)) {
 			if (unlikely(vma->vm_mm->context)) {
 				flush_tlb_page(vma, addr);
