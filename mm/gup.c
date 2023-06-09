@@ -511,9 +511,6 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 			 (FOLL_PIN | FOLL_GET)))
 		return ERR_PTR(-EINVAL);
 retry:
-	if (unlikely(pmd_bad(*pmd)))
-		return no_page_table(vma, flags);
-
 	try_copy_pte_entire_async(vma, pmd, address);
 
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
