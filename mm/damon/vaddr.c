@@ -469,6 +469,10 @@ static int damon_mkold_pmd_entry(pmd_t *pmd, unsigned long addr,
 	if (pmd_none(*pmd) || unlikely(pmd_bad(*pmd)))
 		return 0;
 	pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
+	if (!pte) {
+		walk->action = ACTION_AGAIN;
+		return 0;
+	}
 	if (!pte_present(*pte))
 		goto out;
 	damon_ptep_mkold(pte, walk->vma, addr);
@@ -559,9 +563,11 @@ huge_out:
 regular_page:
 #endif	/* CONFIG_TRANSPARENT_HUGEPAGE */
 
-	if (pmd_none(*pmd) || unlikely(pmd_bad(*pmd)))
-		return -EINVAL;
 	pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
+	if (!pte) {
+		walk->action = ACTION_AGAIN;
+		return 0;
+	}
 	if (!pte_present(*pte))
 		goto out;
 	page = damon_get_page(pte_pfn(*pte));
