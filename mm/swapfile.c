@@ -1911,7 +1911,7 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 		return -ENOMEM;
 
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
-	if (unlikely(!pte_same_as_swp(*pte, swp_entry_to_pte(entry)))) {
+	if (unlikely(!pte || !pte_same_as_swp(*pte, swp_entry_to_pte(entry)))) {
 		ret = 0;
 		goto out;
 	}
@@ -1929,7 +1929,8 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	}
 	swap_free(entry);
 out:
-	pte_unmap_unlock(pte, ptl);
+	if (pte)
+		pte_unmap_unlock(pte, ptl);
 	if (page != swapcache) {
 		unlock_page(page);
 		put_page(page);
@@ -1943,16 +1944,22 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			unsigned long *fs_pages_to_unuse)
 {
 	struct page *page;
-	swp_entry_t entry;
-	pte_t *pte;
+	pte_t *pte = NULL;
 	struct swap_info_struct *si;
 	unsigned long offset;
-	int ret = 0;
 	volatile unsigned char *swap_map;
 
 	si = swap_info[type];
-	pte = pte_offset_map(pmd, addr);
 	do {
+		swp_entry_t entry;
+		int ret;
+
+		if (!pte++) {
+			pte = pte_offset_map(pmd, addr);
+			if (!pte)
+				break;
+		}
+
 		if (!is_swap_pte(*pte))
 			continue;
 
@@ -1965,6 +1972,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			continue;
 
 		pte_unmap(pte);
+		pte = NULL;
 		swap_map = &si->swap_map[offset];
 		page = lookup_swap_cache(entry, vma, addr);
 		if (!page) {
@@ -1979,7 +1987,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		}
 		if (!page) {
 			if (*swap_map == 0 || *swap_map == SWAP_MAP_BAD)
-				goto try_next;
+				continue;
 			return -ENOMEM;
 		}
 
@@ -1989,25 +1997,20 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		if (ret < 0) {
 			unlock_page(page);
 			put_page(page);
-			goto out;
+			return ret;
 		}
 
 		try_to_free_swap(page);
 		unlock_page(page);
 		put_page(page);
 
-		if (*fs_pages_to_unuse && !--(*fs_pages_to_unuse)) {
-			ret = FRONTSWAP_PAGES_UNUSED;
-			goto out;
-		}
-try_next:
-		pte = pte_offset_map(pmd, addr);
-	} while (pte++, addr += PAGE_SIZE, addr != end);
-	pte_unmap(pte - 1);
+		if (*fs_pages_to_unuse && !--(*fs_pages_to_unuse))
+			return FRONTSWAP_PAGES_UNUSED;
+	} while (addr += PAGE_SIZE, addr != end);
 
-	ret = 0;
-out:
-	return ret;
+	if (pte)
+		pte_unmap(pte);
+	return 0;
 }
 
 static inline int unuse_pmd_range(struct vm_area_struct *vma, pud_t *pud,
@@ -2023,8 +2026,6 @@ static inline int unuse_pmd_range(struct vm_area_struct *vma, pud_t *pud,
 	do {
 		cond_resched();
 		next = pmd_addr_end(addr, end);
-		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
-			continue;
 		ret = unuse_pte_range(vma, pmd, addr, next, type,
 				      frontswap, fs_pages_to_unuse);
 		if (ret)
