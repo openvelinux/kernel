@@ -3311,13 +3311,6 @@ static bool filemap_map_pmd(struct vm_fault *vmf, struct page *page)
 	if (pmd_none(*vmf->pmd) && vmf->prealloc_pte)
 		pmd_install(mm, vmf->pmd, &vmf->prealloc_pte);
 
-	/* See comment in handle_pte_fault() */
-	if (pmd_devmap_trans_unstable(vmf->pmd)) {
-		unlock_page(page);
-		put_page(page);
-		return true;
-	}
-
 	return false;
 }
 
@@ -3405,6 +3398,11 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 
 	addr = vma->vm_start + ((start_pgoff - vma->vm_pgoff) << PAGE_SHIFT);
 	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, addr, &vmf->ptl);
+	if (!vmf->pte) {
+		unlock_page(head);
+		put_page(head);
+		goto out;
+	}
 	do {
 		page = find_subpage(head, xas.xa_index);
 		if (PageHWPoison(page))
