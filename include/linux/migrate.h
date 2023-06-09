@@ -57,8 +57,8 @@ extern int migrate_huge_page_move_mapping(struct address_space *mapping,
 				  struct page *newpage, struct page *page);
 extern int migrate_page_move_mapping(struct address_space *mapping,
 		struct page *newpage, struct page *page, int extra_count);
-void migration_entry_wait_on_locked(swp_entry_t entry, pte_t *ptep,
-				spinlock_t *ptl);
+void migration_entry_wait_on_locked(swp_entry_t entry, spinlock_t *ptl)
+		__releases(ptl);
 #else
 
 static inline void putback_movable_pages(struct list_head *l) {}
