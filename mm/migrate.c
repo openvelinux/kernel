@@ -286,14 +286,18 @@ void remove_migration_ptes(struct page *old, struct page *new, bool locked)
  * get to the page and wait until migration is finished.
  * When we return from this function the fault will be retried.
  */
-void __migration_entry_wait(struct mm_struct *mm, pte_t *ptep,
-				spinlock_t *ptl)
+void migration_entry_wait(struct mm_struct *mm, pmd_t *pmd,
+			  unsigned long address)
 {
+	spinlock_t *ptl;
+	pte_t *ptep;
 	pte_t pte;
 	swp_entry_t entry;
 
-	spin_lock(ptl);
+	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
 	pte = *ptep;
+	pte_unmap(ptep);
+
 	if (!is_swap_pte(pte))
 		goto out;
 
@@ -301,23 +305,16 @@ void __migration_entry_wait(struct mm_struct *mm, pte_t *ptep,
 	if (!is_migration_entry(entry))
 		goto out;
 
-	migration_entry_wait_on_locked(entry, ptep, ptl);
+	migration_entry_wait_on_locked(entry, ptl);
 	return;
 out:
-	pte_unmap_unlock(ptep, ptl);
-}
-
-void migration_entry_wait(struct mm_struct *mm, pmd_t *pmd,
-				unsigned long address)
-{
-	spinlock_t *ptl = pte_lockptr(mm, pmd);
-	pte_t *ptep = pte_offset_map(pmd, address);
-	__migration_entry_wait(mm, ptep, ptl);
+	spin_unlock(ptl);
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
-void __migration_entry_wait_huge(pte_t *ptep, spinlock_t *ptl)
+void migration_entry_wait_huge(struct vm_area_struct *vma, pte_t *ptep)
 {
+	spinlock_t *ptl = huge_pte_lockptr(hstate_vma(vma), vma->vm_mm, ptep);
 	pte_t pte;
 
 	spin_lock(ptl);
@@ -326,14 +323,7 @@ void __migration_entry_wait_huge(pte_t *ptep, spinlock_t *ptl)
 	if (unlikely(!is_hugetlb_entry_migration(pte)))
 		spin_unlock(ptl);
 	else
-		migration_entry_wait_on_locked(pte_to_swp_entry(pte), NULL, ptl);
-}
-
-void migration_entry_wait_huge(struct vm_area_struct *vma, pte_t *pte)
-{
-	spinlock_t *ptl = huge_pte_lockptr(hstate_vma(vma), vma->vm_mm, pte);
-
-	__migration_entry_wait_huge(pte, ptl);
+		migration_entry_wait_on_locked(pte_to_swp_entry(pte), ptl);
 }
 #endif
 
@@ -345,7 +335,7 @@ void pmd_migration_entry_wait(struct mm_struct *mm, pmd_t *pmd)
 	ptl = pmd_lock(mm, pmd);
 	if (!is_pmd_migration_entry(*pmd))
 		goto unlock;
-	migration_entry_wait_on_locked(pmd_to_swp_entry(*pmd), NULL, ptl);
+	migration_entry_wait_on_locked(pmd_to_swp_entry(*pmd), ptl);
 	return;
 unlock:
 	spin_unlock(ptl);
