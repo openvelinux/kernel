@@ -581,6 +581,10 @@ extern void pgtable_trans_huge_deposit(struct mm_struct *mm, pmd_t *pmdp,
 extern pgtable_t pgtable_trans_huge_withdraw(struct mm_struct *mm, pmd_t *pmdp);
 #endif
 
+#ifndef arch_needs_pgtable_deposit
+#define arch_needs_pgtable_deposit() (false)
+#endif
+
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
  * This is an implementation of pmdp_establish() that is only suitable for an
@@ -1261,9 +1265,10 @@ static inline int pud_trans_huge(pud_t pud)
 }
 #endif
 
-/* See pmd_none_or_trans_huge_or_clear_bad for discussion. */
-static inline int pud_none_or_trans_huge_or_dev_or_clear_bad(pud_t *pud)
+static inline int pud_trans_unstable(pud_t *pud)
 {
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE) && \
+	defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	pud_t pudval = READ_ONCE(*pud);
 
 	if (pud_none(pudval) || pud_trans_huge(pudval) || pud_devmap(pudval))
@@ -1272,23 +1277,10 @@ static inline int pud_none_or_trans_huge_or_dev_or_clear_bad(pud_t *pud)
 		pud_clear_bad(pud);
 		return 1;
 	}
+#endif
 	return 0;
 }
 
-/* See pmd_trans_unstable for discussion. */
-static inline int pud_trans_unstable(pud_t *pud)
-{
-#if defined(CONFIG_TRANSPARENT_HUGEPAGE) &&			\
-	defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
-	return pud_none_or_trans_huge_or_dev_or_clear_bad(pud);
-#else
-	return 0;
-#endif
-}
-
-#ifndef arch_needs_pgtable_deposit
-#define arch_needs_pgtable_deposit() (false)
-#endif
 /*
  * This function is meant to be used by sites walking pagetables with
  * the mmap_lock held in read mode to protect against MADV_DONTNEED and
@@ -1336,38 +1328,6 @@ static inline int pmd_none_or_trans_huge_or_clear_bad(pmd_t *pmd)
 		return 1;
 	}
 	return 0;
-}
-
-/*
- * This is a noop if Transparent Hugepage Support is not built into
- * the kernel. Otherwise it is equivalent to
- * pmd_none_or_trans_huge_or_clear_bad(), and shall only be called in
- * places that already verified the pmd is not none and they want to
- * walk ptes while holding the mmap sem in read mode (write mode don't
- * need this). If THP is not enabled, the pmd can't go away under the
- * code even if MADV_DONTNEED runs, but if THP is enabled we need to
- * run a pmd_trans_unstable before walking the ptes after
- * split_huge_pmd returns (because it may have run when the pmd become
- * null, but then a page fault can map in a THP and not a regular page).
- */
-static inline int pmd_trans_unstable(pmd_t *pmd)
-{
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	return pmd_none_or_trans_huge_or_clear_bad(pmd);
-#else
-	return 0;
-#endif
-}
-
-/*
- * the ordering of these checks is important for pmds with _page_devmap set.
- * if we check pmd_trans_unstable() first we will trip the bad_pmd() check
- * inside of pmd_none_or_trans_huge_or_clear_bad(). this will end up correctly
- * returning 1 but not before it spams dmesg with the pmd_clear_bad() output.
- */
-static inline int pmd_devmap_trans_unstable(pmd_t *pmd)
-{
-	return pmd_devmap(*pmd) || pmd_trans_unstable(pmd);
 }
 
 #ifndef CONFIG_NUMA_BALANCING
