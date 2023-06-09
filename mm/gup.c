@@ -517,6 +517,8 @@ retry:
 	try_copy_pte_entire_async(vma, pmd, address);
 
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
+	if (!ptep)
+		return no_page_table(vma, flags);
 	pte = *ptep;
 	if (!pte_present(pte)) {
 		swp_entry_t entry;
@@ -863,8 +865,9 @@ static int get_gate_page(struct mm_struct *mm, unsigned long address,
 	pmd = pmd_offset(pud, address);
 	if (!pmd_present(*pmd))
 		return -EFAULT;
-	VM_BUG_ON(pmd_trans_huge(*pmd));
 	pte = pte_offset_map(pmd, address);
+	if (!pte)
+		return -EFAULT;
 	if (pte_none(*pte))
 		goto unmap;
 	*vma = get_gate_vma(mm);
@@ -2252,6 +2255,8 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 	pte_t *ptep, *ptem;
 
 	ptem = ptep = pte_offset_map(&pmd, addr);
+	if (!ptep)
+		return 0;
 	do {
 		pte_t pte = ptep_get_lockless(ptep);
 		struct page *head, *page;
