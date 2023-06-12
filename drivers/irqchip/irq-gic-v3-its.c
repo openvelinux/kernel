@@ -2632,6 +2632,10 @@ static int its_alloc_tables(struct its_node *its)
 			indirect = its_parse_indirect_baser(its, baser, &order,
 							    ITS_MAX_VPEID_BITS);
 			break;
+		case GITS_BASER_TYPE_COLLECTION:
+			indirect = its_parse_indirect_baser(its, baser, &order,
+							order_base_2(num_possible_cpus()));
+			break;
 		}
 
 		err = its_setup_baser(its, baser, cache, shr, order, indirect);
