@@ -159,7 +159,6 @@ void drm_gem_vram_simple_display_pipe_cleanup_fb(
 	.debugfs_init             = drm_vram_mm_debugfs_init, \
 	.dumb_create		  = drm_gem_vram_driver_dumb_create, \
 	.dumb_map_offset	  = drm_gem_ttm_dumb_map_offset, \
-	.gem_prime_mmap		  = drm_gem_prime_mmap
 
 /*
  *  VRAM memory manager

@@ -323,15 +323,6 @@ Contact: Daniel Vetter
 
 Level: Starter
 
-struct drm_gem_object_funcs
----------------------------
-
-GEM objects can now have a function table instead of having the callbacks on the
-DRM driver struct. This is now the preferred way. Callbacks in drivers have been
-converted, except for struct drm_driver.gem_prime_mmap.
-
-Level: Intermediate
-
 Use DRM_MODESET_LOCK_ALL_* helpers instead of boilerplate
 ---------------------------------------------------------
 

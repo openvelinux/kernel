@@ -598,7 +598,7 @@ static const struct drm_driver bochs_driver = {
 	.date			= "20130925",
 	.major			= 1,
 	.minor			= 0,
-	DRM_GEM_VRAM_DRIVER,
+	DRM_GEM_VRAM_DRIVER
 };
 
 /* ---------------------------------------------------------------------- */

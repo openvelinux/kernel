@@ -121,8 +121,7 @@ int drm_gem_cma_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma);
 	.dumb_create		= (dumb_create_func), \
 	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd, \
 	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle, \
-	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table, \
-	.gem_prime_mmap		= drm_gem_prime_mmap
+	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table
 
 /**
  * DRM_GEM_CMA_DRIVER_OPS - CMA GEM driver operations
@@ -159,8 +158,7 @@ int drm_gem_cma_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma);
 	.dumb_create		= dumb_create_func, \
 	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd, \
 	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle, \
-	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table_vmap, \
-	.gem_prime_mmap		= drm_gem_prime_mmap
+	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table_vmap
 
 /**
  * DRM_GEM_CMA_DRIVER_OPS_VMAP - CMA GEM driver operations ensuring a virtual
