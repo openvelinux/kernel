@@ -954,7 +954,11 @@ static int vduse_vdpa_set_vq_affinity(struct vdpa_device *vdpa, u16 idx,
 {
 	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
 
-	cpumask_copy(&dev->vqs[idx]->affinity, cpu_mask);
+	if (cpu_mask)
+		cpumask_copy(&dev->vqs[idx]->affinity, cpu_mask);
+	else
+		cpumask_setall(&dev->vqs[idx]->affinity);
+
 	return 0;
 }
 
