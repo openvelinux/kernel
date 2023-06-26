@@ -1465,6 +1465,9 @@ has_useable_cnp(const struct arm64_cpu_capabilities *entry, int scope)
 	if (cpus_have_const_cap(ARM64_WORKAROUND_NVIDIA_CARMEL_CNP))
 		return false;
 
+	if (cpus_have_const_cap(ARM64_WORKAROUND_HISILICON_ERRATUM_162100125))
+		return false;
+
 	return has_cpuid_feature(entry, scope);
 }
 
