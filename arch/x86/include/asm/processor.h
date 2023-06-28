@@ -814,9 +814,11 @@ DECLARE_PER_CPU(u64, msr_misc_features_shadow);
 #ifdef CONFIG_CPU_SUP_AMD
 extern u16 amd_get_nb_id(int cpu);
 extern u32 amd_get_nodes_per_socket(void);
+extern bool cpu_has_ibpb_brtype_microcode(void);
 #else
 static inline u16 amd_get_nb_id(int cpu)		{ return 0; }
 static inline u32 amd_get_nodes_per_socket(void)	{ return 0; }
+static inline bool cpu_has_ibpb_brtype_microcode(void)	{ return false; }
 #endif
 
 #define for_each_possible_hypervisor_cpuid_base(function) \
