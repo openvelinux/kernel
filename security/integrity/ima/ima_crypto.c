@@ -182,7 +182,7 @@ int __init ima_init_crypto(void)
 		}
 	}
 
-	if (ima_sha1_idx >= NR_BANKS(ima_tpm_chip)) {
+	if (ima_sha1_idx >= 0 && ima_sha1_idx >= NR_BANKS(ima_tpm_chip)) {
 		if (ima_hash_algo == HASH_ALGO_SHA1) {
 			ima_algo_array[ima_sha1_idx].tfm = ima_shash_tfm;
 		} else {

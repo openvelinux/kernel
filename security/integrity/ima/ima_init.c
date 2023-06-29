@@ -121,12 +121,18 @@ int __init ima_init(void)
 	ima_tpm_chip = tpm_default_chip();
 #ifdef CONFIG_INTEL_TDX_GUEST
 	if (!ima_tpm_chip) {
+		u32 eax, sig[3];
+
 		pr_info("No TPM chip found, Checking TDX instead!\n");
+		cpuid_count(TDX_CPUID_LEAF_ID, 0, &eax, &sig[0], &sig[2],
+			    &sig[1]);
 		/* Only support RTMR case while setting ima_hash=sha384
 		 * in kernel cmdline
 		 */
-		if (ima_hash_algo == HASH_ALGO_SHA384)
+		if (!memcmp(TDX_IDENT, sig, sizeof(sig)) &&
+		    ima_hash_algo == HASH_ALGO_SHA384)
 			ima_tpm_chip = tdx_rtmr_device();
+
 		if (ima_tpm_chip) {
 			pr_info("TDX found.\n");
 			ima_tdx_device = ima_tpm_chip;
