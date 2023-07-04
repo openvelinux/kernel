@@ -56,10 +56,15 @@ static atomic64_t kvm_vmid_gen = ATOMIC64_INIT(1);
 static u32 kvm_next_vmid;
 static DEFINE_SPINLOCK(kvm_vmid_lock);
 
-static bool vgic_present;
+static bool vgic_present, kvm_arm_initialised;
 
 static DEFINE_PER_CPU(unsigned char, kvm_arm_hardware_enabled);
 DEFINE_STATIC_KEY_FALSE(userspace_irqchip_in_use);
+
+bool is_kvm_arm_initialised(void)
+{
+	return kvm_arm_initialised;
+}
 
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 {
@@ -2085,6 +2090,8 @@ int kvm_arch_init(void *opaque)
 	} else {
 		kvm_info("Hyp mode initialized successfully\n");
 	}
+
+	kvm_arm_initialised = true;
 
 	return 0;
 
