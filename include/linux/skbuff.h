@@ -906,7 +906,7 @@ struct sk_buff {
 	__u8			offload_fwd_mark:1;
 	__u8			offload_l3_fwd_mark:1;
 #endif
-#ifdef CONFIG_NET_CLS_ACT
+#ifdef CONFIG_NET_XGRESS
 	__u8			tc_skip_classify:1;
 	__u8			tc_at_ingress:1;
 #endif
@@ -920,7 +920,7 @@ struct sk_buff {
 	__u8			slow_gro:1;
 	__u8			scm_io_uring:1;
 	__u8			devmem:1;
-#ifdef CONFIG_NET_SCHED
+#if defined(CONFIG_NET_SCHED) || defined(CONFIG_NET_XGRESS)
 	__u16			tc_index;	/* traffic control index */
 #endif
 

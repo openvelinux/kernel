@@ -33,6 +33,8 @@
 #include <linux/rcupdate_trace.h>
 #include <linux/memcontrol.h>
 
+#include <net/tcx.h>
+
 #define IS_FD_ARRAY(map) ((map)->map_type == BPF_MAP_TYPE_PERF_EVENT_ARRAY || \
 			  (map)->map_type == BPF_MAP_TYPE_CGROUP_ARRAY || \
 			  (map)->map_type == BPF_MAP_TYPE_ARRAY_OF_MAPS)
@@ -3161,30 +3163,44 @@ attach_type_to_prog_type(enum bpf_attach_type attach_type)
 		return BPF_PROG_TYPE_SK_LOOKUP;
 	case BPF_XDP:
 		return BPF_PROG_TYPE_XDP;
+	case BPF_TCX_INGRESS:
+	case BPF_TCX_EGRESS:
+		return BPF_PROG_TYPE_SCHED_CLS;
 	default:
 		return BPF_PROG_TYPE_UNSPEC;
 	}
 }
 
-#define BPF_PROG_ATTACH_LAST_FIELD replace_bpf_fd
+#define BPF_PROG_ATTACH_LAST_FIELD expected_revision
 
-#define BPF_F_ATTACH_MASK \
-	(BPF_F_ALLOW_OVERRIDE | BPF_F_ALLOW_MULTI | BPF_F_REPLACE)
+#define BPF_F_ATTACH_MASK_BASE	\
+	(BPF_F_ALLOW_OVERRIDE |	\
+	 BPF_F_ALLOW_MULTI |	\
+	 BPF_F_REPLACE)
+
+#define BPF_F_ATTACH_MASK_MPROG	\
+	(BPF_F_REPLACE |	\
+	 BPF_F_BEFORE |		\
+	 BPF_F_AFTER |		\
+	 BPF_F_ID |		\
+	 BPF_F_LINK)
 
 static int bpf_prog_attach(const union bpf_attr *attr)
 {
 	enum bpf_prog_type ptype;
 	struct bpf_prog *prog;
+	u32 mask;
 	int ret;
 
 	if (CHECK_ATTR(BPF_PROG_ATTACH))
 		return -EINVAL;
 
-	if (attr->attach_flags & ~BPF_F_ATTACH_MASK)
-		return -EINVAL;
-
 	ptype = attach_type_to_prog_type(attr->attach_type);
 	if (ptype == BPF_PROG_TYPE_UNSPEC)
+		return -EINVAL;
+	mask = bpf_mprog_supported(ptype) ?
+	       BPF_F_ATTACH_MASK_MPROG : BPF_F_ATTACH_MASK_BASE;
+	if (attr->attach_flags & ~mask)
 		return -EINVAL;
 
 	prog = bpf_prog_get_type(attr->attach_bpf_fd, ptype);
@@ -3216,6 +3232,9 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 	case BPF_PROG_TYPE_SOCK_OPS:
 		ret = cgroup_bpf_prog_attach(attr, ptype, prog);
 		break;
+	case BPF_PROG_TYPE_SCHED_CLS:
+		ret = tcx_prog_attach(attr, prog);
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -3225,25 +3244,41 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 	return ret;
 }
 
-#define BPF_PROG_DETACH_LAST_FIELD attach_type
+#define BPF_PROG_DETACH_LAST_FIELD expected_revision
 
 static int bpf_prog_detach(const union bpf_attr *attr)
 {
+	struct bpf_prog *prog = NULL;
 	enum bpf_prog_type ptype;
+	int ret;
 
 	if (CHECK_ATTR(BPF_PROG_DETACH))
 		return -EINVAL;
 
 	ptype = attach_type_to_prog_type(attr->attach_type);
+	if (bpf_mprog_supported(ptype)) {
+		if (ptype == BPF_PROG_TYPE_UNSPEC)
+			return -EINVAL;
+		if (attr->attach_flags & ~BPF_F_ATTACH_MASK_MPROG)
+			return -EINVAL;
+		if (attr->attach_bpf_fd) {
+			prog = bpf_prog_get_type(attr->attach_bpf_fd, ptype);
+			if (IS_ERR(prog))
+				return PTR_ERR(prog);
+		}
+	}
 
 	switch (ptype) {
 	case BPF_PROG_TYPE_SK_MSG:
 	case BPF_PROG_TYPE_SK_SKB:
-		return sock_map_prog_detach(attr, ptype);
+		ret = sock_map_prog_detach(attr, ptype);
+		break;
 	case BPF_PROG_TYPE_LIRC_MODE2:
-		return lirc_prog_detach(attr);
+		ret = lirc_prog_detach(attr);
+		break;
 	case BPF_PROG_TYPE_FLOW_DISSECTOR:
-		return netns_bpf_prog_detach(attr, ptype);
+		ret = netns_bpf_prog_detach(attr, ptype);
+		break;
 	case BPF_PROG_TYPE_CGROUP_DEVICE:
 	case BPF_PROG_TYPE_CGROUP_SKB:
 	case BPF_PROG_TYPE_CGROUP_SOCK:
@@ -3251,13 +3286,21 @@ static int bpf_prog_detach(const union bpf_attr *attr)
 	case BPF_PROG_TYPE_CGROUP_SOCKOPT:
 	case BPF_PROG_TYPE_CGROUP_SYSCTL:
 	case BPF_PROG_TYPE_SOCK_OPS:
-		return cgroup_bpf_prog_detach(attr, ptype);
+		ret = cgroup_bpf_prog_detach(attr, ptype);
+		break;
+	case BPF_PROG_TYPE_SCHED_CLS:
+		ret = tcx_prog_detach(attr, prog);
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
 	}
+
+	if (prog)
+		bpf_prog_put(prog);
+	return ret;
 }
 
-#define BPF_PROG_QUERY_LAST_FIELD query.prog_cnt
+#define BPF_PROG_QUERY_LAST_FIELD query.link_attach_flags
 
 static int bpf_prog_query(const union bpf_attr *attr,
 			  union bpf_attr __user *uattr)
@@ -3299,6 +3342,9 @@ static int bpf_prog_query(const union bpf_attr *attr,
 	case BPF_FLOW_DISSECTOR:
 	case BPF_SK_LOOKUP:
 		return netns_bpf_prog_query(attr, uattr);
+	case BPF_TCX_INGRESS:
+	case BPF_TCX_EGRESS:
+		return tcx_prog_query(attr, uattr);
 	default:
 		return -EINVAL;
 	}
@@ -4258,6 +4304,14 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 		}
 		ptype = prog->type;
 		break;
+	case BPF_PROG_TYPE_SCHED_CLS:
+		if (attr->link_create.attach_type != BPF_TCX_INGRESS &&
+		    attr->link_create.attach_type != BPF_TCX_EGRESS) {
+			ret = -EINVAL;
+			goto out;
+		}
+		ptype = prog->type;
+		break;
 	default:
 		ptype = attach_type_to_prog_type(attr->link_create.attach_type);
 		if (ptype == BPF_PROG_TYPE_UNSPEC || ptype != prog->type) {
@@ -4289,6 +4343,9 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 		ret = bpf_xdp_link_attach(attr, prog);
 		break;
 #endif
+	case BPF_PROG_TYPE_SCHED_CLS:
+		ret = tcx_link_attach(attr, prog);
+		break;
 #ifdef CONFIG_PERF_EVENTS
 	case BPF_PROG_TYPE_PERF_EVENT:
 	case BPF_PROG_TYPE_TRACEPOINT:
