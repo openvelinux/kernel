@@ -995,6 +995,8 @@ enum bpf_attach_type {
 	BPF_SK_REUSEPORT_SELECT_OR_MIGRATE,
 	BPF_PERF_EVENT,
 	BPF_STRUCT_OPS=44,
+	BPF_TCX_INGRESS=46,
+	BPF_TCX_EGRESS=47,
 	__MAX_BPF_ATTACH_TYPE
 };
 
@@ -1011,6 +1013,7 @@ enum bpf_link_type {
 	BPF_LINK_TYPE_PERF_EVENT = 7,
 	BPF_LINK_TYPE_STRUCT_OPS = 9,
 
+	BPF_LINK_TYPE_TCX = 11,
 	MAX_BPF_LINK_TYPE,
 };
 
@@ -1469,13 +1472,13 @@ union bpf_attr {
 			__u32		map_fd;		/* eBPF struct_ops to attach */
 		};
 		union {
-			__u32		target_fd;	/* object to attach to */
-			__u32		target_ifindex; /* target ifindex */
+			__u32   target_fd;      /* target object to attach to or ... */
+			__u32   target_ifindex; /* target ifindex */
 		};
 		__u32		attach_type;	/* attach type */
 		__u32		flags;		/* extra flags */
 		union {
-			__u32		target_btf_id;	/* btf_id of target to attach to */
+			__u32   target_btf_id;  /* btf_id of target to attach to */
 			struct {
 				__aligned_u64	iter_info;	/* extra bpf_iter_link_info */
 				__u32		iter_info_len;	/* iter_info length */
@@ -1487,6 +1490,13 @@ union bpf_attr {
 				 */
 				__u64		bpf_cookie;
 			} perf_event;
+			struct {
+				union {
+					__u32	relative_fd;
+					__u32	relative_id;
+				};
+				__u64		expected_revision;
+			} tcx;
 		};
 	} link_create;
 
@@ -5453,6 +5463,19 @@ struct bpf_sock_tuple {
 	};
 };
 
+/* (Simplified) user return codes for tcx prog type.
+ * A valid tcx program must return one of these defined values. All other
+ * return codes are reserved for future use. Must remain compatible with
+ * their TC_ACT_* counter-parts. For compatibility in behavior, unknown
+ * return codes are mapped to TCX_NEXT.
+ */
+enum tcx_action_base {
+	TCX_NEXT	= -1,
+	TCX_PASS	= 0,
+	TCX_DROP	= 2,
+	TCX_REDIRECT	= 7,
+};
+
 struct bpf_xdp_sock {
 	__u32 queue_id;
 };
@@ -5679,6 +5702,10 @@ struct bpf_link_info {
 		struct {
 			__u32 map_id;
 		} struct_ops;
+		struct {
+			__u32 ifindex;
+			__u32 attach_type;
+		} tcx;
 	};
 } __attribute__((aligned(8)));
 
