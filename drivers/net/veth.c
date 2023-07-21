@@ -28,6 +28,7 @@
 #include <linux/net_tstamp.h>
 #include <net/xdp_sock_drv.h>
 #include <net/xdp.h>
+#include <net/udp.h>
 
 #define DRV_NAME	"veth"
 #define DRV_VERSION	"1.0"
@@ -101,6 +102,41 @@ struct veth_xdp_tx_bq {
 	struct xdp_frame *q[VETH_XDP_TX_BULK_SIZE];
 	unsigned int count;
 };
+
+struct veth_seg_info {
+	struct xsk_buff_pool __rcu *pool;
+	u32 segs;
+	u64 desc[] ____cacheline_aligned_in_smp;
+};
+
+struct xsk_control_gso {
+	__u32 gso_size;
+	__u32 batch_num;
+};
+
+enum xsk_control_types {
+	XSK_HRT_NOOP = NLMSG_NOOP,
+	XSK_HRT_DONE = NLMSG_DONE,
+	XSK_HRT_GSO = NLMSG_MIN_TYPE + 1,
+	XSK_HRT_MAX,
+};
+
+/*	@callback: return true if we want desc go to next callback
+ *  return false if we want to stop.
+ */
+struct xsk_control_type_info {
+	bool (*callback)(void *msg);
+	u16 type;
+};
+
+struct veth_xsk_control_info_t {
+	bool batch_head;
+	u32 batch_size;
+	u32 batch_num;
+	u32 real_desc_num;
+};
+
+DEFINE_PER_CPU(struct veth_xsk_control_info_t, veth_xsk_control_info);
 
 /*
  * ethtool interface
@@ -923,13 +959,481 @@ static int veth_poll(struct napi_struct *napi, int budget)
 	return done;
 }
 
+static void veth_xsk_destruct_skb(struct sk_buff *skb)
+{
+	struct skb_shared_info *si = skb_shinfo(skb);
+	struct veth_seg_info *seg_info;
+	struct xsk_buff_pool *pool;
+	unsigned long flags;
+	u32 index = 0;
+	u64 addr;
+
+	seg_info = (struct veth_seg_info *)si->destructor_arg;
+	if (!seg_info)
+		return;
+
+	pool = seg_info->pool;
+	if (!pool)
+		return;
+
+	/* release cq */
+	spin_lock_irqsave(&pool->cq_lock, flags);
+	for (index = 0; index < seg_info->segs; index++) {
+		addr = (u64)(long)seg_info->desc[index];
+		xsk_tx_completed_addr(pool, addr);
+	}
+	spin_unlock_irqrestore(&pool->cq_lock, flags);
+
+	kfree(seg_info);
+	si->destructor_arg = NULL;
+}
+
+static struct sk_buff *veth_build_gso_head_skb(struct net_device *dev,
+					       char *buff, u32 tot_len,
+					       u32 headroom, u32 iph_len,
+					       u32 th_len)
+{
+	struct veth_seg_info *seg_info;
+	struct sk_buff *skb = NULL;
+	u32 seg_len = 0;
+	int err = 0;
+
+	skb = alloc_skb(tot_len, GFP_KERNEL);
+	if (unlikely(!skb))
+		return NULL;
+
+	/* header room contains the eth header */
+	skb_reserve(skb, headroom - ETH_HLEN);
+	skb_put(skb, ETH_HLEN + iph_len + th_len);
+	skb_shinfo(skb)->gso_segs = 0;
+
+	err = skb_store_bits(skb, 0, buff, ETH_HLEN + iph_len + th_len);
+	if (unlikely(err)) {
+		kfree_skb(skb);
+		return NULL;
+	}
+
+	seg_len = struct_size(seg_info, desc, MAX_SKB_FRAGS);
+	seg_info = kmalloc(seg_len, GFP_KERNEL);
+	if (!seg_info) {
+		kfree_skb(skb);
+		return NULL;
+	}
+	seg_info->segs = 0;
+	skb_shinfo(skb)->destructor_arg = seg_info;
+
+	skb->protocol = eth_type_trans(skb, dev);
+	skb->network_header = skb->mac_header + ETH_HLEN;
+	skb->transport_header = skb->network_header + iph_len;
+	skb->ip_summed = CHECKSUM_PARTIAL;
+
+	return skb;
+}
+
+static inline bool veth_batch_ip_check_v4(struct iphdr *iph, u32 len)
+{
+	if (len <= (ETH_HLEN + sizeof(*iph)))
+		return false;
+
+	if (iph->ihl < 5 || iph->version != 4 || len < (iph->ihl * 4 + ETH_HLEN))
+		return false;
+
+	return true;
+}
+
+/* just support ipv4 udp batch
+ * to do: ipv4 tcp and ipv6
+ */
+static inline void veth_skb_batch_checksum(struct sk_buff *skb)
+{
+	struct udphdr *uh = udp_hdr(skb);
+	struct iphdr *iph = ip_hdr(skb);
+	int ip_tot_len = skb->len;
+	int udp_len;
+
+	udp_len = skb->len - (skb->transport_header - skb->network_header);
+	iph->tot_len = htons(ip_tot_len);
+	ip_send_check(iph);
+	uh->len = htons(udp_len);
+	uh->check = 0;
+
+	udp4_hwcsum(skb, iph->saddr, iph->daddr);
+
+	skb->ip_summed = CHECKSUM_PARTIAL;
+}
+
+static inline bool veth_skb_batch_add_frag(struct sk_buff *skb, struct page *page,
+					   u32 offset, u32 len)
+{
+	/* in order to avoid to get freed by kfree_skb */
+	get_page(page);
+
+	/* desc.data can not hold in two page */
+	skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags, page, offset, len);
+
+	skb->len += len;
+	skb->data_len += len;
+	skb->truesize += len;
+	return true;
+}
+
+static inline bool veth_add_skb_tx_desc(struct sk_buff *skb, struct xsk_buff_pool *pool,
+					struct xdp_desc *desc, u32 offset)
+{
+	struct page *page;
+	u32 data_offset;
+	u32 data_len;
+	void *buffer;
+	u64 addr;
+
+	addr = desc->addr;
+	if (unlikely(desc->len < offset))
+		return false;
+
+	data_len = desc->len - offset;
+
+	buffer = (unsigned char *)xsk_buff_raw_get_data(pool, addr);
+	addr = buffer - pool->addrs;
+	page = pool->umem->pgs[addr >> PAGE_SHIFT];
+
+	data_offset = offset_in_page(buffer);
+	if (unlikely((data_offset + desc->len) > PAGE_SIZE))
+		return false;
+
+	data_offset += offset;
+	return veth_skb_batch_add_frag(skb, page, data_offset, data_len);
+}
+
+static struct sk_buff *veth_build_skb_batch_udp(struct net_device *dev,
+						struct xsk_buff_pool *pool,
+						struct xdp_desc *desc)
+{
+	struct veth_xsk_control_info_t *hi = this_cpu_ptr(&veth_xsk_control_info);
+	u32 hr, iph_len, th_len, data_offset, tot_len;
+	struct veth_seg_info *seg_info;
+	struct sk_buff *skb = NULL;
+	struct xdp_desc new_desc;
+	struct udphdr *udph;
+	struct iphdr *iph;
+	int hh_len = 0;
+	u32 index = 0;
+	void *buffer;
+
+	hh_len = LL_RESERVED_SPACE(dev);
+	hr = max(NET_SKB_PAD, L1_CACHE_ALIGN(hh_len));
+	hr = L1_CACHE_ALIGN(hr + pool->headroom);
+
+	buffer = xsk_buff_raw_get_data(pool, desc->addr);
+
+	/* todo: vlan packet not support yet*/
+	iph = (struct iphdr *)(buffer + ETH_HLEN);
+	iph_len = iph->ihl * 4;
+
+	udph = (struct udphdr *)(buffer + ETH_HLEN + iph_len);
+	th_len = sizeof(struct udphdr);
+	tot_len = hr + iph_len + th_len;
+	data_offset = ETH_HLEN + iph_len + th_len;
+	if (unlikely(desc->len <= data_offset)) {
+		if (net_ratelimit()) {
+			pr_warn("invailed desc->len = %d, data_offset=%d\n",
+				desc->len, data_offset);
+		}
+		return NULL;
+	}
+
+	skb = veth_build_gso_head_skb(dev, buffer, tot_len, hr, iph_len, th_len);
+	if (!skb)
+		return NULL;
+
+	seg_info = skb_shinfo(skb)->destructor_arg;
+	seg_info->pool = (void *)(long)pool;
+
+	/* fill first tx desc */
+	index = skb_shinfo(skb)->nr_frags;
+	seg_info->desc[index] = desc->addr;
+	seg_info->segs++;
+
+	veth_add_skb_tx_desc(skb, pool, desc, data_offset);
+
+	tot_len = desc->len - data_offset;
+
+	/* to do: The batch size cannot be larger than the MTU.
+	 * Otherwise, even if data is sent from this point,
+	 * subsequent packet loss may occur.
+	 */
+	if (hi->batch_num > 1) {
+		u32 count = 0;
+
+		/* udp batch: gso */
+		for (count = 0; count < hi->batch_num - 1; count++) {
+			if (!xsk_tx_peek_desc(pool, &new_desc)) {
+				if (net_ratelimit()) {
+					pr_warn("break @ index[%d]@batch[%d], no enough tx desc!\n",
+						count, hi->batch_num);
+				}
+
+				break;
+			}
+			index = skb_shinfo(skb)->nr_frags;
+
+			/* Cannot handle more than MAX_SKB_FRAGS tx
+			 * descriptors. Excess tx descriptors will
+			 * be dropped directly
+			 */
+			if (index >= MAX_SKB_FRAGS) {
+				if (net_ratelimit()) {
+					pr_warn("break @ index[%d]@batch[%d],bigger than MAX_SKB_FRAGS!\n",
+						count, hi->batch_num);
+				}
+
+				xsk_tx_completed_addr(pool, new_desc.addr);
+				break;
+			}
+
+			if (likely(veth_add_skb_tx_desc(skb, pool, &new_desc, 0))) {
+				hi->real_desc_num++;
+				seg_info->desc[index] = new_desc.addr;
+				seg_info->segs++;
+				tot_len += new_desc.len;
+			} else {
+				xsk_tx_completed_addr(pool, new_desc.addr);
+				if (net_ratelimit())
+					pr_warn("xsk : error tx desc!\n");
+			}
+		}
+	}
+
+	if (hi->batch_size > 0) {
+		skb_shinfo(skb)->gso_type = SKB_GSO_UDP_L4 | SKB_GSO_PARTIAL;
+		skb_shinfo(skb)->gso_size = hi->batch_size;
+		/* tot_len must < MAX_MTU_SIZE */
+		skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(tot_len, hi->batch_size);
+	}
+
+	/* CHECKSUM_PARTIAL offload
+	 */
+	veth_skb_batch_checksum(skb);
+
+	/* to do:
+	 *  add skb to sock. may be there is no need to do for this
+	 *  and this might be multiple xsk sockets involved, so it's
+	 *  difficult to determine which socket is sending the data.
+	 *  refcount_add(ts, &xs->sk.sk_wmem_alloc);
+	 */
+	return skb;
+}
+
+static inline struct sk_buff *veth_build_skb_def(struct net_device *dev,
+						 struct xsk_buff_pool *pool, struct xdp_desc *desc)
+{
+	struct sk_buff *skb = NULL;
+	unsigned int truesize = 0;
+	struct page *page;
+	void *buffer;
+	void *vaddr;
+
+	truesize =  SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+	truesize += desc->len + pool->headroom;
+	if (truesize > PAGE_SIZE)
+		return NULL;
+
+	/* to do: maybe there no need for a whole page
+	 */
+	page = dev_alloc_page();
+	if (!page)
+		return NULL;
+
+	buffer = (unsigned char *)xsk_buff_raw_get_data(pool, desc->addr);
+
+	vaddr = page_to_virt(page);
+	memcpy(vaddr + pool->headroom, buffer, desc->len);
+	skb = veth_build_skb(vaddr, pool->headroom, desc->len, PAGE_SIZE);
+	if (!skb) {
+		put_page(page);
+		return NULL;
+	}
+
+	skb_shinfo(skb)->destructor_arg = NULL;
+
+	skb->protocol = eth_type_trans(skb, dev);
+
+	return skb;
+}
+
+/* To call the following function, the following conditions must be met:
+ * 1.The data packet must be a standard Ethernet data packet
+ * 2. Data packets support batch sending
+ */
+static inline struct sk_buff *veth_build_skb_batch_v4(struct net_device *dev,
+						      struct xsk_buff_pool *pool,
+						      struct xdp_desc *desc)
+{
+	struct iphdr *iph;
+	void *buffer;
+	u64 addr;
+
+	addr = desc->addr;
+	buffer = (unsigned char *)xsk_buff_raw_get_data(pool, addr);
+	iph = (struct iphdr *)(buffer + ETH_HLEN);
+	if (!veth_batch_ip_check_v4(iph, desc->len))
+		goto drop;
+
+	switch (iph->protocol) {
+	case IPPROTO_UDP:
+		return veth_build_skb_batch_udp(dev, pool, desc);
+	default:
+		break;
+	}
+drop:
+	return NULL;
+}
+
+/* Zero copy needs to meet the following conditions：
+ * 1. The data content of tx desc must be within one page
+ * 2、the tx desc must support batch xmit, which seted by userspace
+ */
+static inline bool veth_batch_desc_check(void *buff, u32 len)
+{
+	u32 offset;
+
+	offset = offset_in_page(buff);
+	if (PAGE_SIZE - offset < len)
+		return false;
+
+	return true;
+}
+
+/* here must be a ipv4 or ipv6 packet */
+static inline struct sk_buff *veth_build_skb_batch(struct net_device *dev,
+						   struct xsk_buff_pool *pool,
+						   struct xdp_desc *desc)
+{
+	const struct ethhdr *eth;
+	void *buffer;
+
+	buffer = xsk_buff_raw_get_data(pool, desc->addr);
+	if (!veth_batch_desc_check(buffer, desc->len))
+		goto drop;
+
+	eth = (struct ethhdr *)buffer;
+	switch (ntohs(eth->h_proto)) {
+	case ETH_P_IP:
+		return veth_build_skb_batch_v4(dev, pool, desc);
+	/* to do: not support yet, just build skb, no batch */
+	case ETH_P_IPV6:
+		fallthrough;
+	default:
+		break;
+	}
+drop:
+	return NULL;
+}
+
+static bool veth_gro_requested(const struct net_device *dev)
+{
+	return !!(dev->wanted_features & NETIF_F_GRO);
+}
+
+static inline int veth_deliver_skb(struct veth_rq *rq,
+				   struct sk_buff *skb, bool use_napi)
+{
+	return use_napi ? veth_xdp_rx(rq, skb) : netif_rx(skb);
+}
+
+/* no zero copy now, so we need to relase tx_desc here
+ */
+static inline void veth_release_tx_desc(struct sk_buff *skb)
+{
+	__skb_copy_ubufs(skb, GFP_ATOMIC, false);
+	veth_xsk_destruct_skb(skb);
+}
+
+static bool veth_control_done(void *msg)
+{
+	return false;
+}
+
+static bool veth_control_gso(void *msg)
+{
+	struct veth_xsk_control_info_t *hi = this_cpu_ptr(&veth_xsk_control_info);
+	struct xsk_control_gso *batch = msg;
+
+	hi->batch_size = batch->gso_size;
+	hi->batch_num = batch->batch_num;
+
+	if (hi->batch_size > 0 && hi->batch_num > 0)
+		hi->batch_head = true;
+
+	return true;
+}
+
+static const struct xsk_control_type_info g_type_info[] = {
+	{
+		.callback = veth_control_gso,
+		.type = XSK_HRT_GSO,
+	},
+	{
+		.callback = veth_control_done,
+		.type = XSK_HRT_MAX,
+	},
+};
+
+static inline bool info_is_end_of_table(const struct xsk_control_type_info *cti)
+{
+	return cti->type == XSK_HRT_MAX;
+}
+
+static inline int veth_xsk_control_msg_prase(struct xsk_buff_pool *pool, struct xdp_desc *desc)
+{
+	const struct xsk_control_type_info *info;
+	u32 hdr_len = sizeof(struct nlmsghdr);
+	struct nlmsghdr *nh;
+	u32 max_msg_len;
+	char *buffer;
+	char *phead;
+	char *msg;
+
+	if (pool->headroom <= hdr_len)
+		return 0;
+
+	buffer = xsk_buff_raw_get_data(pool, desc->addr);
+
+	phead = buffer - pool->headroom;
+	nh = (struct nlmsghdr *)phead;
+	max_msg_len = pool->headroom;
+	for (nh = (struct nlmsghdr *)phead; NLMSG_OK(nh, max_msg_len);
+			nh = NLMSG_NEXT(nh, max_msg_len)) {
+		switch (nh->nlmsg_type) {
+		case NLMSG_NOOP:
+		case NLMSG_ERROR:
+		case NLMSG_DONE:
+			return 0;
+		default:
+			break;
+		}
+		for (info = g_type_info; !info_is_end_of_table(info); info++) {
+			if (nh->nlmsg_type == info->type) {
+				/* have callback, and callback return true */
+				msg = NLMSG_DATA(nh);
+				if (info->callback && info->callback(msg))
+					break;
+				goto out;
+			}
+		}
+	}
+out:
+	return 0;
+}
+
 static int veth_xsk_tx_xmit(struct veth_sq *sq, struct xsk_buff_pool *xsk_pool, int budget)
 {
+	struct veth_xsk_control_info_t *hi = this_cpu_ptr(&veth_xsk_control_info);
 	struct veth_priv *priv, *peer_priv;
 	struct net_device *dev, *peer_dev;
 	struct veth_stats stats = {};
 	struct sk_buff *skb = NULL;
 	struct veth_rq *peer_rq;
+	bool use_napi = false;
 	struct xdp_desc desc;
 	int done = 0;
 
@@ -938,59 +1442,65 @@ static int veth_xsk_tx_xmit(struct veth_sq *sq, struct xsk_buff_pool *xsk_pool, 
 	peer_dev = priv->peer;
 	peer_priv = netdev_priv(peer_dev);
 
-	/* todo: queue index must set before this */
+	/* queue_index set in napi enable
+	 * to do:may be we should select rq by 5-tuple or hash
+	 */
 	peer_rq = &peer_priv->rq[sq->queue_index];
+
+	if (peer_priv->_xdp_prog || veth_gro_requested(peer_dev))
+		use_napi = true;
 
 	if (xsk_uses_need_wakeup(xsk_pool))
 		xsk_clear_tx_need_wakeup(xsk_pool);
 
 	while (budget-- > 0) {
 		unsigned int truesize = 0;
-		struct page *page;
-		void *vaddr;
-		void *addr;
 
 		if (!xsk_tx_peek_desc(xsk_pool, &desc))
 			break;
 
-		addr = xsk_buff_raw_get_data(xsk_pool, desc.addr);
-
 		/* can not hold all data in a page */
-		truesize =  SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
-		truesize += desc.len + xsk_pool->headroom;
-		if (truesize > PAGE_SIZE) {
+		truesize = desc.len + xsk_pool->headroom;
+		if (truesize > PAGE_SIZE || xsk_pool->headroom > desc.addr) {
 			xsk_tx_completed_addr(xsk_pool, desc.addr);
 			stats.xdp_tx_err++;
 			break;
 		}
 
-		page = dev_alloc_page();
-		if (!page) {
-			xsk_tx_completed_addr(xsk_pool, desc.addr);
-			stats.xdp_tx_err++;
-			break;
-		}
-		vaddr = page_to_virt(page);
+		memset(hi, 0, sizeof(struct veth_xsk_control_info_t));
 
-		memcpy(vaddr + xsk_pool->headroom, addr, desc.len);
-		xsk_tx_completed_addr(xsk_pool, desc.addr);
+		/* check parameter in headroom */
+		veth_xsk_control_msg_prase(xsk_pool, &desc);
 
-		skb = veth_build_skb(vaddr, xsk_pool->headroom, desc.len, PAGE_SIZE);
+		if (hi->batch_head)
+			skb = veth_build_skb_batch(peer_dev, xsk_pool, &desc);
+		else
+			skb = veth_build_skb_def(peer_dev, xsk_pool, &desc);
+
 		if (!skb) {
-			put_page(page);
 			stats.xdp_tx_err++;
-			break;
+			xsk_tx_completed_addr(xsk_pool, desc.addr);
+			continue;
 		}
-		skb->protocol = eth_type_trans(skb, peer_dev);
-		napi_gro_receive(&peer_rq->xdp_napi, skb);
 
+		if (hi->batch_head)
+			veth_release_tx_desc(skb);
+		else
+			xsk_tx_completed_addr(xsk_pool, desc.addr);
+
+		veth_deliver_skb(peer_rq, skb, use_napi);
+
+		budget -= hi->real_desc_num;
+		done += hi->real_desc_num;
 		stats.xdp_bytes += desc.len;
 		done++;
 	}
 
 	/* release, move consumer，and wakeup the producer */
 	if (done) {
-		napi_schedule(&peer_rq->xdp_napi);
+		if (use_napi)
+			napi_schedule(&peer_rq->xdp_napi);
+
 		xsk_tx_release(xsk_pool);
 	}
 
@@ -1092,11 +1602,6 @@ static inline void veth_napi_del_tx_one(struct veth_sq *sq)
 static void veth_napi_del(struct net_device *dev)
 {
 	veth_napi_del_range(dev, 0, dev->real_num_rx_queues);
-}
-
-static bool veth_gro_requested(const struct net_device *dev)
-{
-	return !!(dev->wanted_features & NETIF_F_GRO);
 }
 
 static int veth_enable_xdp_range(struct net_device *dev, int start, int end,
@@ -1586,6 +2091,7 @@ static void veth_xsk_remote_trigger_napi(void *info)
 
 static int veth_xsk_wakeup(struct net_device *dev, u32 qid, u32 flag)
 {
+	struct xsk_buff_pool *pool;
 	struct veth_priv *priv;
 	u32 last_cpu, cur_cpu;
 	struct veth_sq *sq;
@@ -1599,6 +2105,11 @@ static int veth_xsk_wakeup(struct net_device *dev, u32 qid, u32 flag)
 
 	priv = netdev_priv(dev);
 	sq = &priv->sq[qid];
+
+	/* not support unaligned for gso batch, so just return here */
+	pool = sq->xsk.pool;
+	if (pool && pool->unaligned)
+		return -EINVAL;
 
 	if (napi_if_scheduled_mark_missed(&sq->xdp_napi))
 		return 0;

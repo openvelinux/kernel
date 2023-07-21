@@ -1337,6 +1337,7 @@ static int skb_zerocopy_clone(struct sk_buff *nskb, struct sk_buff *orig,
  *	skb_copy_ubufs	-	copy userspace skb frags buffers to kernel
  *	@skb: the skb to modify
  *	@gfp_mask: allocation priority
+ *	@release_ubuf: if need to release ubuf
  *
  *	This must be called on SKBTX_DEV_ZEROCOPY skb.
  *	It will copy all frags into kernel and drop the reference
@@ -1348,7 +1349,7 @@ static int skb_zerocopy_clone(struct sk_buff *nskb, struct sk_buff *orig,
  *	Returns 0 on success or a negative error code on failure
  *	to allocate kernel memory to copy to.
  */
-int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
+int __skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask, bool release_ubuf)
 {
 	int num_frags = skb_shinfo(skb)->nr_frags;
 	struct page *page, *head = NULL;
@@ -1425,8 +1426,16 @@ int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
 	skb_shinfo(skb)->nr_frags = new_frags;
 
 release:
-	skb_zcopy_clear(skb, false);
+	if (release_ubuf)
+		skb_zcopy_clear(skb, false);
+
 	return 0;
+}
+EXPORT_SYMBOL_GPL(__skb_copy_ubufs);
+
+int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
+{
+	return __skb_copy_ubufs(skb, gfp_mask, true);
 }
 EXPORT_SYMBOL_GPL(skb_copy_ubufs);
 
