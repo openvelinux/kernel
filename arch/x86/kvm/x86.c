@@ -2085,9 +2085,12 @@ static int handle_fastpath_set_tscdeadline(struct kvm_vcpu *vcpu, u64 data)
 
 fastpath_t handle_fastpath_set_msr_irqoff(struct kvm_vcpu *vcpu)
 {
+	struct kvm *kvm = vcpu->kvm;
 	u32 msr = kvm_rcx_read(vcpu);
 	u64 data;
 	fastpath_t ret = EXIT_FASTPATH_NONE;
+
+	vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
 
 	switch (msr) {
 	case APIC_BASE_MSR + (APIC_ICR >> 4):
@@ -2110,6 +2113,8 @@ fastpath_t handle_fastpath_set_msr_irqoff(struct kvm_vcpu *vcpu)
 
 	if (ret != EXIT_FASTPATH_NONE)
 		trace_kvm_msr_write(msr, data);
+
+	srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
 
 	return ret;
 }
