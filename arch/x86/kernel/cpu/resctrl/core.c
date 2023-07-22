@@ -57,7 +57,7 @@ static void
 mba_wrmsr_amd(struct rdt_domain *d, struct msr_param *m,
 	      struct rdt_resource *r);
 
-#define domain_init(id) LIST_HEAD_INIT(rdt_resources_all[id].r_resctrl.domains)
+#define domain_init(id, field) LIST_HEAD_INIT(rdt_resources_all[id].r_resctrl.field)
 
 struct rdt_hw_resource rdt_resources_all[] = {
 	[RDT_RESOURCE_L3] =
@@ -66,7 +66,9 @@ struct rdt_hw_resource rdt_resources_all[] = {
 			.rid			= RDT_RESOURCE_L3,
 			.name			= "L3",
 			.cache_level		= 3,
-			.domains		= domain_init(RDT_RESOURCE_L3),
+			.mon_scope		= 3,
+			.domains		= domain_init(RDT_RESOURCE_L3, domains),
+			.mondomains		= domain_init(RDT_RESOURCE_L3, mondomains),
 			.parse_ctrlval		= parse_cbm,
 			.format_str		= "%d=%0*x",
 			.fflags			= RFTYPE_RES_CACHE,
@@ -80,7 +82,7 @@ struct rdt_hw_resource rdt_resources_all[] = {
 			.rid			= RDT_RESOURCE_L2,
 			.name			= "L2",
 			.cache_level		= 2,
-			.domains		= domain_init(RDT_RESOURCE_L2),
+			.domains		= domain_init(RDT_RESOURCE_L2, domains),
 			.parse_ctrlval		= parse_cbm,
 			.format_str		= "%d=%0*x",
 			.fflags			= RFTYPE_RES_CACHE,
@@ -94,7 +96,7 @@ struct rdt_hw_resource rdt_resources_all[] = {
 			.rid			= RDT_RESOURCE_MBA,
 			.name			= "MB",
 			.cache_level		= 3,
-			.domains		= domain_init(RDT_RESOURCE_MBA),
+			.domains		= domain_init(RDT_RESOURCE_MBA, domains),
 			.parse_ctrlval		= parse_bw,
 			.format_str		= "%d=%*u",
 			.fflags			= RFTYPE_RES_MB,
@@ -106,7 +108,7 @@ struct rdt_hw_resource rdt_resources_all[] = {
 			.rid			= RDT_RESOURCE_SMBA,
 			.name			= "SMBA",
 			.cache_level		= 3,
-			.domains		= domain_init(RDT_RESOURCE_SMBA),
+			.domains		= domain_init(RDT_RESOURCE_SMBA, domains),
 			.parse_ctrlval		= parse_bw,
 			.format_str		= "%d=%*u",
 			.fflags			= RFTYPE_RES_MB,
@@ -384,14 +386,15 @@ void rdt_ctrl_update(void *arg)
 }
 
 /*
- * rdt_find_domain - Find a domain in a resource that matches input resource id
+ * rdt_find_domain - Find a domain in one of the lists for a resource that
+ * matches input resource id
  *
  * Search resource r's domain list to find the resource id. If the resource
  * id is found in a domain, return the domain. Otherwise, if requested by
  * caller, return the first domain whose id is bigger than the input id.
  * The domain list is sorted by id in ascending order.
  */
-struct rdt_domain *rdt_find_domain(struct rdt_resource *r, int id,
+struct rdt_domain *rdt_find_domain(struct list_head *h, int id,
 				   struct list_head **pos)
 {
 	struct rdt_domain *d;
@@ -400,7 +403,7 @@ struct rdt_domain *rdt_find_domain(struct rdt_resource *r, int id,
 	if (id < 0)
 		return ERR_PTR(-ENODEV);
 
-	list_for_each(l, &r->domains) {
+	list_for_each(l, h) {
 		d = list_entry(l, struct rdt_domain, list);
 		/* When id is found, return its domain. */
 		if (id == d->id)
@@ -487,20 +490,7 @@ static int arch_domain_mbm_alloc(u32 num_rmid, struct rdt_hw_domain *hw_dom)
 	return 0;
 }
 
-/*
- * domain_add_cpu - Add a cpu to a resource's domain list.
- *
- * If an existing domain in the resource r's domain list matches the cpu's
- * resource id, add the cpu in the domain.
- *
- * Otherwise, a new domain is allocated and inserted into the right position
- * in the domain list sorted by id in ascending order.
- *
- * The order in the domain list is visible to users when we print entries
- * in the schemata file and schemata input is validated to have the same order
- * as this list.
- */
-static void domain_add_cpu(int cpu, struct rdt_resource *r)
+static void domain_add_cpu_ctrl(int cpu, struct rdt_resource *r)
 {
 	int id = get_cpu_cacheinfo_id(cpu, r->cache_level);
 	struct list_head *add_pos = NULL;
@@ -508,7 +498,7 @@ static void domain_add_cpu(int cpu, struct rdt_resource *r)
 	struct rdt_domain *d;
 	int err;
 
-	d = rdt_find_domain(r, id, &add_pos);
+	d = rdt_find_domain(&r->domains, id, &add_pos);
 	if (IS_ERR(d)) {
 		pr_warn("Couldn't find cache id for CPU %d\n", cpu);
 		return;
@@ -531,32 +521,91 @@ static void domain_add_cpu(int cpu, struct rdt_resource *r)
 
 	rdt_domain_reconfigure_cdp(r);
 
-	if (r->alloc_capable && domain_setup_ctrlval(r, d)) {
-		domain_free(hw_dom);
-		return;
-	}
-
-	if (r->mon_capable && arch_domain_mbm_alloc(r->num_rmid, hw_dom)) {
+	if (domain_setup_ctrlval(r, d)) {
 		domain_free(hw_dom);
 		return;
 	}
 
 	list_add_tail(&d->list, add_pos);
 
-	err = resctrl_online_domain(r, d);
+	err = resctrl_online_ctrl_domain(r, d);
 	if (err) {
 		list_del(&d->list);
 		domain_free(hw_dom);
 	}
 }
 
-static void domain_remove_cpu(int cpu, struct rdt_resource *r)
+static void domain_add_cpu_mon(int cpu, struct rdt_resource *r)
+{
+	int id = get_cpu_cacheinfo_id(cpu, r->mon_scope);
+	struct list_head *add_pos = NULL;
+	struct rdt_hw_domain *hw_dom;
+	struct rdt_domain *d;
+	int err;
+
+	d = rdt_find_domain(&r->mondomains, id, &add_pos);
+	if (IS_ERR(d)) {
+		pr_warn("Couldn't find cache id for CPU %d\n", cpu);
+		return;
+	}
+
+	if (d) {
+		cpumask_set_cpu(cpu, &d->cpu_mask);
+		if (r->cache.arch_has_per_cpu_cfg)
+			rdt_domain_reconfigure_cdp(r);
+		return;
+	}
+
+	hw_dom = kzalloc_node(sizeof(*hw_dom), GFP_KERNEL, cpu_to_node(cpu));
+	if (!hw_dom)
+		return;
+
+	d = &hw_dom->d_resctrl;
+	d->id = id;
+	cpumask_set_cpu(cpu, &d->cpu_mask);
+
+	if (arch_domain_mbm_alloc(r->num_rmid, hw_dom)) {
+		domain_free(hw_dom);
+		return;
+	}
+
+	list_add_tail(&d->list, add_pos);
+
+	err = resctrl_online_mon_domain(r, d);
+	if (err) {
+		list_del(&d->list);
+		domain_free(hw_dom);
+	}
+}
+
+/*
+ * domain_add_cpu - Add a cpu to a resource's domain list.
+ *
+ * If an existing domain in the resource r's domain list matches the cpu's
+ * resource id, add the cpu in the domain.
+ *
+ * Otherwise, a new domain is allocated and inserted into the right position
+ * in the domain list sorted by id in ascending order.
+ *
+ * The order in the domain list is visible to users when we print entries
+ * in the schemata file and schemata input is validated to have the same order
+ * as this list.
+ */
+static void domain_add_cpu(int cpu, struct rdt_resource *r)
+{
+	if (r->alloc_capable)
+		domain_add_cpu_ctrl(cpu, r);
+	if (r->mon_capable)
+		domain_add_cpu_mon(cpu, r);
+}
+
+static void domain_remove_cpu_ctrl(int cpu, struct rdt_resource *r)
 {
 	int id = get_cpu_cacheinfo_id(cpu, r->cache_level);
 	struct rdt_hw_domain *hw_dom;
 	struct rdt_domain *d;
 
-	d = rdt_find_domain(r, id, NULL);
+	d = rdt_find_domain(&r->domains, id, NULL);
 	if (IS_ERR_OR_NULL(d)) {
 		pr_warn("Couldn't find cache id for CPU %d\n", cpu);
 		return;
@@ -565,7 +614,7 @@ static void domain_remove_cpu(int cpu, struct rdt_resource *r)
 
 	cpumask_clear_cpu(cpu, &d->cpu_mask);
 	if (cpumask_empty(&d->cpu_mask)) {
-		resctrl_offline_domain(r, d);
+		resctrl_offline_ctrl_domain(r, d);
 		list_del(&d->list);
 
 		/*
@@ -574,6 +623,30 @@ static void domain_remove_cpu(int cpu, struct rdt_resource *r)
 		 */
 		if (d->plr)
 			d->plr->d = NULL;
+		domain_free(hw_dom);
+
+		return;
+	}
+}
+
+static void domain_remove_cpu_mon(int cpu, struct rdt_resource *r)
+{
+	int id = get_cpu_cacheinfo_id(cpu, r->cache_level);
+	struct rdt_hw_domain *hw_dom;
+	struct rdt_domain *d;
+
+	d = rdt_find_domain(&r->mondomains, id, NULL);
+	if (IS_ERR_OR_NULL(d)) {
+		pr_warn("Couldn't find cache id for CPU %d\n", cpu);
+		return;
+	}
+	hw_dom = resctrl_to_arch_dom(d);
+
+	cpumask_clear_cpu(cpu, &d->cpu_mask);
+	if (cpumask_empty(&d->cpu_mask)) {
+		resctrl_offline_mon_domain(r, d);
+		list_del(&d->list);
+
 		domain_free(hw_dom);
 
 		return;
@@ -590,6 +663,14 @@ static void domain_remove_cpu(int cpu, struct rdt_resource *r)
 			cqm_setup_limbo_handler(d, 0);
 		}
 	}
+}
+
+static void domain_remove_cpu(int cpu, struct rdt_resource *r)
+{
+	if (r->alloc_capable)
+		domain_remove_cpu_ctrl(cpu, r);
+	if (r->mon_capable)
+		domain_remove_cpu_mon(cpu, r);
 }
 
 static void clear_closid_rmid(int cpu)
