@@ -261,11 +261,8 @@ unsigned int tj_max_override;
 double rapl_power_units, rapl_time_units;
 double rapl_dram_energy_units, rapl_energy_units;
 double rapl_joule_counter_range;
-unsigned int do_core_perf_limit_reasons;
 unsigned int has_automatic_cstate_conversion;
 unsigned int dis_cstate_prewake;
-unsigned int do_gfx_perf_limit_reasons;
-unsigned int do_ring_perf_limit_reasons;
 unsigned int crystal_hz;
 unsigned long long tsc_hz;
 int base_cpu;
@@ -291,6 +288,7 @@ struct platform_features {
 	int bclk_freq;		/* CPU base clock */
 	int cst_limit;		/* MSR_PKG_CST_CONFIG_CONTROL */
 	int trl_msrs;		/* MSR_TURBO_RATIO_LIMIT/LIMIT1/LIMIT2/SECONDARY, Atom TRL MSRs */
+	int plr_msrs;		/* MSR_CORE/GFX/RING_PERF_LIMIT_REASONS */
 	int tcc_offset_bits;	/* TCC Offset bits in MSR_IA32_TEMPERATURE_TARGET */
 };
 
@@ -354,6 +352,13 @@ enum turbo_ratio_limit_msrs {
 	TRL_CORECOUNT = BIT(5),
 };
 
+/* For Perf Limit Reason MSRs */
+enum perf_limit_reason_msrs {
+	PLR_CORE = BIT(0),
+	PLR_GFX = BIT(1),
+	PLR_RING = BIT(2),
+};
+
 static const struct platform_features nhm_features = {
 	.has_msr_misc_pwr_mgmt = 1,
 	.has_nhm_msrs = 1,
@@ -414,6 +419,7 @@ static const struct platform_features hsw_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
+	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
 };
 
 static const struct platform_features hsx_features = {
@@ -424,6 +430,7 @@ static const struct platform_features hsx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE | TRL_LIMIT1 | TRL_LIMIT2,
+	.plr_msrs = PLR_CORE | PLR_RING,
 };
 
 static const struct platform_features hswl_features = {
@@ -434,6 +441,7 @@ static const struct platform_features hswl_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
+	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
 };
 
 static const struct platform_features hswg_features = {
@@ -444,6 +452,7 @@ static const struct platform_features hswg_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
+	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
 };
 
 static const struct platform_features bdw_features = {
@@ -4672,7 +4681,7 @@ int print_perf_limit(struct thread_data *t, struct core_data *c, struct pkg_data
 		return -1;
 	}
 
-	if (do_core_perf_limit_reasons) {
+	if (platform->plr_msrs & PLR_CORE) {
 		get_msr(cpu, MSR_CORE_PERF_LIMIT_REASONS, &msr);
 		fprintf(outf, "cpu%d: MSR_CORE_PERF_LIMIT_REASONS, 0x%08llx", cpu, msr);
 		fprintf(outf, " (Active: %s%s%s%s%s%s%s%s%s%s%s%s%s%s)",
@@ -4705,7 +4714,7 @@ int print_perf_limit(struct thread_data *t, struct core_data *c, struct pkg_data
 			(msr & 1 << 17) ? "ThermStatus, " : "", (msr & 1 << 16) ? "PROCHOT, " : "");
 
 	}
-	if (do_gfx_perf_limit_reasons) {
+	if (platform->plr_msrs & PLR_GFX) {
 		get_msr(cpu, MSR_GFX_PERF_LIMIT_REASONS, &msr);
 		fprintf(outf, "cpu%d: MSR_GFX_PERF_LIMIT_REASONS, 0x%08llx", cpu, msr);
 		fprintf(outf, " (Active: %s%s%s%s%s%s%s%s)",
@@ -4725,7 +4734,7 @@ int print_perf_limit(struct thread_data *t, struct core_data *c, struct pkg_data
 			(msr & 1 << 25) ? "GFXPwr, " : "",
 			(msr & 1 << 26) ? "PkgPwrL1, " : "", (msr & 1 << 27) ? "PkgPwrL2, " : "");
 	}
-	if (do_ring_perf_limit_reasons) {
+	if (platform->plr_msrs & PLR_RING) {
 		get_msr(cpu, MSR_RING_PERF_LIMIT_REASONS, &msr);
 		fprintf(outf, "cpu%d: MSR_RING_PERF_LIMIT_REASONS, 0x%08llx", cpu, msr);
 		fprintf(outf, " (Active: %s%s%s%s%s%s)",
@@ -5015,28 +5024,6 @@ void rapl_probe(unsigned int family, unsigned int model)
 		rapl_probe_intel(family, model);
 	if (authentic_amd || hygon_genuine)
 		rapl_probe_amd(family, model);
-}
-
-void perf_limit_reasons_probe(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return;
-
-	if (family != 6)
-		return;
-
-	switch (model) {
-	case INTEL_FAM6_HASWELL:	/* HSW */
-	case INTEL_FAM6_HASWELL_L:	/* HSW */
-	case INTEL_FAM6_HASWELL_G:	/* HSW */
-		do_gfx_perf_limit_reasons = 1;
-		/* FALLTHRU */
-	case INTEL_FAM6_HASWELL_X:	/* HSX */
-		do_core_perf_limit_reasons = 1;
-		do_ring_perf_limit_reasons = 1;
-	default:
-		return;
-	}
 }
 
 void automatic_cstate_conversion_probe(unsigned int family, unsigned int model)
@@ -5974,7 +5961,6 @@ void process_cpuid()
 		decode_c6_demotion_policy_msr();
 
 	rapl_probe(family, model);
-	perf_limit_reasons_probe(family, model);
 	automatic_cstate_conversion_probe(family, model);
 	prewake_cstate_probe(family, model);
 
