@@ -98,6 +98,7 @@ int xfs_defer_ops_capture_and_commit(struct xfs_trans *tp,
 		struct xfs_inode *capture_ip, struct list_head *capture_list);
 void xfs_defer_ops_continue(struct xfs_defer_capture *d, struct xfs_trans *tp,
 		struct xfs_inode **captured_ipp);
-void xfs_defer_ops_release(struct xfs_mount *mp, struct xfs_defer_capture *d);
+void xfs_defer_ops_capture_abort(struct xfs_mount *mp,
+		struct xfs_defer_capture *d);
 
 #endif /* __XFS_DEFER_H__ */
