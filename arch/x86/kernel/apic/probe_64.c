@@ -26,6 +26,10 @@ void __init default_setup_apic_routing(void)
 		if ((*drv)->probe && (*drv)->probe()) {
 			if (apic != *drv) {
 				apic = *drv;
+
+				if (IS_ENABLED(CONFIG_X86_X2APIC) && apic->x2apic_set_max_apicid)
+					apic->max_apic_id = x2apic_max_apicid;
+
 				pr_info("Switched APIC routing to %s.\n",
 					apic->name);
 			}
