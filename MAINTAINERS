@@ -8471,6 +8471,12 @@ S:	Maintained
 W:	https://www.hisilicon.com
 F:	drivers/i2c/busses/i2c-hisi.c
 
+HISILICON KUNPENG SOC HCCS DRIVER
+M:	Huisong Li <lihuisong@huawei.com>
+S:	Maintained
+F:	drivers/soc/hisilicon/kunpeng_hccs.c
+F:	drivers/soc/hisilicon/kunpeng_hccs.h
+
 HISILICON LPC BUS DRIVER
 M:	john.garry@huawei.com
 S:	Maintained
