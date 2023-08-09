@@ -859,6 +859,8 @@ enum mds_mitigations {
 	MDS_MITIGATION_VMWERV,
 };
 
+extern bool gds_ucode_mitigated(void);
+
 #ifdef CONFIG_X86_SGX
 int arch_memory_failure(unsigned long pfn, int flags);
 #define arch_memory_failure arch_memory_failure
