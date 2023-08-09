@@ -1118,6 +1118,17 @@ config PROC_PID_CPUSET
 	depends on CPUSETS
 	default y
 
+config CGROUP_OVERRIDE_PROC
+	bool "Procfs overridden in cgroup"
+	depends on CGROUP_CPUACCT
+	depends on CFS_BANDWIDTH
+	depends on CPUSETS
+	depends on MEMCG
+	default n
+	help
+	  Provide the ability to override global data in procfs with
+	  data inside cgroup while in cgroup.
+
 config CGROUP_DEVICE
 	bool "Device controller"
 	help
