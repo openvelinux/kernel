@@ -776,10 +776,12 @@ void cgroup_rstat_flush_release(void);
 #ifdef CONFIG_CGROUP_CPUACCT
 void cpuacct_charge(struct task_struct *tsk, u64 cputime);
 void cpuacct_account_field(struct task_struct *tsk, int index, u64 val);
+bool cpuacct_not_root(struct task_struct *tsk);
 #else
 static inline void cpuacct_charge(struct task_struct *tsk, u64 cputime) {}
 static inline void cpuacct_account_field(struct task_struct *tsk, int index,
 					 u64 val) {}
+static inline bool cpuacct_not_root(struct task_struct *tsk) { return false; }
 #endif
 
 void __cgroup_account_cputime(struct cgroup *cgrp, u64 delta_exec);

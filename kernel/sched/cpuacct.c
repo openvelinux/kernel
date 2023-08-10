@@ -358,3 +358,13 @@ struct cgroup_subsys cpuacct_cgrp_subsys = {
 	.legacy_cftypes	= files,
 	.early_init	= true,
 };
+
+bool cpuacct_not_root(struct task_struct *tsk)
+{
+	struct cpuacct *ca = task_ca(tsk);
+
+	if (ca && ca != &root_cpuacct)
+		return true;
+
+	return false;
+}
