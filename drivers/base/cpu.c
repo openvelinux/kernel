@@ -20,6 +20,7 @@
 #include <linux/tick.h>
 #include <linux/pm_qos.h>
 #include <linux/sched/isolation.h>
+#include <linux/cgroup.h>
 
 #include "base.h"
 
@@ -208,8 +209,14 @@ static ssize_t show_cpus_attr(struct device *dev,
 			      char *buf)
 {
 	struct cpu_attr *ca = container_of(attr, struct cpu_attr, attr);
+	struct cpumask msk;
 
-	return cpumap_print_to_pagebuf(true, buf, ca->map);
+	if (cgroup_override_proc())
+		cgroup_override_get_cpuset(&msk);
+	else
+		cpumask_copy(&msk, ca->map);
+
+	return cpumap_print_to_pagebuf(true, buf, &msk);
 }
 
 #define _CPU_ATTR(name, map) \
