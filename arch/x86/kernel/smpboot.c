@@ -337,7 +337,7 @@ int topology_phys_to_logical_pkg(unsigned int phys_pkg)
 		struct cpuinfo_x86 *c = &cpu_data(cpu);
 
 		if (c->initialized && c->topo.pkg_id == phys_pkg)
-			return c->logical_proc_id;
+			return c->topo.logical_pkg_id;
 	}
 	return -1;
 }
@@ -359,7 +359,7 @@ static int topology_phys_to_logical_die(unsigned int die_id, unsigned int cur_cp
 
 		if (c->initialized && c->topo.die_id == die_id &&
 		    c->topo.pkg_id == proc_id)
-			return c->logical_die_id;
+			return c->topo.logical_die_id;
 	}
 	return -1;
 }
@@ -384,7 +384,7 @@ int topology_update_package_map(unsigned int pkg, unsigned int cpu)
 			cpu, pkg, new);
 	}
 found:
-	cpu_data(cpu).logical_proc_id = new;
+	cpu_data(cpu).topo.logical_pkg_id = new;
 	return 0;
 }
 /**
@@ -407,7 +407,7 @@ int topology_update_die_map(unsigned int die, unsigned int cpu)
 			cpu, die, new);
 	}
 found:
-	cpu_data(cpu).logical_die_id = new;
+	cpu_data(cpu).topo.logical_die_id = new;
 	return 0;
 }
 
