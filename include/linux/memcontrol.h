@@ -248,9 +248,9 @@ enum memcg_watermarks {
 #define memcg_set_high_wmark_pages(memcg, val)	\
 	memcg_high_wmark_pages(memcg) = (val)
 
-#define memcg_wmark_lock_init(memcg)	spin_lock_init(&(memcg)->wmark_lock)
-#define memcg_wmark_lock(memcg)		spin_lock(&(memcg)->wmark_lock)
-#define memcg_wmark_unlock(memcg)	spin_unlock(&(memcg)->wmark_lock)
+#define memcg_wmark_lock_init(memcg)	mutex_init(&(memcg)->wmark_lock)
+#define memcg_wmark_lock(memcg)		mutex_lock(&(memcg)->wmark_lock)
+#define memcg_wmark_unlock(memcg)	mutex_unlock(&(memcg)->wmark_lock)
 
 extern int memcg_watermark_scale_factor;
 extern int memcg_mem_reclaim_wq_max_active;
@@ -407,7 +407,7 @@ struct mem_cgroup {
 	unsigned int reclaim_failures;
 	unsigned int watermark_scale_factor;
 	unsigned long watermark[NR_MEMCG_WMARK];
-	spinlock_t wmark_lock;
+	struct mutex wmark_lock;
 #endif
 	struct mem_cgroup_per_node *nodeinfo[];
 };
