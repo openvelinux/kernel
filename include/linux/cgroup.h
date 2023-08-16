@@ -815,6 +815,9 @@ static inline void cgroup_account_cputime_field(struct task_struct *task,
 	rcu_read_unlock();
 }
 
+int cpuacct_get_kcpustat(struct task_struct *tsk, int cpu,
+			 struct kernel_cpustat *kcpustat);
+
 #else	/* CONFIG_CGROUPS */
 
 static inline void cgroup_account_cputime(struct task_struct *task,
@@ -822,6 +825,11 @@ static inline void cgroup_account_cputime(struct task_struct *task,
 static inline void cgroup_account_cputime_field(struct task_struct *task,
 						enum cpu_usage_stat index,
 						u64 delta_exec) {}
+static inline int cpuacct_get_kcpustat(struct task_struct *tsk, int cpu,
+				       struct kernel_cpustat *kcpustat)
+{
+	return -1;
+}
 
 #endif	/* CONFIG_CGROUPS */
 
