@@ -14,6 +14,7 @@
 #include <linux/irqnr.h>
 #include <linux/sched/cputime.h>
 #include <linux/tick.h>
+#include <linux/cgroup.h>
 
 #ifndef arch_irq_stat_cpu
 #define arch_irq_stat_cpu(cpu) 0
@@ -108,12 +109,17 @@ static void show_all_irqs(struct seq_file *p)
 static int show_stat(struct seq_file *p, void *v)
 {
 	int i, j;
+	int id = -1;
 	u64 user, nice, system, idle, iowait, irq, softirq, steal;
 	u64 guest, guest_nice;
 	u64 sum = 0;
 	u64 sum_softirq = 0;
 	unsigned int per_softirq_sums[NR_SOFTIRQS] = {0};
 	struct timespec64 boottime;
+	struct cpumask msk;
+	const struct cpumask *iter;
+	bool override = false;
+	struct task_struct *tsk = NULL;
 
 	user = nice = system = idle = iowait =
 		irq = softirq = steal = 0;
@@ -122,17 +128,31 @@ static int show_stat(struct seq_file *p, void *v)
 	/* shift boot timestamp according to the timens offset */
 	timens_sub_boottime(&boottime);
 
-	for_each_possible_cpu(i) {
+	if (cgroup_override_proc()) {
+		tsk = cgroup_override_get_init_tsk();
+		cgroup_override_get_raw_cpuset(&msk);
+		iter = &msk;
+		override = true;
+	} else {
+		iter = cpu_possible_mask;
+	}
+
+	for_each_cpu(i, iter) {
 		struct kernel_cpustat kcpustat;
 		u64 *cpustat = kcpustat.cpustat;
 
-		kcpustat_cpu_fetch(&kcpustat, i);
+		if (!override)
+			kcpustat_cpu_fetch(&kcpustat, i);
+		else
+			cpuacct_get_kcpustat(tsk, i, &kcpustat);
 
 		user		+= cpustat[CPUTIME_USER];
 		nice		+= cpustat[CPUTIME_NICE];
 		system		+= cpustat[CPUTIME_SYSTEM];
-		idle		+= get_idle_time(&kcpustat, i);
-		iowait		+= get_iowait_time(&kcpustat, i);
+		idle		+= override ? cpustat[CPUTIME_IDLE] :
+				   get_idle_time(&kcpustat, i);
+		iowait		+= override ? cpustat[CPUTIME_IOWAIT] :
+				   get_iowait_time(&kcpustat, i);
 		irq		+= cpustat[CPUTIME_IRQ];
 		softirq		+= cpustat[CPUTIME_SOFTIRQ];
 		steal		+= cpustat[CPUTIME_STEAL];
@@ -162,24 +182,37 @@ static int show_stat(struct seq_file *p, void *v)
 	seq_put_decimal_ull(p, " ", nsec_to_clock_t(guest_nice));
 	seq_putc(p, '\n');
 
-	for_each_online_cpu(i) {
+	if (!override)
+		iter = cpu_online_mask;
+
+	for_each_cpu(i, iter) {
 		struct kernel_cpustat kcpustat;
 		u64 *cpustat = kcpustat.cpustat;
 
-		kcpustat_cpu_fetch(&kcpustat, i);
+		id++;
+
+		if (!override) {
+			if (!cpu_online(i))
+				continue;
+			kcpustat_cpu_fetch(&kcpustat, i);
+		} else {
+			cpuacct_get_kcpustat(tsk, i, &kcpustat);
+		}
 
 		/* Copy values here to work around gcc-2.95.3, gcc-2.96 */
 		user		= cpustat[CPUTIME_USER];
 		nice		= cpustat[CPUTIME_NICE];
 		system		= cpustat[CPUTIME_SYSTEM];
-		idle		= get_idle_time(&kcpustat, i);
-		iowait		= get_iowait_time(&kcpustat, i);
+		idle		= override ? cpustat[CPUTIME_IDLE] :
+				   get_idle_time(&kcpustat, i);
+		iowait		= override ? cpustat[CPUTIME_IOWAIT] :
+				   get_iowait_time(&kcpustat, i);
 		irq		= cpustat[CPUTIME_IRQ];
 		softirq		= cpustat[CPUTIME_SOFTIRQ];
 		steal		= cpustat[CPUTIME_STEAL];
 		guest		= cpustat[CPUTIME_GUEST];
 		guest_nice	= cpustat[CPUTIME_GUEST_NICE];
-		seq_printf(p, "cpu%d", i);
+		seq_printf(p, "cpu%d", id);
 		seq_put_decimal_ull(p, " ", nsec_to_clock_t(user));
 		seq_put_decimal_ull(p, " ", nsec_to_clock_t(nice));
 		seq_put_decimal_ull(p, " ", nsec_to_clock_t(system));
@@ -193,6 +226,9 @@ static int show_stat(struct seq_file *p, void *v)
 		seq_putc(p, '\n');
 	}
 	seq_put_decimal_ull(p, "intr ", (unsigned long long)sum);
+
+	if (override)
+		put_task_struct(tsk);
 
 	show_all_irqs(p);
 
