@@ -368,3 +368,24 @@ bool cpuacct_not_root(struct task_struct *tsk)
 
 	return false;
 }
+
+int cpuacct_get_kcpustat(struct task_struct *tsk, int cpu, struct kernel_cpustat *kcpustat)
+{
+	struct cpuacct *ca;
+	struct kernel_cpustat *stat;
+
+	rcu_read_lock();
+	ca = task_ca(tsk);
+
+	if (!ca) {
+		rcu_read_unlock();
+		return -1;
+	}
+
+	stat = per_cpu_ptr(ca->cpustat, cpu);
+	rcu_read_unlock();
+
+	memcpy(kcpustat, stat, sizeof(struct kernel_cpustat));
+
+	return 0;
+}
