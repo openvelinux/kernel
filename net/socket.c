@@ -3510,7 +3510,8 @@ int kernel_connect(struct socket *sock, struct sockaddr *addr, int addrlen,
 
 	memcpy(&address, addr, addrlen);
 
-	return sock->ops->connect(sock, (struct sockaddr *)&address, addrlen, flags);
+	return READ_ONCE(sock->ops)->connect(sock, (struct sockaddr *)&address,
+					     addrlen, flags);
 }
 EXPORT_SYMBOL(kernel_connect);
 
