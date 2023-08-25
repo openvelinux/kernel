@@ -278,7 +278,7 @@ static void __init dtb_apic_setup(void)
 }
 
 #ifdef CONFIG_OF_EARLY_FLATTREE
-static void __init x86_flattree_get_config(void)
+void __init x86_flattree_get_config(void)
 {
 	u32 size, map_len;
 	void *dt;
@@ -302,14 +302,10 @@ static void __init x86_flattree_get_config(void)
 	if (initial_dtb)
 		early_memunmap(dt, map_len);
 }
-#else
-static inline void x86_flattree_get_config(void) { }
 #endif
 
 void __init x86_dtb_parse_smp_config(void)
 {
-	x86_flattree_get_config();
-
 	if (!of_have_populated_dt())
 		return;
 
