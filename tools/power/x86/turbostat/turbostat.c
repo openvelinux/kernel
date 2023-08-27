@@ -587,7 +587,7 @@ static const struct platform_features cnl_features = {
 	.has_nhm_msrs = 1,
 	.has_config_tdp = 1,
 	.bclk_freq = BCLK_100MHZ,
-	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
+	.supported_cstates = CC1 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
@@ -637,7 +637,7 @@ static const struct platform_features spr_features = {
 static const struct platform_features slv_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_SLV,
-	.supported_cstates = CC1 | CC3 | CC6 | PC6,
+	.supported_cstates = CC1 | CC6 | PC6,
 	.cst_limit = CST_LIMIT_SLV,
 	.trl_msrs = TRL_ATOM,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE,
@@ -649,7 +649,7 @@ static const struct platform_features slvd_features = {
 	.has_msr_misc_pwr_mgmt = 1,
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_SLV,
-	.supported_cstates = CC1 | CC3 | CC6 | PC3 | PC6,
+	.supported_cstates = CC1 | CC6 | PC3 | PC6,
 	.cst_limit = CST_LIMIT_SLV,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE,
@@ -701,7 +701,7 @@ static const struct platform_features tmt_features = {
 	.has_msr_misc_pwr_mgmt = 1,
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
-	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
+	.supported_cstates = CC1 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
@@ -723,7 +723,7 @@ static const struct platform_features knl_features = {
 	.has_nhm_msrs = 1,
 	.has_config_tdp = 1,
 	.bclk_freq = BCLK_100MHZ,
-	.supported_cstates = CC1 | CC3 | CC6 | PC3 | PC6,
+	.supported_cstates = CC1 | CC6 | PC3 | PC6,
 	.cst_limit = CST_LIMIT_KNL,
 	.trl_msrs = TRL_KNL,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
@@ -4332,21 +4332,6 @@ int is_spr(unsigned int family, unsigned int model)
 	return 0;
 }
 
-int is_ehl(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_ATOM_TREMONT:
-		return 1;
-	}
-	return 0;
-}
-
 static void remove_underbar(char *s)
 {
 	char *to = s;
@@ -5263,22 +5248,6 @@ int is_knl(unsigned int family, unsigned int model)
 	return 0;
 }
 
-int is_cnl(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_CANNONLAKE_L:	/* CNL */
-		return 1;
-	}
-
-	return 0;
-}
-
 unsigned int get_aperf_mperf_multiplier(unsigned int family, unsigned int model)
 {
 	if (is_knl(family, model))
@@ -5819,9 +5788,6 @@ void process_cpuid()
 	}
 	do_slm_cstates = is_slm(family, model);
 	do_knl_cstates = is_knl(family, model);
-
-	if (do_slm_cstates || do_knl_cstates || is_cnl(family, model) || is_ehl(family, model))
-		BIC_NOT_PRESENT(BIC_CPU_c3);
 
 	if (!quiet)
 		decode_misc_pwr_mgmt_msr();
