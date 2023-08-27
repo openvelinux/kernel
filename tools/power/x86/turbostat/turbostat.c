@@ -295,6 +295,7 @@ struct platform_features {
 	bool has_fixed_rapl_unit;	/* Fixed Energy Unit used for DRAM RAPL Domain */
 	int rapl_quirk_tdp;	/* Hardcoded TDP value when cannot be retrieved from hardware */
 	int tcc_offset_bits;	/* TCC Offset bits in MSR_IA32_TEMPERATURE_TARGET */
+	bool enable_tsc_tweak;	/* Use CPU Base freq instead of TSC freq for aperf/mperf counter */
 };
 
 struct platform_data {
@@ -548,6 +549,7 @@ static const struct platform_features skl_features = {
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
+	.enable_tsc_tweak = 1,
 };
 
 static const struct platform_features cnl_features = {
@@ -560,6 +562,7 @@ static const struct platform_features cnl_features = {
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
+	.enable_tsc_tweak = 1,
 };
 
 static const struct platform_features skx_features = {
@@ -662,6 +665,7 @@ static const struct platform_features tmt_features = {
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
+	.enable_tsc_tweak = 1,
 };
 
 static const struct platform_features tmtd_features = {
@@ -2952,11 +2956,6 @@ void probe_cst_limit(void)
 	pkg_cstate_limit = pkg_cstate_limits[msr & 0xF];
 }
 
-static void calculate_tsc_tweak()
-{
-	tsc_tweak = base_hz / tsc_hz;
-}
-
 void prewake_cstate_probe(unsigned int family, unsigned int model);
 
 static void dump_platform_info(void)
@@ -4216,6 +4215,9 @@ void probe_bclk(void)
 
 	base_hz = base_ratio * bclk * 1000000;
 	has_base_hz = 1;
+
+	if (platform->enable_tsc_tweak)
+		tsc_tweak = base_hz / tsc_hz;
 }
 
 /*
@@ -5857,9 +5859,6 @@ void process_cpuid()
 		dump_sysfs_cstate_config();
 	if (!quiet)
 		dump_sysfs_pstate_config();
-
-	if (has_skl_msrs(family, model) || is_ehl(family, model))
-		calculate_tsc_tweak();
 
 	if (!access("/sys/class/drm/card0/power/rc6_residency_ms", R_OK))
 		BIC_PRESENT(BIC_GFX_rc6);
