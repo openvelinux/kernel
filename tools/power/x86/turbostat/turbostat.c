@@ -290,6 +290,7 @@ struct platform_features {
 	bool has_cst_auto_convension;	/* AUTOMATIC_CSTATE_CONVERSION bit in MSR_PKG_CST_CONFIG_CONTROL */
 	int trl_msrs;		/* MSR_TURBO_RATIO_LIMIT/LIMIT1/LIMIT2/SECONDARY, Atom TRL MSRs */
 	int plr_msrs;		/* MSR_CORE/GFX/RING_PERF_LIMIT_REASONS */
+	int rapl_msrs;		/* RAPL PKG/DRAM/CORE/GFX MSRs, AMD RAPL MSRs */
 	int tcc_offset_bits;	/* TCC Offset bits in MSR_IA32_TEMPERATURE_TARGET */
 };
 
@@ -416,6 +417,7 @@ static const struct platform_features snb_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features snx_features = {
@@ -425,6 +427,7 @@ static const struct platform_features snx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features ivb_features = {
@@ -435,6 +438,7 @@ static const struct platform_features ivb_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features ivx_features = {
@@ -444,6 +448,7 @@ static const struct platform_features ivx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
 	.trl_msrs = TRL_BASE | TRL_LIMIT1,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features hsw_features = {
@@ -455,6 +460,7 @@ static const struct platform_features hsw_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
 	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features hsx_features = {
@@ -466,6 +472,7 @@ static const struct platform_features hsx_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE | TRL_LIMIT1 | TRL_LIMIT2,
 	.plr_msrs = PLR_CORE | PLR_RING,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features hswl_features = {
@@ -477,6 +484,7 @@ static const struct platform_features hswl_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
 	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features hswg_features = {
@@ -488,6 +496,7 @@ static const struct platform_features hswg_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
 	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features bdw_features = {
@@ -498,6 +507,7 @@ static const struct platform_features bdw_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features bdwg_features = {
@@ -508,6 +518,7 @@ static const struct platform_features bdwg_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features bdx_features = {
@@ -519,6 +530,7 @@ static const struct platform_features bdx_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.has_cst_auto_convension = 1,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features skl_features = {
@@ -531,6 +543,7 @@ static const struct platform_features skl_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
 };
 
 static const struct platform_features cnl_features = {
@@ -542,6 +555,7 @@ static const struct platform_features cnl_features = {
 	.cst_limit = CST_LIMIT_HSW,
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
 };
 
 static const struct platform_features skx_features = {
@@ -553,6 +567,7 @@ static const struct platform_features skx_features = {
 	.cst_limit = CST_LIMIT_SKX,
 	.has_cst_auto_convension = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features icx_features = {
@@ -563,6 +578,7 @@ static const struct platform_features icx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_ICX,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features spr_features = {
@@ -573,6 +589,7 @@ static const struct platform_features spr_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SKX,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features slv_features = {
@@ -580,6 +597,7 @@ static const struct platform_features slv_features = {
 	.bclk_freq = BCLK_SLV,
 	.cst_limit = CST_LIMIT_SLV,
 	.trl_msrs = TRL_ATOM,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE,
 };
 
 static const struct platform_features slvd_features = {
@@ -588,6 +606,7 @@ static const struct platform_features slvd_features = {
 	.bclk_freq = BCLK_SLV,
 	.cst_limit = CST_LIMIT_SLV,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG | RAPL_CORE,
 };
 
 static const struct platform_features amt_features = {
@@ -604,6 +623,7 @@ static const struct platform_features gmt_features = {
 	.crystal_freq = 19200000,
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
+	.rapl_msrs = RAPL_PKG | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features gmtd_features = {
@@ -613,6 +633,7 @@ static const struct platform_features gmtd_features = {
 	.crystal_freq = 25000000,
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL | RAPL_CORE_ENERGY_STATUS,
 };
 
 static const struct platform_features gmtp_features = {
@@ -622,6 +643,7 @@ static const struct platform_features gmtp_features = {
 	.crystal_freq = 19200000,
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG | RAPL_PKG_POWER_INFO,
 };
 
 static const struct platform_features tmt_features = {
@@ -630,6 +652,7 @@ static const struct platform_features tmt_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
 };
 
 static const struct platform_features tmtd_features = {
@@ -638,6 +661,7 @@ static const struct platform_features tmtd_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
+	.rapl_msrs = RAPL_PKG_ALL,
 };
 
 static const struct platform_features knl_features = {
@@ -647,12 +671,17 @@ static const struct platform_features knl_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_KNL,
 	.trl_msrs = TRL_KNL,
+	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
 
 static const struct platform_features default_features = {
 };
 
 static const struct platform_features amd_features = {
+};
+
+static const struct platform_features amd_features_with_rapl = {
+	.rapl_msrs = RAPL_AMD_F17H,
 };
 
 static const struct platform_data turbostat_pdata[] = {
@@ -730,6 +759,17 @@ void probe_platform_features(unsigned int family, unsigned int model)
 
 	if (authentic_amd || hygon_genuine) {
 		platform = &amd_features;
+
+		if (max_extended_level >= 0x80000007) {
+			unsigned int eax, ebx, ecx, edx;
+
+			__cpuid(0x80000007, eax, ebx, ecx, edx);
+			/* RAPL (Fam 17h+) */
+			if ((edx & (1 << 14)) && family >= 0x17) {
+				platform = &amd_features_with_rapl;
+				do_rapl = RAPL_PER_CORE_ENERGY;
+			}
+		}
 		return;
 	}
 
@@ -884,7 +924,7 @@ off_t idx_to_offset(int idx)
 
 	switch (idx) {
 	case IDX_PKG_ENERGY:
-		if (do_rapl & RAPL_AMD_F17H)
+		if (platform->rapl_msrs & RAPL_AMD_F17H)
 			offset = MSR_PKG_ENERGY_STAT;
 		else
 			offset = MSR_PKG_ENERGY_STATUS;
@@ -944,17 +984,17 @@ int idx_valid(int idx)
 {
 	switch (idx) {
 	case IDX_PKG_ENERGY:
-		return do_rapl & (RAPL_PKG | RAPL_AMD_F17H);
+		return platform->rapl_msrs & (RAPL_PKG | RAPL_AMD_F17H);
 	case IDX_DRAM_ENERGY:
-		return do_rapl & RAPL_DRAM;
+		return platform->rapl_msrs & RAPL_DRAM;
 	case IDX_PP0_ENERGY:
-		return do_rapl & RAPL_CORE_ENERGY_STATUS;
+		return platform->rapl_msrs & RAPL_CORE_ENERGY_STATUS;
 	case IDX_PP1_ENERGY:
-		return do_rapl & RAPL_GFX;
+		return platform->rapl_msrs & RAPL_GFX;
 	case IDX_PKG_PERF:
-		return do_rapl & RAPL_PKG_PERF_STATUS;
+		return platform->rapl_msrs & RAPL_PKG_PERF_STATUS;
 	case IDX_DRAM_PERF:
-		return do_rapl & RAPL_DRAM_PERF_STATUS;
+		return platform->rapl_msrs & RAPL_DRAM_PERF_STATUS;
 	default:
 		return 0;
 	}
@@ -1333,10 +1373,10 @@ void print_header(char *delim)
 	if (DO_BIC(BIC_CORE_THROT_CNT))
 		outp += sprintf(outp, "%sCoreThr", (printed++ ? delim : ""));
 
-	if (do_rapl && !rapl_joules) {
+	if (platform->rapl_msrs && !rapl_joules) {
 		if (DO_BIC(BIC_CorWatt) && (do_rapl & RAPL_PER_CORE_ENERGY))
 			outp += sprintf(outp, "%sCorWatt", (printed++ ? delim : ""));
-	} else if (do_rapl && rapl_joules) {
+	} else if (platform->rapl_msrs && rapl_joules) {
 		if (DO_BIC(BIC_Cor_J) && (do_rapl & RAPL_PER_CORE_ENERGY))
 			outp += sprintf(outp, "%sCor_J", (printed++ ? delim : ""));
 	}
@@ -1395,7 +1435,7 @@ void print_header(char *delim)
 	if (DO_BIC(BIC_SYS_LPI))
 		outp += sprintf(outp, "%sSYS%%LPI", (printed++ ? delim : ""));
 
-	if (do_rapl && !rapl_joules) {
+	if (platform->rapl_msrs && !rapl_joules) {
 		if (DO_BIC(BIC_PkgWatt))
 			outp += sprintf(outp, "%sPkgWatt", (printed++ ? delim : ""));
 		if (DO_BIC(BIC_CorWatt) && !(do_rapl & RAPL_PER_CORE_ENERGY))
@@ -1408,7 +1448,7 @@ void print_header(char *delim)
 			outp += sprintf(outp, "%sPKG_%%", (printed++ ? delim : ""));
 		if (DO_BIC(BIC_RAM__))
 			outp += sprintf(outp, "%sRAM_%%", (printed++ ? delim : ""));
-	} else if (do_rapl && rapl_joules) {
+	} else if (platform->rapl_msrs && rapl_joules) {
 		if (DO_BIC(BIC_Pkg_J))
 			outp += sprintf(outp, "%sPkg_J", (printed++ ? delim : ""));
 		if (DO_BIC(BIC_Cor_J) && !(do_rapl & RAPL_PER_CORE_ENERGY))
@@ -2657,7 +2697,7 @@ retry:
 	if (DO_BIC(BIC_CORE_THROT_CNT))
 		get_core_throt_cnt(cpu, &c->core_throt_cnt);
 
-	if (do_rapl & RAPL_AMD_F17H) {
+	if (platform->rapl_msrs & RAPL_AMD_F17H) {
 		if (get_msr(cpu, MSR_CORE_ENERGY_STAT, &msr))
 			return -14;
 		c->core_energy = msr & 0xFFFFFFFF;
@@ -2722,37 +2762,37 @@ retry:
 	if (DO_BIC(BIC_SYS_LPI))
 		p->sys_lpi = cpuidle_cur_sys_lpi_us;
 
-	if (do_rapl & RAPL_PKG) {
+	if (platform->rapl_msrs & RAPL_PKG) {
 		if (get_msr_sum(cpu, MSR_PKG_ENERGY_STATUS, &msr))
 			return -13;
 		p->energy_pkg = msr;
 	}
-	if (do_rapl & RAPL_CORE_ENERGY_STATUS) {
+	if (platform->rapl_msrs & RAPL_CORE_ENERGY_STATUS) {
 		if (get_msr_sum(cpu, MSR_PP0_ENERGY_STATUS, &msr))
 			return -14;
 		p->energy_cores = msr;
 	}
-	if (do_rapl & RAPL_DRAM) {
+	if (platform->rapl_msrs & RAPL_DRAM) {
 		if (get_msr_sum(cpu, MSR_DRAM_ENERGY_STATUS, &msr))
 			return -15;
 		p->energy_dram = msr;
 	}
-	if (do_rapl & RAPL_GFX) {
+	if (platform->rapl_msrs & RAPL_GFX) {
 		if (get_msr_sum(cpu, MSR_PP1_ENERGY_STATUS, &msr))
 			return -16;
 		p->energy_gfx = msr;
 	}
-	if (do_rapl & RAPL_PKG_PERF_STATUS) {
+	if (platform->rapl_msrs & RAPL_PKG_PERF_STATUS) {
 		if (get_msr_sum(cpu, MSR_PKG_PERF_STATUS, &msr))
 			return -16;
 		p->rapl_pkg_perf_status = msr;
 	}
-	if (do_rapl & RAPL_DRAM_PERF_STATUS) {
+	if (platform->rapl_msrs & RAPL_DRAM_PERF_STATUS) {
 		if (get_msr_sum(cpu, MSR_DRAM_PERF_STATUS, &msr))
 			return -16;
 		p->rapl_dram_perf_status = msr;
 	}
-	if (do_rapl & RAPL_AMD_F17H) {
+	if (platform->rapl_msrs & RAPL_AMD_F17H) {
 		if (get_msr_sum(cpu, MSR_PKG_ENERGY_STAT, &msr))
 			return -13;
 		p->energy_pkg = msr;
@@ -4765,7 +4805,7 @@ double get_tdp_intel(unsigned int model)
 {
 	unsigned long long msr;
 
-	if (do_rapl & RAPL_PKG_POWER_INFO)
+	if (platform->rapl_msrs & RAPL_PKG_POWER_INFO)
 		if (!get_msr(base_cpu, MSR_PKG_POWER_INFO, &msr))
 			return ((msr >> 0) & RAPL_POWER_GRANULARITY) * rapl_power_units;
 
@@ -4806,85 +4846,35 @@ static double rapl_dram_energy_units_probe(int model, double rapl_energy_units)
 	}
 }
 
-void rapl_probe_intel(unsigned int family, unsigned int model)
+void rapl_probe_intel(unsigned int model)
 {
 	unsigned long long msr;
 	unsigned int time_unit;
 	double tdp;
 
-	if (family != 6)
-		return;
-
-	switch (model) {
-	case INTEL_FAM6_SANDYBRIDGE:
-	case INTEL_FAM6_IVYBRIDGE:
-	case INTEL_FAM6_HASWELL:	/* HSW */
-	case INTEL_FAM6_HASWELL_L:	/* HSW */
-	case INTEL_FAM6_HASWELL_G:	/* HSW */
-	case INTEL_FAM6_BROADWELL:	/* BDW */
-	case INTEL_FAM6_BROADWELL_G:	/* BDW */
-		do_rapl = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO;
-		break;
-	case INTEL_FAM6_ATOM_GOLDMONT:	/* BXT */
-	case INTEL_FAM6_ATOM_GOLDMONT_PLUS:
-		do_rapl = RAPL_PKG | RAPL_PKG_POWER_INFO;
-		break;
-	case INTEL_FAM6_ATOM_TREMONT:	/* EHL */
-		do_rapl = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX;
-		break;
-	case INTEL_FAM6_ATOM_TREMONT_D:	/* JVL */
-		do_rapl = RAPL_PKG_ALL;
-		break;
-	case INTEL_FAM6_SKYLAKE_L:	/* SKL */
-	case INTEL_FAM6_CANNONLAKE_L:	/* CNL */
-		do_rapl = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX;
-		break;
-	case INTEL_FAM6_HASWELL_X:	/* HSX */
-	case INTEL_FAM6_BROADWELL_X:	/* BDX */
-	case INTEL_FAM6_SKYLAKE_X:	/* SKX */
-	case INTEL_FAM6_ICELAKE_X:	/* ICX */
-	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
-	case INTEL_FAM6_XEON_PHI_KNL:	/* KNL */
-		do_rapl = RAPL_PKG_ALL | RAPL_DRAM_ALL;
-		break;
-	case INTEL_FAM6_SANDYBRIDGE_X:
-	case INTEL_FAM6_IVYBRIDGE_X:
-		do_rapl = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM_ALL;
-		break;
-	case INTEL_FAM6_ATOM_SILVERMONT:	/* BYT */
-	case INTEL_FAM6_ATOM_SILVERMONT_D:	/* AVN */
-		do_rapl = RAPL_PKG | RAPL_CORE;
-		break;
-	case INTEL_FAM6_ATOM_GOLDMONT_D:	/* DNV */
-		do_rapl = RAPL_PKG_ALL | RAPL_DRAM_ALL | RAPL_CORE_ENERGY_STATUS;
-		break;
-	default:
-		return;
-	}
-
 	if (rapl_joules) {
-		if (do_rapl & RAPL_PKG_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_PKG_ENERGY_STATUS)
 			BIC_PRESENT(BIC_Pkg_J);
-		if (do_rapl & RAPL_CORE_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_CORE_ENERGY_STATUS)
 			BIC_PRESENT(BIC_Cor_J);
-		if (do_rapl & RAPL_DRAM_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_DRAM_ENERGY_STATUS)
 			BIC_PRESENT(BIC_RAM_J);
-		if (do_rapl & RAPL_GFX_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_GFX_ENERGY_STATUS)
 			BIC_PRESENT(BIC_GFX_J);
 	} else {
-		if (do_rapl & RAPL_PKG_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_PKG_ENERGY_STATUS)
 			BIC_PRESENT(BIC_PkgWatt);
-		if (do_rapl & RAPL_CORE_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_CORE_ENERGY_STATUS)
 			BIC_PRESENT(BIC_CorWatt);
-		if (do_rapl & RAPL_DRAM_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_DRAM_ENERGY_STATUS)
 			BIC_PRESENT(BIC_RAMWatt);
-		if (do_rapl & RAPL_GFX_ENERGY_STATUS)
+		if (platform->rapl_msrs & RAPL_GFX_ENERGY_STATUS)
 			BIC_PRESENT(BIC_GFXWatt);
 	}
 
-	if (do_rapl & RAPL_PKG_PERF_STATUS)
+	if (platform->rapl_msrs & RAPL_PKG_PERF_STATUS)
 		BIC_PRESENT(BIC_PKG__);
-	if (do_rapl & RAPL_DRAM_PERF_STATUS)
+	if (platform->rapl_msrs & RAPL_DRAM_PERF_STATUS)
 		BIC_PRESENT(BIC_RAM__);
 
 	/* units on package 0, verify later other packages match */
@@ -4915,22 +4905,10 @@ void rapl_probe_intel(unsigned int family, unsigned int model)
 void rapl_probe_amd(unsigned int family, unsigned int model)
 {
 	unsigned long long msr;
-	unsigned int eax, ebx, ecx, edx;
-	unsigned int has_rapl = 0;
 	double tdp;
 
 	UNUSED(model);
 
-	if (max_extended_level >= 0x80000007) {
-		__cpuid(0x80000007, eax, ebx, ecx, edx);
-		/* RAPL (Fam 17h+) */
-		has_rapl = edx & (1 << 14);
-	}
-
-	if (!has_rapl || family < 0x17)
-		return;
-
-	do_rapl = RAPL_AMD_F17H | RAPL_PER_CORE_ENERGY;
 	if (rapl_joules) {
 		BIC_PRESENT(BIC_Pkg_J);
 		BIC_PRESENT(BIC_Cor_J);
@@ -4956,12 +4934,15 @@ void rapl_probe_amd(unsigned int family, unsigned int model)
 /*
  * rapl_probe()
  *
- * sets do_rapl, rapl_power_units, rapl_energy_units, rapl_time_units
+ * sets rapl_power_units, rapl_energy_units, rapl_time_units
  */
 void rapl_probe(unsigned int family, unsigned int model)
 {
+	if (!platform->rapl_msrs)
+		return;
+
 	if (genuine_intel)
-		rapl_probe_intel(family, model);
+		rapl_probe_intel(model);
 	if (authentic_amd || hygon_genuine)
 		rapl_probe_amd(family, model);
 }
@@ -5055,7 +5036,7 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 	UNUSED(c);
 	UNUSED(p);
 
-	if (!do_rapl)
+	if (!platform->rapl_msrs)
 		return 0;
 
 	/* RAPL counters are per package, so print only for 1st thread/package */
@@ -5068,7 +5049,7 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 		return -1;
 	}
 
-	if (do_rapl & RAPL_AMD_F17H) {
+	if (platform->rapl_msrs & RAPL_AMD_F17H) {
 		msr_name = "MSR_RAPL_PWR_UNIT";
 		if (get_msr(cpu, MSR_RAPL_PWR_UNIT, &msr))
 			return -1;
@@ -5081,7 +5062,7 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 	fprintf(outf, "cpu%d: %s: 0x%08llx (%f Watts, %f Joules, %f sec.)\n", cpu, msr_name, msr,
 		rapl_power_units, rapl_energy_units, rapl_time_units);
 
-	if (do_rapl & RAPL_PKG_POWER_INFO) {
+	if (platform->rapl_msrs & RAPL_PKG_POWER_INFO) {
 
 		if (get_msr(cpu, MSR_PKG_POWER_INFO, &msr))
 			return -5;
@@ -5094,7 +5075,7 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 			((msr >> 48) & RAPL_TIME_GRANULARITY) * rapl_time_units);
 
 	}
-	if (do_rapl & RAPL_PKG) {
+	if (platform->rapl_msrs & RAPL_PKG) {
 
 		if (get_msr(cpu, MSR_PKG_POWER_LIMIT, &msr))
 			return -9;
@@ -5118,7 +5099,7 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 			cpu, ((msr >> 0) & 0x1FFF) * rapl_power_units, (msr >> 31) & 1 ? "" : "UN");
 	}
 
-	if (do_rapl & RAPL_DRAM_POWER_INFO) {
+	if (platform->rapl_msrs & RAPL_DRAM_POWER_INFO) {
 		if (get_msr(cpu, MSR_DRAM_POWER_INFO, &msr))
 			return -6;
 
@@ -5129,7 +5110,7 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 			((msr >> 32) & RAPL_POWER_GRANULARITY) * rapl_power_units,
 			((msr >> 48) & RAPL_TIME_GRANULARITY) * rapl_time_units);
 	}
-	if (do_rapl & RAPL_DRAM) {
+	if (platform->rapl_msrs & RAPL_DRAM) {
 		if (get_msr(cpu, MSR_DRAM_POWER_LIMIT, &msr))
 			return -9;
 		fprintf(outf, "cpu%d: MSR_DRAM_POWER_LIMIT: 0x%08llx (%slocked)\n",
@@ -5137,20 +5118,20 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 
 		print_power_limit_msr(cpu, msr, "DRAM Limit");
 	}
-	if (do_rapl & RAPL_CORE_POLICY) {
+	if (platform->rapl_msrs & RAPL_CORE_POLICY) {
 		if (get_msr(cpu, MSR_PP0_POLICY, &msr))
 			return -7;
 
 		fprintf(outf, "cpu%d: MSR_PP0_POLICY: %lld\n", cpu, msr & 0xF);
 	}
-	if (do_rapl & RAPL_CORE_POWER_LIMIT) {
+	if (platform->rapl_msrs & RAPL_CORE_POWER_LIMIT) {
 		if (get_msr(cpu, MSR_PP0_POWER_LIMIT, &msr))
 			return -9;
 		fprintf(outf, "cpu%d: MSR_PP0_POWER_LIMIT: 0x%08llx (%slocked)\n",
 			cpu, msr, (msr >> 31) & 1 ? "" : "UN");
 		print_power_limit_msr(cpu, msr, "Cores Limit");
 	}
-	if (do_rapl & RAPL_GFX) {
+	if (platform->rapl_msrs & RAPL_GFX) {
 		if (get_msr(cpu, MSR_PP1_POLICY, &msr))
 			return -8;
 
