@@ -1044,12 +1044,14 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 			pgoff_t extension_pgoff = vma->vm_pgoff +
 				((extension_start - vma->vm_start) >> PAGE_SHIFT);
 			VMA_ITERATOR(vmi, mm, extension_start);
+			long charged = 0;
 
 			if (vma->vm_flags & VM_ACCOUNT) {
 				if (security_vm_enough_memory_mm(mm, pages)) {
 					ret = -ENOMEM;
 					goto out;
 				}
+				charged = pages;
 			}
 
 			/*
@@ -1065,7 +1067,7 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 				vma->vm_file, extension_pgoff, vma_policy(vma),
 				vma->vm_userfaultfd_ctx, anon_vma_name(vma));
 			if (!vma) {
-				vm_unacct_memory(pages);
+				vm_unacct_memory(charged);
 				ret = -ENOMEM;
 				goto out;
 			}
