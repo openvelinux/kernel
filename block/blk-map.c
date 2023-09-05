@@ -286,12 +286,11 @@ static int bio_map_user_iov(struct request *rq, struct iov_iter *iter,
 					n = bytes;
 
 				if (!bio_add_hw_page(rq->q, bio, page, n, offs,
-						     max_sectors, &same_page)) {
-					if (same_page)
-						put_page(page);
+						     max_sectors, &same_page))
 					break;
-				}
 
+				if (same_page)
+					put_page(page);
 				added += n;
 				bytes -= n;
 				offs = 0;
