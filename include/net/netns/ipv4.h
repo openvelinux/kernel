@@ -162,6 +162,7 @@ struct netns_ipv4 {
 	u8 sysctl_tcp_autocorking;
 	u8 sysctl_tcp_reflect_tos;
 	u8 sysctl_tcp_comp_sack_nr;
+	u8 sysctl_tcp_backlog_ack_defer;
 	int sysctl_tcp_invalid_ratelimit;
 	int sysctl_tcp_pacing_ss_ratio;
 	int sysctl_tcp_pacing_ca_ratio;
