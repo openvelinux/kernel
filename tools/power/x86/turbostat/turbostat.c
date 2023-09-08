@@ -230,7 +230,6 @@ unsigned int has_aperf;
 unsigned int has_epb;
 unsigned int has_turbo;
 unsigned int is_hybrid;
-unsigned int do_irtl_snb;
 unsigned int units = 1000000;	/* MHz etc */
 unsigned int genuine_intel;
 unsigned int authentic_amd;
@@ -286,6 +285,7 @@ struct platform_features {
 	int supported_cstates;	/* Core cstates and Package cstates supported */
 	int cst_limit;		/* MSR_PKG_CST_CONFIG_CONTROL */
 	bool has_cst_auto_convension;	/* AUTOMATIC_CSTATE_CONVERSION bit in MSR_PKG_CST_CONFIG_CONTROL */
+	bool has_irtl_msrs;	/* MSR_PKGC3/PKGC6/PKGC7/PKGC8/PKGC9/PKGC10_IRTL */
 	int trl_msrs;		/* MSR_TURBO_RATIO_LIMIT/LIMIT1/LIMIT2/SECONDARY, Atom TRL MSRs */
 	int plr_msrs;		/* MSR_CORE/GFX/RING_PERF_LIMIT_REASONS */
 	int rapl_msrs;		/* RAPL PKG/DRAM/CORE/GFX MSRs, AMD RAPL MSRs */
@@ -436,6 +436,7 @@ static const struct platform_features snb_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_SNB,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
@@ -447,6 +448,7 @@ static const struct platform_features snx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_SNB,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM_ALL,
 };
@@ -459,6 +461,7 @@ static const struct platform_features ivb_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_SNB,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
@@ -470,6 +473,7 @@ static const struct platform_features ivx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_SNB,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_LIMIT1,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM_ALL,
 };
@@ -482,6 +486,7 @@ static const struct platform_features hsw_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
@@ -495,6 +500,7 @@ static const struct platform_features hsx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_LIMIT1 | TRL_LIMIT2,
 	.plr_msrs = PLR_CORE | PLR_RING,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
@@ -509,6 +515,7 @@ static const struct platform_features hswl_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
@@ -522,6 +529,7 @@ static const struct platform_features hswg_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.plr_msrs = PLR_CORE | PLR_GFX | PLR_RING,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
@@ -535,6 +543,7 @@ static const struct platform_features bdw_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
@@ -547,6 +556,7 @@ static const struct platform_features bdwg_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG | RAPL_CORE_ALL | RAPL_GFX | RAPL_PKG_POWER_INFO,
 };
@@ -559,6 +569,7 @@ static const struct platform_features bdx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC3 | CC6 | PC2 | PC3 | PC6,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.has_cst_auto_convension = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
@@ -574,6 +585,7 @@ static const struct platform_features skl_features = {
 	.crystal_freq = 24000000,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
@@ -588,6 +600,7 @@ static const struct platform_features cnl_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_HSW,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.tcc_offset_bits = 6,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
@@ -602,6 +615,7 @@ static const struct platform_features skx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC6 | PC2 | PC6,
 	.cst_limit = CST_LIMIT_SKX,
+	.has_irtl_msrs = 1,
 	.has_cst_auto_convension = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
@@ -616,6 +630,7 @@ static const struct platform_features icx_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC6 | PC2 | PC6,
 	.cst_limit = CST_LIMIT_ICX,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 	.has_fixed_rapl_unit = 1,
@@ -629,6 +644,7 @@ static const struct platform_features spr_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC6 | PC2 | PC6,
 	.cst_limit = CST_LIMIT_SKX,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL,
 };
@@ -670,6 +686,7 @@ static const struct platform_features gmt_features = {
 	.crystal_freq = 19200000,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_GMT,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 	.rapl_msrs = RAPL_PKG | RAPL_PKG_POWER_INFO,
 };
@@ -681,6 +698,7 @@ static const struct platform_features gmtd_features = {
 	.crystal_freq = 25000000,
 	.supported_cstates = CC1 | CC6 | PC2 | PC6,
 	.cst_limit = CST_LIMIT_GMT,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_DRAM_ALL | RAPL_CORE_ENERGY_STATUS,
 };
@@ -692,6 +710,7 @@ static const struct platform_features gmtp_features = {
 	.crystal_freq = 19200000,
 	.supported_cstates = CC1 | CC3 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_GMT,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG | RAPL_PKG_POWER_INFO,
 };
@@ -702,6 +721,7 @@ static const struct platform_features tmt_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC6 | CC7 | PC2 | PC3 | PC6 | PC7 | PC8 | PC9 | PC10,
 	.cst_limit = CST_LIMIT_GMT,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE,
 	.rapl_msrs = RAPL_PKG_ALL | RAPL_CORE_ALL | RAPL_DRAM | RAPL_DRAM_PERF_STATUS | RAPL_GFX,
 	.enable_tsc_tweak = 1,
@@ -713,6 +733,7 @@ static const struct platform_features tmtd_features = {
 	.bclk_freq = BCLK_100MHZ,
 	.supported_cstates = CC1 | CC6,
 	.cst_limit = CST_LIMIT_GMT,
+	.has_irtl_msrs = 1,
 	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 	.rapl_msrs = RAPL_PKG_ALL,
 };
@@ -3286,6 +3307,9 @@ void print_irtl(void)
 {
 	unsigned long long msr;
 
+	if (!platform->has_irtl_msrs)
+		return;
+
 	if (platform->supported_cstates & PC3) {
 		get_msr(base_cpu, MSR_PKGC3_IRTL, &msr);
 		fprintf(outf, "cpu%d: MSR_PKGC3_IRTL: 0x%08llx (", base_cpu, msr);
@@ -5125,49 +5149,6 @@ int print_rapl(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 }
 
 /*
- * SNB adds support for additional MSRs:
- *
- * MSR_PKG_C7_RESIDENCY            0x000003fa
- * MSR_CORE_C7_RESIDENCY           0x000003fe
- * MSR_PKG_C2_RESIDENCY            0x0000060d
- */
-
-int has_snb_msrs(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_SANDYBRIDGE:
-	case INTEL_FAM6_SANDYBRIDGE_X:
-	case INTEL_FAM6_IVYBRIDGE:	/* IVB */
-	case INTEL_FAM6_IVYBRIDGE_X:	/* IVB Xeon */
-	case INTEL_FAM6_HASWELL:	/* HSW */
-	case INTEL_FAM6_HASWELL_X:	/* HSW */
-	case INTEL_FAM6_HASWELL_L:	/* HSW */
-	case INTEL_FAM6_HASWELL_G:	/* HSW */
-	case INTEL_FAM6_BROADWELL:	/* BDW */
-	case INTEL_FAM6_BROADWELL_G:	/* BDW */
-	case INTEL_FAM6_BROADWELL_X:	/* BDX */
-	case INTEL_FAM6_SKYLAKE_L:	/* SKL */
-	case INTEL_FAM6_CANNONLAKE_L:	/* CNL */
-	case INTEL_FAM6_SKYLAKE_X:	/* SKX */
-	case INTEL_FAM6_ICELAKE_X:	/* ICX */
-	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
-	case INTEL_FAM6_ATOM_GOLDMONT:	/* BXT */
-	case INTEL_FAM6_ATOM_GOLDMONT_PLUS:
-	case INTEL_FAM6_ATOM_GOLDMONT_D:	/* DNV */
-	case INTEL_FAM6_ATOM_TREMONT:	/* EHL */
-	case INTEL_FAM6_ATOM_TREMONT_D:	/* JVL */
-		return 1;
-	}
-	return 0;
-}
-
-/*
  * SKL adds support for additional MSRS:
  *
  * MSR_PKG_WEIGHTED_CORE_C0_RES    0x00000658
@@ -5745,7 +5726,6 @@ void process_cpuid()
 		BIC_PRESENT(BIC_SMI);
 	probe_bclk();
 
-	do_irtl_snb = has_snb_msrs(family, model);
 	if (has_slv_msrs(family, model)) {
 		BIC_PRESENT(BIC_Mod_c6);
 		use_c1_residency_msr = 1;
@@ -6119,7 +6099,7 @@ void turbostat_init()
 	if (!quiet)
 		for_all_cpus(print_thermal, ODD_COUNTERS);
 
-	if (!quiet && do_irtl_snb)
+	if (!quiet)
 		print_irtl();
 
 	if (DO_BIC(BIC_IPC))
