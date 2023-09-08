@@ -290,6 +290,7 @@ struct platform_features {
 	bool has_nhm_msrs;	/* MSR_PLATFORM_INFO, MSR_IA32_TEMPERATURE_TARGET, MSR_SMI_COUNT, MSR_PKG_CST_CONFIG_CONTROL, TRL MSRs */
 	int bclk_freq;		/* CPU base clock */
 	int cst_limit;		/* MSR_PKG_CST_CONFIG_CONTROL */
+	int trl_msrs;		/* MSR_TURBO_RATIO_LIMIT/LIMIT1/LIMIT2/SECONDARY, Atom TRL MSRs */
 };
 
 struct platform_data {
@@ -342,11 +343,22 @@ enum package_cstate_limit {
 	CST_LIMIT_GMT,
 };
 
+/* For Turbo Ratio Limit MSRs */
+enum turbo_ratio_limit_msrs {
+	TRL_BASE = BIT(0),
+	TRL_LIMIT1 = BIT(1),
+	TRL_LIMIT2 = BIT(2),
+	TRL_ATOM = BIT(3),
+	TRL_KNL = BIT(4),
+	TRL_CORECOUNT = BIT(5),
+};
+
 static const struct platform_features nhm_features = {
 	.has_msr_misc_pwr_mgmt = 1,
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_133MHZ,
 	.cst_limit = CST_LIMIT_NHM,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features nhx_features = {
@@ -362,6 +374,7 @@ static const struct platform_features snb_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features snx_features = {
@@ -370,6 +383,7 @@ static const struct platform_features snx_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features ivb_features = {
@@ -378,6 +392,7 @@ static const struct platform_features ivb_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features ivx_features = {
@@ -386,6 +401,7 @@ static const struct platform_features ivx_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SNB,
+	.trl_msrs = TRL_BASE | TRL_LIMIT1,
 };
 
 static const struct platform_features hsw_features = {
@@ -394,6 +410,7 @@ static const struct platform_features hsw_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features hsx_features = {
@@ -402,6 +419,7 @@ static const struct platform_features hsx_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE | TRL_LIMIT1 | TRL_LIMIT2,
 };
 
 static const struct platform_features hswl_features = {
@@ -410,6 +428,7 @@ static const struct platform_features hswl_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features hswg_features = {
@@ -418,6 +437,7 @@ static const struct platform_features hswg_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features bdw_features = {
@@ -426,6 +446,7 @@ static const struct platform_features bdw_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features bdwg_features = {
@@ -434,6 +455,7 @@ static const struct platform_features bdwg_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features bdx_features = {
@@ -442,6 +464,7 @@ static const struct platform_features bdx_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features skl_features = {
@@ -450,6 +473,7 @@ static const struct platform_features skl_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features cnl_features = {
@@ -458,6 +482,7 @@ static const struct platform_features cnl_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_HSW,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features skx_features = {
@@ -466,6 +491,7 @@ static const struct platform_features skx_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SKX,
+	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 };
 
 static const struct platform_features icx_features = {
@@ -474,6 +500,7 @@ static const struct platform_features icx_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_ICX,
+	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 };
 
 static const struct platform_features spr_features = {
@@ -482,12 +509,14 @@ static const struct platform_features spr_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_SKX,
+	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 };
 
 static const struct platform_features slv_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_SLV,
 	.cst_limit = CST_LIMIT_SLV,
+	.trl_msrs = TRL_ATOM,
 };
 
 static const struct platform_features slvd_features = {
@@ -495,12 +524,14 @@ static const struct platform_features slvd_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_SLV,
 	.cst_limit = CST_LIMIT_SLV,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features amt_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_133MHZ,
 	.cst_limit = CST_LIMIT_AMT,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features gmt_features = {
@@ -508,6 +539,7 @@ static const struct platform_features gmt_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
+	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 };
 
 static const struct platform_features gmtd_features = {
@@ -515,6 +547,7 @@ static const struct platform_features gmtd_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
+	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 };
 
 static const struct platform_features gmtp_features = {
@@ -522,6 +555,7 @@ static const struct platform_features gmtp_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features tmt_features = {
@@ -529,6 +563,7 @@ static const struct platform_features tmt_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
+	.trl_msrs = TRL_BASE,
 };
 
 static const struct platform_features tmtd_features = {
@@ -536,6 +571,7 @@ static const struct platform_features tmtd_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_GMT,
+	.trl_msrs = TRL_BASE | TRL_CORECOUNT,
 };
 
 static const struct platform_features knl_features = {
@@ -543,6 +579,7 @@ static const struct platform_features knl_features = {
 	.has_nhm_msrs = 1,
 	.bclk_freq = BCLK_100MHZ,
 	.cst_limit = CST_LIMIT_KNL,
+	.trl_msrs = TRL_KNL,
 };
 
 static const struct platform_features default_features = {
@@ -2929,29 +2966,7 @@ static void dump_ivt_turbo_ratio_limits(void)
 	return;
 }
 
-int has_turbo_ratio_group_limits(int family, int model)
-{
-
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_ATOM_GOLDMONT:
-	case INTEL_FAM6_SKYLAKE_X:
-	case INTEL_FAM6_ICELAKE_X:
-	case INTEL_FAM6_SAPPHIRERAPIDS_X:
-	case INTEL_FAM6_ATOM_GOLDMONT_D:
-	case INTEL_FAM6_ATOM_TREMONT_D:
-		return 1;
-	default:
-		return 0;
-	}
-}
-
-static void dump_turbo_ratio_limits(int trl_msr_offset, int family, int model)
+static void dump_turbo_ratio_limits(int trl_msr_offset)
 {
 	unsigned long long msr, core_counts;
 	int shift;
@@ -2960,7 +2975,7 @@ static void dump_turbo_ratio_limits(int trl_msr_offset, int family, int model)
 	fprintf(outf, "cpu%d: MSR_%sTURBO_RATIO_LIMIT: 0x%08llx\n",
 		base_cpu, trl_msr_offset == MSR_SECONDARY_TURBO_RATIO_LIMIT ? "SECONDARY_" : "", msr);
 
-	if (has_turbo_ratio_group_limits(family, model)) {
+	if (platform->trl_msrs & TRL_CORECOUNT) {
 		get_msr(base_cpu, MSR_TURBO_RATIO_LIMIT1, &core_counts);
 		fprintf(outf, "cpu%d: MSR_TURBO_RATIO_LIMIT1: 0x%08llx\n", base_cpu, core_counts);
 	} else {
@@ -4254,100 +4269,6 @@ int is_jvl(unsigned int family, unsigned int model)
 	return 0;
 }
 
-int has_turbo_ratio_limit(unsigned int family, unsigned int model)
-{
-	if (has_slv_msrs(family, model))
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-		/* Nehalem compatible, but do not include turbo-ratio limit support */
-	case INTEL_FAM6_NEHALEM_EX:	/* Nehalem-EX Xeon - Beckton */
-	case INTEL_FAM6_XEON_PHI_KNL:	/* PHI - Knights Landing (different MSR definition) */
-		return 0;
-	default:
-		return 1;
-	}
-}
-
-int has_atom_turbo_ratio_limit(unsigned int family, unsigned int model)
-{
-	if (has_slv_msrs(family, model))
-		return 1;
-
-	return 0;
-}
-
-int has_ivt_turbo_ratio_limit(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_IVYBRIDGE_X:	/* IVB Xeon */
-	case INTEL_FAM6_HASWELL_X:	/* HSW Xeon */
-		return 1;
-	default:
-		return 0;
-	}
-}
-
-int has_hsw_turbo_ratio_limit(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_HASWELL_X:	/* HSW Xeon */
-		return 1;
-	default:
-		return 0;
-	}
-}
-
-int has_knl_turbo_ratio_limit(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_XEON_PHI_KNL:	/* Knights Landing */
-		return 1;
-	default:
-		return 0;
-	}
-}
-
-int has_glm_turbo_ratio_limit(unsigned int family, unsigned int model)
-{
-	if (!genuine_intel)
-		return 0;
-
-	if (family != 6)
-		return 0;
-
-	switch (model) {
-	case INTEL_FAM6_ATOM_GOLDMONT:
-	case INTEL_FAM6_SKYLAKE_X:
-	case INTEL_FAM6_ICELAKE_X:
-	case INTEL_FAM6_SAPPHIRERAPIDS_X:
-		return 1;
-	default:
-		return 0;
-	}
-}
-
 int has_config_tdp(unsigned int family, unsigned int model)
 {
 	if (!genuine_intel)
@@ -4422,23 +4343,23 @@ static void dump_turbo_ratio_info(unsigned int family, unsigned int model)
 	if (!has_turbo)
 		return;
 
-	if (has_hsw_turbo_ratio_limit(family, model))
+	if (platform->trl_msrs & TRL_LIMIT2)
 		dump_hsw_turbo_ratio_limits();
 
-	if (has_ivt_turbo_ratio_limit(family, model))
+	if (platform->trl_msrs & TRL_LIMIT1)
 		dump_ivt_turbo_ratio_limits();
 
-	if (has_turbo_ratio_limit(family, model)) {
-		dump_turbo_ratio_limits(MSR_TURBO_RATIO_LIMIT, family, model);
+	if (platform->trl_msrs & TRL_BASE) {
+		dump_turbo_ratio_limits(MSR_TURBO_RATIO_LIMIT);
 
 		if (is_hybrid)
-			dump_turbo_ratio_limits(MSR_SECONDARY_TURBO_RATIO_LIMIT, family, model);
+			dump_turbo_ratio_limits(MSR_SECONDARY_TURBO_RATIO_LIMIT);
 	}
 
-	if (has_atom_turbo_ratio_limit(family, model))
+	if (platform->trl_msrs & TRL_ATOM)
 		dump_atom_turbo_ratio_limits();
 
-	if (has_knl_turbo_ratio_limit(family, model))
+	if (platform->trl_msrs & TRL_KNL)
 		dump_knl_turbo_ratio_limits();
 
 	if (has_config_tdp(family, model))
