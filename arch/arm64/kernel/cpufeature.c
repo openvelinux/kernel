@@ -3058,7 +3058,7 @@ static inline int emulate_id_reg(u32 id, u64 *valp)
 		*valp = read_cpuid_id();
 		break;
 	case SYS_MPIDR_EL1:
-		*valp = SYS_MPIDR_SAFE_VAL;
+		*valp = read_cpuid_mpidr();
 		break;
 	case SYS_REVIDR_EL1:
 		/* IMPLEMENTATION DEFINED values are emulated with 0 */
