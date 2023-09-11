@@ -1722,14 +1722,16 @@ static void handle_cmd_completion(struct xhci_hcd *xhci,
 	cmd_trb = xhci->cmd_ring->dequeue;
 
 	trace_xhci_handle_command(xhci->cmd_ring, &cmd_trb->generic);
-
+	cmd_comp_code = GET_COMP_CODE(le32_to_cpu(event->status));
 	cmd_dequeue_dma = xhci_trb_virt_to_dma(xhci->cmd_ring->deq_seg,
 			cmd_trb);
 	/*
 	 * Check whether the completion event is for our internal kept
 	 * command.
 	 */
-	if (!cmd_dequeue_dma || cmd_dma != (u64)cmd_dequeue_dma) {
+	if (!cmd_dequeue_dma || ((cmd_dma != (u64)cmd_dequeue_dma) &&
+	    !((xhci->quirks & XHCI_USB3_NOOP) && (cmd_comp_code ==
+	       COMP_COMMAND_RING_STOPPED)))) {
 		xhci_warn(xhci,
 			  "ERROR mismatched command completion event\n");
 		return;
@@ -1738,8 +1740,6 @@ static void handle_cmd_completion(struct xhci_hcd *xhci,
 	cmd = list_first_entry(&xhci->cmd_list, struct xhci_command, cmd_list);
 
 	cancel_delayed_work(&xhci->cmd_timer);
-
-	cmd_comp_code = GET_COMP_CODE(le32_to_cpu(event->status));
 
 	/* If CMD ring stopped we own the trbs between enqueue and dequeue */
 	if (cmd_comp_code == COMP_COMMAND_RING_STOPPED) {
@@ -1762,6 +1762,8 @@ static void handle_cmd_completion(struct xhci_hcd *xhci,
 	if (cmd_comp_code == COMP_COMMAND_ABORTED) {
 		xhci->cmd_ring_state = CMD_RING_STATE_STOPPED;
 		if (cmd->status == COMP_COMMAND_ABORTED) {
+			if (xhci->quirks & XHCI_USB3_NOOP)
+				trb_to_noop(cmd->command_trb, TRB_CMD_NOOP);
 			if (xhci->current_cmd == cmd)
 				xhci->current_cmd = NULL;
 			goto event_handled;
