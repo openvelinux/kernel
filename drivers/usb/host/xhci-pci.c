@@ -558,6 +558,10 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 	if (xhci->quirks & XHCI_RESET_ON_RESUME)
 		xhci_dbg_trace(xhci, trace_xhci_dbg_quirks,
 				"QUIRK: Resetting on resume");
+
+	if (pdev->vendor == PCI_VENDOR_ID_HUAWEI &&
+	   (pdev->device == 0xa23c || pdev->device == 0xa23d))
+		xhci->quirks |= XHCI_USB3_NOOP;
 }
 
 #ifdef CONFIG_ACPI
