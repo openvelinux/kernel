@@ -39,6 +39,8 @@
 #define VDUSE_IOVA_SIZE (128 * 1024 * 1024)
 #define VDUSE_MSG_DEFAULT_TIMEOUT 30
 
+#define MIN_CUSTOM_VIRTIO_ID 63
+
 struct vduse_virtqueue {
 	u16 index;
 	u16 num_max;
@@ -109,6 +111,10 @@ struct vduse_control {
 	u64 api_version;
 };
 
+static bool allow_unsafe_device;
+module_param(allow_unsafe_device, bool, 0644);
+MODULE_PARM_DESC(allow_unsage_device, "Allow emulating unsafe device types");
+
 static DEFINE_MUTEX(vduse_lock);
 static DEFINE_IDR(vduse_idr);
 
@@ -120,6 +126,8 @@ static struct workqueue_struct *vduse_irq_wq;
 
 static u32 allowed_device_id[] = {
 	VIRTIO_ID_BLOCK,
+	VIRTIO_ID_FS,
+	VIRTIO_ID_NET,
 };
 
 static inline struct vduse_dev *vdpa_to_vduse(struct vdpa_device *vdpa)
@@ -1220,6 +1228,9 @@ static bool device_is_allowed(u32 device_id)
 {
 	int i;
 
+	if (allow_unsafe_device || device_id >= MIN_CUSTOM_VIRTIO_ID)
+		return true;
+
 	for (i = 0; i < ARRAY_SIZE(allowed_device_id); i++)
 		if (allowed_device_id[i] == device_id)
 			return true;
@@ -1548,7 +1559,7 @@ static const struct vdpa_mgmtdev_ops vdpa_dev_mgmtdev_ops = {
 };
 
 static struct virtio_device_id id_table[] = {
-	{ VIRTIO_ID_BLOCK, VIRTIO_DEV_ANY_ID },
+	{ VIRTIO_DEV_ANY_ID, VIRTIO_DEV_ANY_ID },
 	{ 0 },
 };
 
