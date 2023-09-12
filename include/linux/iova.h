@@ -30,8 +30,11 @@ struct iova_cpu_rcache;
 
 struct iova_rcache {
 	spinlock_t lock;
+	unsigned int depot_size;
 	struct iova_magazine *depot;
 	struct iova_cpu_rcache __percpu *cpu_rcaches;
+	struct iova_domain *iovad;
+	struct delayed_work work;
 };
 
 struct iova_domain;
