@@ -30,8 +30,7 @@ struct iova_cpu_rcache;
 
 struct iova_rcache {
 	spinlock_t lock;
-	unsigned long depot_size;
-	struct iova_magazine *depot[MAX_GLOBAL_MAGS];
+	struct iova_magazine *depot;
 	struct iova_cpu_rcache __percpu *cpu_rcaches;
 };
 
