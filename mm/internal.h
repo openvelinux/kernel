@@ -1229,4 +1229,7 @@ extern struct list_lru shadow_nodes;
 	}							\
 } while (0)
 
+void __meminit __init_single_page(struct page *page, unsigned long pfn,
+				unsigned long zone, int nid);
+
 #endif	/* __MM_INTERNAL_H */
