@@ -4867,7 +4867,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	writable = false;
 
 	/* Migrate to the requested node */
-	if (migrate_misplaced_page(page, vma, target_nid)) {
+	if (migrate_misplaced_folio(page_folio(page), vma, target_nid)) {
 		page_nid = target_nid;
 		flags |= TNF_MIGRATED;
 		task_numa_fault(last_cpupid, page_nid, 1, flags);
