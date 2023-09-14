@@ -1371,7 +1371,9 @@ EXPORT_SYMBOL(__getblk_gfp);
  */
 void __breadahead(struct block_device *bdev, sector_t block, unsigned size)
 {
-	struct buffer_head *bh = __getblk(bdev, block, size);
+	struct buffer_head *bh = bdev_getblk(bdev, block, size,
+			GFP_NOWAIT | __GFP_MOVABLE);
+
 	if (likely(bh)) {
 		ll_rw_block(REQ_OP_READ, REQ_RAHEAD, 1, &bh);
 		brelse(bh);
