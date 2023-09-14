@@ -802,25 +802,13 @@ int remove_inode_buffers(struct inode *inode)
 	return ret;
 }
 
-/*
- * Create the appropriate buffers when given a page for data area and
- * the size of each buffer.. Use the bh->b_this_page linked list to
- * follow the buffers created.  Return NULL if unable to create more
- * buffers.
- *
- * The retry flag is used to differentiate async IO (paging, swapping)
- * which may not fail from ordinary buffer allocations.
- */
-struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
-		bool retry)
+
+struct buffer_head *alloc_page_buffers_gfp(struct page *page, unsigned long size,
+		gfp_t gfp)
 {
 	struct buffer_head *bh, *head;
-	gfp_t gfp = GFP_NOFS | __GFP_ACCOUNT;
 	long offset;
 	struct mem_cgroup *memcg, *old_memcg;
-
-	if (retry)
-		gfp |= __GFP_NOFAIL;
 
 	/* The page lock pins the memcg */
 	memcg = page_memcg(page);
@@ -858,6 +846,27 @@ no_grow:
 	}
 
 	goto out;
+}
+
+
+/*
+ * Create the appropriate buffers when given a page for data area and
+ * the size of each buffer.. Use the bh->b_this_page linked list to
+ * follow the buffers created.  Return NULL if unable to create more
+ * buffers.
+ *
+ * The retry flag is used to differentiate async IO (paging, swapping)
+ * which may not fail from ordinary buffer allocations.
+ */
+struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
+		bool retry)
+{
+	gfp_t gfp = GFP_NOFS | __GFP_ACCOUNT;
+
+	if (retry)
+		gfp |= __GFP_NOFAIL;
+
+	return alloc_page_buffers_gfp(page, size, gfp);
 }
 EXPORT_SYMBOL_GPL(alloc_page_buffers);
 
@@ -965,7 +974,7 @@ grow_dev_page(struct block_device *bdev, sector_t block,
 	/*
 	 * Allocate some buffers for this page
 	 */
-	bh = alloc_page_buffers(page, size, true);
+	bh = alloc_page_buffers_gfp(page, size, gfp_mask | __GFP_ACCOUNT);
 
 	/*
 	 * Link the page to the buffers and initialise them.  Take the
