@@ -10372,7 +10372,7 @@ static int tg_set_cfs_quota(struct task_group *tg, long cfs_quota_us)
 	return tg_set_cfs_bandwidth(tg, period, quota, burst);
 }
 
-static long tg_get_cfs_quota(struct task_group *tg)
+long tg_get_cfs_quota(struct task_group *tg)
 {
 	u64 quota_us;
 
@@ -10384,6 +10384,7 @@ static long tg_get_cfs_quota(struct task_group *tg)
 
 	return quota_us;
 }
+EXPORT_SYMBOL(tg_get_cfs_quota);
 
 static int tg_set_cfs_period(struct task_group *tg, long cfs_period_us)
 {
@@ -10399,7 +10400,7 @@ static int tg_set_cfs_period(struct task_group *tg, long cfs_period_us)
 	return tg_set_cfs_bandwidth(tg, period, quota, burst);
 }
 
-static long tg_get_cfs_period(struct task_group *tg)
+long tg_get_cfs_period(struct task_group *tg)
 {
 	u64 cfs_period_us;
 
@@ -10408,6 +10409,7 @@ static long tg_get_cfs_period(struct task_group *tg)
 
 	return cfs_period_us;
 }
+EXPORT_SYMBOL(tg_get_cfs_period);
 
 static int tg_set_cfs_burst(struct task_group *tg, long cfs_burst_us)
 {
