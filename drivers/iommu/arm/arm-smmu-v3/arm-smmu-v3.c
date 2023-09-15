@@ -1099,7 +1099,7 @@ int arm_smmu_write_ctx_desc(struct arm_smmu_master *master, int ssid,
 			tcr &= ~CTXDESC_CD_0_TCR_HA;
 
 		/*
-		 * STE is live, and the SMMU might read dwords of this CD in any
+		 * STE may be live, and the SMMU might read dwords of this CD in any
 		 * order. Ensure that it observes valid values before reading
 		 * V=1.
 		 */
