@@ -1936,6 +1936,20 @@ extern void kick_process(struct task_struct *tsk);
 static inline void kick_process(struct task_struct *tsk) { }
 #endif
 
+#ifdef CONFIG_CFS_BANDWIDTH
+long tg_get_cfs_quota(struct task_group *tg);
+long tg_get_cfs_period(struct task_group *tg);
+#else
+static inline long tg_get_cfs_quota(struct task_group *tg)
+{
+	return -1;
+}
+static inline long tg_get_cfs_period(struct task_group *tg)
+{
+	return -1;
+}
+#endif
+
 extern void __set_task_comm(struct task_struct *tsk, const char *from, bool exec);
 
 static inline void set_task_comm(struct task_struct *tsk, const char *from)
