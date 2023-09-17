@@ -520,6 +520,19 @@ static long vhost_vdpa_unlocked_ioctl(struct file *filep,
 	return r;
 }
 
+static void vhost_vdpa_general_unmap(struct vhost_vdpa *v,
+                                    struct vhost_iotlb_map *map)
+{
+	struct vdpa_device *vdpa = v->vdpa;
+	const struct vdpa_config_ops *ops = vdpa->config;
+
+	if (ops->dma_map) {
+		ops->dma_unmap(vdpa, map->start, map->size);
+	} else if (ops->set_map == NULL) {
+		iommu_unmap(v->domain, map->start, map->size);
+	}
+}
+
 static void vhost_vdpa_pa_unmap(struct vhost_vdpa *v, u64 start, u64 last)
 {
 	struct vhost_dev *dev = &v->vdev;
@@ -538,6 +551,7 @@ static void vhost_vdpa_pa_unmap(struct vhost_vdpa *v, u64 start, u64 last)
 			unpin_user_page(page);
 		}
 		atomic64_sub(PFN_DOWN(map->size), &dev->mm->pinned_vm);
+		vhost_vdpa_general_unmap(v, map);
 		vhost_iotlb_map_free(iotlb, map);
 	}
 }
@@ -553,6 +567,7 @@ static void vhost_vdpa_va_unmap(struct vhost_vdpa *v, u64 start, u64 last)
 		map_file = (struct vdpa_map_file *)map->opaque;
 		fput(map_file->file);
 		kfree(map_file);
+		vhost_vdpa_general_unmap(v, map);
 		vhost_iotlb_map_free(iotlb, map);
 	}
 }
@@ -639,13 +654,9 @@ static void vhost_vdpa_unmap(struct vhost_vdpa *v, u64 iova, u64 size)
 
 	vhost_vdpa_iotlb_unmap(v, iova, iova + size - 1);
 
-	if (ops->dma_map) {
-		ops->dma_unmap(vdpa, iova, size);
-	} else if (ops->set_map) {
+	if (ops->set_map) {
 		if (!v->in_batch)
 			ops->set_map(vdpa, dev->iotlb);
-	} else {
-		iommu_unmap(v->domain, iova, size);
 	}
 }
 
