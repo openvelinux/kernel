@@ -160,16 +160,26 @@ static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
 static inline pud_t *pud_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
 	gfp_t gfp = GFP_PGTABLE_USER;
+	struct page *page;
 
 	if (mm == &init_mm)
 		gfp = GFP_PGTABLE_KERNEL;
-	return (pud_t *)get_zeroed_page(gfp);
+
+	page = alloc_pages(gfp, 0);
+	if (!page)
+		return NULL;
+
+	pagetable_pud_ctor(page);
+	return (pud_t *)page_address(page);
 }
 #endif
 
 static inline void pud_free(struct mm_struct *mm, pud_t *pud)
 {
+	struct page *page = virt_to_page(pud);
+
 	BUG_ON((unsigned long)pud & (PAGE_SIZE-1));
+	pagetable_pud_dtor(page);
 	free_page((unsigned long)pud);
 }
 
