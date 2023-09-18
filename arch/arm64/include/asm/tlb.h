@@ -94,7 +94,10 @@ static inline void __pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmdp,
 static inline void __pud_free_tlb(struct mmu_gather *tlb, pud_t *pudp,
 				  unsigned long addr)
 {
-	tlb_remove_table(tlb, virt_to_page(pudp));
+	struct page *page = virt_to_page(pudp);
+
+	pagetable_pud_dtor(page);
+	tlb_remove_table(tlb, page);
 }
 #endif
 
