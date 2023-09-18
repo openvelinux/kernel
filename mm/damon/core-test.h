@@ -265,6 +265,8 @@ static void damon_test_ops_registration(struct kunit *test)
 
 	/* Check double-registration failure again */
 	KUNIT_EXPECT_EQ(test, damon_register_ops(&ops), -EINVAL);
+
+	damon_destroy_ctx(c);
 }
 
 static void damon_test_set_regions(struct kunit *test)
@@ -341,6 +343,8 @@ static void damon_test_set_attrs(struct kunit *test)
 	invalid_attrs = valid_attrs;
 	invalid_attrs.aggr_interval = 4999;
 	KUNIT_EXPECT_EQ(test, damon_set_attrs(c, &invalid_attrs), -EINVAL);
+
+	damon_destroy_ctx(c);
 }
 
 static void damos_test_new_filter(struct kunit *test)
