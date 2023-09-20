@@ -2215,6 +2215,16 @@ static inline int deliver_skb(struct sk_buff *skb,
 	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
 }
 
+static inline int deliver_skb_tx(struct sk_buff *skb,
+				 struct packet_type *pt_prev,
+				 struct net_device *orig_dev)
+{
+	if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
+		return -ENOMEM;
+	refcount_inc(&skb->users);
+	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
+}
+
 static inline void deliver_ptype_list_skb(struct sk_buff *skb,
 					  struct packet_type **pt,
 					  struct net_device *orig_dev,
@@ -2282,7 +2292,7 @@ again:
 			continue;
 
 		if (pt_prev) {
-			deliver_skb(skb2, pt_prev, skb->dev);
+			deliver_skb_tx(skb2, pt_prev, skb->dev);
 			pt_prev = ptype;
 			continue;
 		}
@@ -2319,7 +2329,7 @@ again:
 	}
 out_unlock:
 	if (pt_prev) {
-		if (!skb_orphan_frags_rx(skb2, GFP_ATOMIC))
+		if (!skb_orphan_frags(skb2, GFP_ATOMIC))
 			pt_prev->func(skb2, skb->dev, pt_prev, skb->dev);
 		else
 			kfree_skb(skb2);
