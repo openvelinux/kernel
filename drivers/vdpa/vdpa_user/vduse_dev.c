@@ -130,6 +130,8 @@ struct vduse_dev {
 	u8 dev_shm_size;
 	u8 vq_shm_off;
 	bool dead;
+	bool in_delete;
+	bool need_destroy;
 	struct vduse_umem *umem;
 	struct mutex mem_lock;
 };
@@ -1015,16 +1017,22 @@ static void vduse_vdpa_free(struct vdpa_device *vdpa)
 {
 	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
 
+	dev->in_delete = true;
+
 	if (dev->connected)
 		vduse_dev_vdpa_disconnect(dev);
 
 	WARN_ON(!list_empty(&dev->send_list));
 	WARN_ON(!list_empty(&dev->recv_list));
+
+	mutex_lock(&vduse_lock);
 	dev->vdev = NULL;
-	if (dev->dead && !dev->connected) {
-		pr_info("VDUSE: destroy dead device: %s\n", dev->name);
+	dev->in_delete = false;
+	if ((dev->dead && !dev->connected) || dev->need_destroy) {
+		pr_info("VDUSE: destroy vduse device: %s\n", dev->name);
 		vduse_destroy_dev(dev->name);
 	}
+	mutex_unlock(&vduse_lock);
 }
 
 static const struct vdpa_config_ops vduse_vdpa_config_ops = {
@@ -1611,7 +1619,7 @@ static int vduse_dev_open(struct inode *inode, struct file *file)
 		goto err;
 
 	mutex_lock(&dev->lock);
-	if (dev->dead) {
+	if (dev->dead || dev->need_destroy) {
 		mutex_unlock(&dev->lock);
 		goto err;
 	}
@@ -2190,6 +2198,12 @@ static int vduse_destroy_dev(char *name)
 		return -EINVAL;
 
 	mutex_lock(&dev->lock);
+	if (!dev->connected && dev->in_delete) {
+		dev->need_destroy = true;
+		mutex_unlock(&dev->lock);
+		return 0;
+	}
+
 	if (dev->vdev || dev->connected) {
 		mutex_unlock(&dev->lock);
 		return -EBUSY;
