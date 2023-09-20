@@ -1598,31 +1598,25 @@ static int vduse_dev_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static struct vduse_dev *vduse_dev_get_from_minor(int minor)
-{
-	struct vduse_dev *dev;
-
-	mutex_lock(&vduse_lock);
-	dev = idr_find(&vduse_idr, minor);
-	mutex_unlock(&vduse_lock);
-
-	return dev;
-}
-
 static int vduse_dev_open(struct inode *inode, struct file *file)
 {
 	int ret;
-	struct vduse_dev *dev = vduse_dev_get_from_minor(iminor(inode));
+	struct vduse_dev *dev;
 
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = idr_find(&vduse_idr, iminor(inode));
 	if (!dev)
-		return -ENODEV;
+		goto err;
 
-	ret = -EBUSY;
 	mutex_lock(&dev->lock);
 	if (dev->dead) {
 		mutex_unlock(&dev->lock);
-		return -ENODEV;
+		goto err;
 	}
+
+	ret = -EBUSY;
 	if (dev->connected)
 		goto unlock;
 
@@ -1632,6 +1626,8 @@ static int vduse_dev_open(struct inode *inode, struct file *file)
 unlock:
 	mutex_unlock(&dev->lock);
 	cancel_delayed_work_sync(&dev->timeout_work);
+err:
+	mutex_unlock(&vduse_lock);
 
 	return ret;
 }
@@ -2198,7 +2194,6 @@ static int vduse_destroy_dev(char *name)
 		mutex_unlock(&dev->lock);
 		return -EBUSY;
 	}
-	dev->connected = true;
 	mutex_unlock(&dev->lock);
 	cancel_delayed_work_sync(&dev->timeout_work);
 
