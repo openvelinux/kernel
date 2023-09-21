@@ -2212,6 +2212,7 @@ static int vduse_destroy_dev(char *name)
 	cancel_delayed_work_sync(&dev->timeout_work);
 
 	vduse_dev_reset(dev);
+	dev_set_drvdata(dev->dev, NULL);
 	device_destroy(vduse_class, MKDEV(MAJOR(vduse_major), dev->minor));
 	idr_remove(&vduse_idr, dev->minor);
 	vduse_dev_deinit_vqs(dev);
@@ -2266,23 +2267,44 @@ static bool vduse_validate_config(struct vduse_dev_config *config)
 static ssize_t msg_timeout_show(struct device *device,
 				struct device_attribute *attr, char *buf)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
+	struct vduse_dev *dev;
+	int ret;
 
-	return sysfs_emit(buf, "%u\n", dev->msg_timeout);
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
+
+	ret = sysfs_emit(buf, "%u\n", dev->msg_timeout);
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static ssize_t msg_timeout_store(struct device *device,
 				 struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
+	struct vduse_dev *dev;
 	int ret;
+
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
 
 	ret = kstrtouint(buf, 10, &dev->msg_timeout);
 	if (ret < 0)
-		return ret;
+		goto unlock;
 
-	return count;
+	ret = count;
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static DEVICE_ATTR_RW(msg_timeout);
@@ -2291,12 +2313,23 @@ static ssize_t abort_conn_store(struct device *device,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
+	struct vduse_dev *dev;
+	int ret;
+
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
 
 	dev->aborted = true;
 	mod_delayed_work(system_wq, &dev->timeout_work, 0);
 
-	return count;
+	ret = count;
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static DEVICE_ATTR_WO(abort_conn);
@@ -2305,22 +2338,40 @@ static ssize_t enable_dead_handler_show(struct device *device,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
+	struct vduse_dev *dev;
+	int ret;
 
-	return sprintf(buf, "%d\n", vduse_dead_handler_id(dev));
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
+
+	ret = sprintf(buf, "%d\n", vduse_dead_handler_id(dev));
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static ssize_t enable_dead_handler_store(struct device *device,
 					 struct device_attribute *attr,
 					 const char *buf, size_t count)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
-	int value;
+	struct vduse_dev *dev;
 	int ret;
+	int value;
+
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
 
 	ret = kstrtoint(buf, 0, &value);
 	if (ret)
-		return ret;
+		goto unlock;
 
 	mutex_lock(&dev->lock);
 	if (value)
@@ -2329,7 +2380,10 @@ static ssize_t enable_dead_handler_store(struct device *device,
 		dev->dead_handler = NULL;
 	mutex_unlock(&dev->lock);
 
-	return count;
+	ret = count;
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static DEVICE_ATTR_RW(enable_dead_handler);
@@ -2338,23 +2392,44 @@ static ssize_t dead_timeout_show(struct device *device,
 				 struct device_attribute *attr,
 				 char *buf)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
+	struct vduse_dev *dev;
+	int ret;
 
-	return sprintf(buf, "%u\n", dev->dead_timeout);
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
+
+	ret = sprintf(buf, "%u\n", dev->dead_timeout);
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static ssize_t dead_timeout_store(struct device *device,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
 {
-	struct vduse_dev *dev = dev_get_drvdata(device);
+	struct vduse_dev *dev;
 	int ret;
+
+	mutex_lock(&vduse_lock);
+
+	ret = -ENODEV;
+	dev = dev_get_drvdata(device);
+	if (!dev)
+		goto unlock;
 
 	ret = kstrtou16(buf, 0, &dev->dead_timeout);
 	if (ret)
-		return ret;
+		goto unlock;
 
-	return count;
+	ret = count;
+unlock:
+	mutex_unlock(&vduse_lock);
+	return ret;
 }
 
 static DEVICE_ATTR_RW(dead_timeout);
@@ -2426,6 +2501,7 @@ static int vduse_create_dev(struct vduse_dev_config *config,
 
 	return 0;
 err_vqs:
+	dev_set_drvdata(dev->dev, NULL);
 	device_destroy(vduse_class, MKDEV(MAJOR(vduse_major), dev->minor));
 err_dev:
 	idr_remove(&vduse_idr, dev->minor);
