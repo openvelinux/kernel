@@ -592,15 +592,6 @@ static inline bool vduse_dev_req_cached(struct vduse_dev *dev, int req)
 static void vduse_dev_reset(struct vduse_dev *dev)
 {
 	int i;
-	struct vduse_iova_domain *domain = dev->domain;
-
-	/* The coherent mappings are handled in vduse_dev_free_coherent() */
-	if (domain->bounce_map) {
-		vduse_domain_reset_bounce_map(domain);
-		if (!vduse_dev_req_cached(dev, VDUSE_UPDATE_IOTLB))
-			vduse_dev_update_iotlb(dev, 0ULL,
-					       domain->bounce_size - 1);
-	}
 
 	down_write(&dev->rwsem);
 
@@ -937,7 +928,16 @@ static void vduse_vdpa_set_config(struct vdpa_device *vdpa, unsigned int offset,
 static int vduse_vdpa_reset(struct vdpa_device *vdpa)
 {
 	struct vduse_dev *dev = vdpa_to_vduse(vdpa);
+	struct vduse_iova_domain *domain = dev->domain;
 	int ret = vduse_dev_set_status(dev, 0);
+
+	/* The coherent mappings are handled in vduse_dev_free_coherent() */
+	if (domain->bounce_map) {
+		vduse_domain_reset_bounce_map(domain);
+		if (!vduse_dev_req_cached(dev, VDUSE_UPDATE_IOTLB))
+			vduse_dev_update_iotlb(dev, 0ULL,
+					       domain->bounce_size - 1);
+	}
 
 	vduse_dev_reset(dev);
 
