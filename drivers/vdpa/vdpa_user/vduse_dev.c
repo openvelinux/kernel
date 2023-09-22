@@ -2209,9 +2209,9 @@ static int vduse_destroy_dev(char *name)
 		return -EBUSY;
 	}
 	mutex_unlock(&dev->lock);
-	cancel_delayed_work_sync(&dev->timeout_work);
 
 	vduse_dev_reset(dev);
+	cancel_delayed_work_sync(&dev->timeout_work);
 	dev_set_drvdata(dev->dev, NULL);
 	device_destroy(vduse_class, MKDEV(MAJOR(vduse_major), dev->minor));
 	idr_remove(&vduse_idr, dev->minor);
