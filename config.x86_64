@@ -7750,7 +7750,7 @@ CONFIG_INTEL_PMT_CRASHLOG=m
 #
 # Intel Speed Select Technology interface support
 #
-# CONFIG_INTEL_SPEED_SELECT_INTERFACE is not set
+CONFIG_INTEL_SPEED_SELECT_INTERFACE=m
 # end of Intel Speed Select Technology interface support
 
 # CONFIG_INTEL_WMI_SBL_FW_UPDATE is not set
