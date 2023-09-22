@@ -308,10 +308,23 @@ static enum oom_constraint constrained_alloc(struct oom_control *oc)
 	return CONSTRAINT_NONE;
 }
 
+enum {
+	NO_BPF_POLICY,
+	BPF_EVAL_ABORT,
+	BPF_EVAL_NEXT,
+	BPF_EVAL_SELECT,
+};
+
+noinline int bpf_oom_evaluate_task(struct task_struct *task, struct oom_control *oc)
+{
+	return NO_BPF_POLICY;
+}
+ALLOW_ERROR_INJECTION(bpf_oom_evaluate_task, ERRNO);
+
 static int oom_evaluate_task(struct task_struct *task, void *arg)
 {
 	struct oom_control *oc = arg;
-	long points;
+	long points = 0;
 
 	if (oom_unkillable_task(task))
 		goto next;
@@ -319,6 +332,32 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 	/* p may not have freeable memory in nodemask */
 	if (!is_memcg_oom(oc) && !oom_cpuset_eligible(task, oc))
 		goto next;
+
+	/*
+	 * If task is allocating a lot of memory and has been marked to be
+	 * killed first if it triggers an oom, then select it.
+	 */
+	if (oom_task_origin(task)) {
+		points = LONG_MAX;
+		goto select;
+	}
+
+	/*
+	 * bpf hook point. We placed the hook before tsk_is_oom_victim() which
+	 * mainly because for some aggresive policies, they would try to
+	 * select new victims even the preexisting are not being killed in time.
+	 * On the other hand, in BPF Prog, we can also achive tsk_is_oom_victim()
+	 */
+	switch (bpf_oom_evaluate_task(task, oc)) {
+	case BPF_EVAL_ABORT:
+		goto abort; /* abort search process */
+	case BPF_EVAL_NEXT:
+		goto next; /* ignore the task */
+	case BPF_EVAL_SELECT:
+		goto select; /* select the task */
+	default:
+		break; /* No BPF policy */
+	}
 
 	/*
 	 * This task already has access to memory reserves and is being killed.
@@ -330,15 +369,6 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 		if (test_bit(MMF_OOM_SKIP, &task->signal->oom_mm->flags))
 			goto next;
 		goto abort;
-	}
-
-	/*
-	 * If task is allocating a lot of memory and has been marked to be
-	 * killed first if it triggers an oom, then select it.
-	 */
-	if (oom_task_origin(task)) {
-		points = LONG_MAX;
-		goto select;
 	}
 
 	points = oom_badness(task, oc->totalpages);
