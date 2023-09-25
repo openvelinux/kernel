@@ -93,11 +93,11 @@ bool hugepage_vma_check(struct vm_area_struct *vma,
 		return in_pf;
 
 	/*
-	 * Special VMA and hugetlb VMA.
+	 * khugepaged special VMA and hugetlb VMA.
 	 * Must be checked after dax since some dax mappings may have
 	 * VM_MIXEDMAP set.
 	 */
-	if (vm_flags & VM_NO_KHUGEPAGED)
+	if (!in_pf && !smaps && (vm_flags & VM_NO_KHUGEPAGED))
 		return false;
 
 	if (!in_pf && vma->vm_file && !IS_ALIGNED((vma->vm_start >> PAGE_SHIFT) -
@@ -116,17 +116,23 @@ bool hugepage_vma_check(struct vm_area_struct *vma,
 	if (!(vm_flags & VM_HUGEPAGE) && !khugepaged_always())
 		return false;
 
-	/* Only regular file is valid */
-	if (!in_pf && IS_ENABLED(CONFIG_READ_ONLY_THP_FOR_FS) && vma->vm_file &&
-	    (vm_flags & VM_EXEC)) {
-		struct inode *inode = vma->vm_file->f_inode;
+	if (vma->vm_ops) {
+		/*
+		 * Trust that ->huge_fault() handlers know what they are doing
+		 * in fault path.
+		 */
+		if (((in_pf || smaps)) && vma->vm_ops->huge_fault)
+			return true;
+		/* Only regular file is valid */
+		if (((!in_pf || smaps))  && IS_ENABLED(CONFIG_READ_ONLY_THP_FOR_FS) &&
+			vma->vm_file && (vm_flags & VM_EXEC)) {
+			struct inode *inode = vma->vm_file->f_inode;
 
-		return !inode_is_open_for_write(inode) &&
-			S_ISREG(inode->i_mode);
+			return !inode_is_open_for_write(inode) &&
+				S_ISREG(inode->i_mode);
+		}
 	}
 
-	if (vma->vm_ops)
-		return false;
 	if (vma_is_temporary_stack(vma))
 		return false;
 
