@@ -2542,22 +2542,24 @@ static void arm_smmu_iotlb_sync(struct iommu_domain *domain,
 }
 
 #ifdef CONFIG_HISILICON_ERRATUM_162100602
-static void arm_smmu_iotlb_sync_map(struct iommu_domain *domain,
-				unsigned long iova, size_t size)
+static int arm_smmu_iotlb_sync_map(struct iommu_domain *domain,
+				    unsigned long iova, size_t size)
 {
 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 	size_t granule_size;
 
 	if (!(smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_MAP))
-		return;
+		return 0;
 
 	if (smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_BATCH)
-		return;
+		return 0;
 
 	granule_size = 1 <<  __ffs(smmu_domain->domain.pgsize_bitmap);
 
 	/* Add a SYNC command to sync io-pgtale to avoid errors in pgtable prefetch*/
 	arm_smmu_tlb_inv_range_domain(iova, granule_size, granule_size, true, smmu_domain);
+
+	return 0;
 }
 #endif
 
