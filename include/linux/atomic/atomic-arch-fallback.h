@@ -1138,6 +1138,43 @@ arch_atomic_inc_and_test(atomic_t *v)
 #define arch_atomic_inc_and_test arch_atomic_inc_and_test
 #endif
 
+/**
+ * raw_atomic_add() - atomic add with relaxed ordering
+ * @i: int value to add
+ * @v: pointer to atomic_t
+ *
+ * Atomically updates @v to (@v + @i) with relaxed ordering.
+ *
+ * Safe to use in noinstr code; prefer atomic_add() elsewhere.
+ *
+ * Return: Nothing.
+ */
+static __always_inline void
+raw_atomic_add(int i, atomic_t *v)
+{
+	arch_atomic_add(i, v);
+}
+
+/**
+ * raw_atomic_inc() - atomic increment with relaxed ordering
+ * @v: pointer to atomic_t
+ *
+ * Atomically updates @v to (@v + 1) with relaxed ordering.
+ *
+ * Safe to use in noinstr code; prefer atomic_inc() elsewhere.
+ *
+ * Return: Nothing.
+ */
+static __always_inline void
+raw_atomic_inc(atomic_t *v)
+{
+#if defined(arch_atomic_inc)
+	arch_atomic_inc(v);
+#else
+	raw_atomic_add(1, v);
+#endif
+}
+
 #ifndef arch_atomic_add_negative
 /**
  * arch_atomic_add_negative - add and test if negative
