@@ -8,6 +8,7 @@
 #include "adf_dbgfs.h"
 #include "adf_fw_counters.h"
 #include "adf_heartbeat_dbgfs.h"
+#include "adf_pm_dbgfs.h"
 
 /**
  * adf_dbgfs_init() - add persistent debugfs entries
@@ -54,6 +55,7 @@ void adf_dbgfs_add(struct adf_accel_dev *accel_dev)
 	if (!accel_dev->is_vf) {
 		adf_fw_counters_dbgfs_add(accel_dev);
 		adf_heartbeat_dbgfs_add(accel_dev);
+		adf_pm_dbgfs_add(accel_dev);
 	}
 }
 
@@ -64,6 +66,7 @@ void adf_dbgfs_add(struct adf_accel_dev *accel_dev)
 void adf_dbgfs_rm(struct adf_accel_dev *accel_dev)
 {
 	if (!accel_dev->is_vf) {
+		adf_pm_dbgfs_rm(accel_dev);
 		adf_heartbeat_dbgfs_rm(accel_dev);
 		adf_fw_counters_dbgfs_rm(accel_dev);
 	}
