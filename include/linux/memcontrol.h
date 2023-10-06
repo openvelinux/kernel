@@ -709,6 +709,8 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 		page_counter_read(&memcg->memory);
 }
 
+void mem_cgroup_commit_charge(struct folio *folio, struct mem_cgroup *memcg);
+
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp);
 
 /**
@@ -759,6 +761,8 @@ static inline void mem_cgroup_uncharge_list(struct list_head *page_list)
 		return;
 	__mem_cgroup_uncharge_list(page_list);
 }
+
+void mem_cgroup_cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages);
 
 void mem_cgroup_migrate(struct folio *old, struct folio *new);
 
@@ -815,6 +819,8 @@ static inline struct lruvec *folio_lruvec(struct folio *folio)
 struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p);
 
 struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm);
+
+struct mem_cgroup *get_mem_cgroup_from_current(void);
 
 struct lruvec *folio_lruvec_lock(struct folio *folio);
 struct lruvec *folio_lruvec_lock_irq(struct folio *folio);
@@ -1287,6 +1293,11 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 	return false;
 }
 
+static inline void mem_cgroup_commit_charge(struct folio *folio,
+		struct mem_cgroup *memcg)
+{
+}
+
 static inline int mem_cgroup_charge(struct folio *folio,
 		struct mm_struct *mm, gfp_t gfp)
 {
@@ -1308,6 +1319,11 @@ static inline void mem_cgroup_uncharge(struct folio *folio)
 }
 
 static inline void mem_cgroup_uncharge_list(struct list_head *page_list)
+{
+}
+
+static inline void mem_cgroup_cancel_charge(struct mem_cgroup *memcg,
+		unsigned int nr_pages)
 {
 }
 
@@ -1344,6 +1360,11 @@ static inline bool mm_match_cgroup(struct mm_struct *mm,
 }
 
 static inline struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
+{
+	return NULL;
+}
+
+static inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 {
 	return NULL;
 }
