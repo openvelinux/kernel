@@ -764,6 +764,8 @@ static inline void mem_cgroup_uncharge_list(struct list_head *page_list)
 
 void mem_cgroup_cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages);
 
+void mem_cgroup_replace_folio(struct folio *old, struct folio *new);
+
 void mem_cgroup_migrate(struct folio *old, struct folio *new);
 
 /**
@@ -1324,6 +1326,11 @@ static inline void mem_cgroup_uncharge_list(struct list_head *page_list)
 
 static inline void mem_cgroup_cancel_charge(struct mem_cgroup *memcg,
 		unsigned int nr_pages)
+{
+}
+
+static inline void mem_cgroup_replace_folio(struct folio *old,
+		struct folio *new)
 {
 }
 
