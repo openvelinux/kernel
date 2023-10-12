@@ -2175,6 +2175,17 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_do_cad_pid,
 	},
 #endif
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+	{
+		.procname	= "cgroup_override_proc",
+		.data		= &sysctl_cgroup_override_proc,
+		.maxlen		= sizeof(int),
+		.mode		= 0600,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+#endif
 	{
 		.procname	= "threads-max",
 		.data		= NULL,
