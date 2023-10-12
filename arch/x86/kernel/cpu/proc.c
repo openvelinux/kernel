@@ -4,6 +4,7 @@
 #include <linux/string.h>
 #include <linux/seq_file.h>
 #include <linux/cpufreq.h>
+#include <linux/cgroup.h>
 
 #include "cpu.h"
 
@@ -61,8 +62,25 @@ static void show_cpuinfo_misc(struct seq_file *m, struct cpuinfo_x86 *c)
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	struct cpuinfo_x86 *c = v;
+	struct cpuinfo_x86 oc;
+	struct cpumask cpuset;
 	unsigned int cpu;
 	int i;
+
+	if (cgroup_override_proc()) {
+		cgroup_override_get_raw_cpuset(&cpuset);
+
+		if (!cpumask_test_cpu(c->cpu_index, &cpuset))
+			return false;
+
+		memcpy(&oc, c, sizeof(struct cpuinfo_x86));
+
+		oc.phys_proc_id = 0;
+		oc.booted_cores = cpumask_weight(&cpuset);
+		oc.cpu_index =
+			bitmap_weight(cpumask_bits(&cpuset), c->cpu_index);
+		c = &oc;
+	}
 
 	cpu = c->cpu_index;
 	seq_printf(m, "processor\t: %u\n"
