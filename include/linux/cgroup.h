@@ -935,4 +935,14 @@ static inline void cgroup_bpf_put(struct cgroup *cgrp) {}
 
 #endif /* CONFIG_CGROUP_BPF */
 
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+extern int sysctl_cgroup_override_proc;
+bool cgroup_override_proc(void);
+#else /* CONFIG_CGROUP_OVERRIDE_PROC */
+static inline bool cgroup_override_proc(void)
+{
+	return false;
+}
+#endif /* CONFIG_CGROUP_OVERRIDE_PROC */
+
 #endif /* _LINUX_CGROUP_H */
