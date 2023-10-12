@@ -949,6 +949,8 @@ bool cgroup_override_proc(void);
 struct task_struct *cgroup_override_get_init_tsk(void);
 void cgroup_override_get_cpuset(struct cpumask *cpuset);
 void cgroup_override_get_raw_cpuset(struct cpumask *cpuset);
+struct mem_cgroup *cgroup_override_get_memcg(void);
+void cgroup_override_meminfo(struct sysinfo *info, struct mem_cgroup *memcg);
 #else /* CONFIG_CGROUP_OVERRIDE_PROC */
 static inline bool cgroup_override_proc(void)
 {
@@ -962,6 +964,13 @@ static inline void cgroup_override_get_cpuset(struct cpumask *cpuset)
 {
 }
 static inline void cgroup_override_get_raw_cpuset(struct cpumask *cpuset)
+{
+}
+static inline struct mem_cgroup *cgroup_override_get_memcg(void)
+{
+	return NULL;
+}
+static inline void cgroup_override_meminfo(struct sysinfo *info, struct mem_cgroup *memcg)
 {
 }
 #endif /* CONFIG_CGROUP_OVERRIDE_PROC */

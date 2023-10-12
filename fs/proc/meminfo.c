@@ -36,24 +36,44 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	long cached;
 	long available;
 	unsigned long pages[NR_LRU_LISTS];
-	unsigned long sreclaimable, sunreclaim;
+	unsigned long sreclaimable, sunreclaim, page_cache;
 	int lru;
+	struct mem_cgroup *memcg;
 
 	si_meminfo(&i);
 	si_swapinfo(&i);
 	committed = vm_memory_committed();
 
-	cached = global_node_page_state(NR_FILE_PAGES) -
-			total_swapcache_pages() - i.bufferram;
-	if (cached < 0)
-		cached = 0;
+	memcg = cgroup_override_get_memcg();
 
 	for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)
 		pages[lru] = global_node_page_state(NR_LRU_BASE + lru);
 
-	available = si_mem_available();
-	sreclaimable = global_node_page_state_pages(NR_SLAB_RECLAIMABLE_B);
-	sunreclaim = global_node_page_state_pages(NR_SLAB_UNRECLAIMABLE_B);
+	if (!cgroup_override_proc() || !memcg) {
+		available = si_mem_available();
+		sreclaimable =
+			global_node_page_state_pages(NR_SLAB_RECLAIMABLE_B);
+		sunreclaim =
+			global_node_page_state_pages(NR_SLAB_UNRECLAIMABLE_B);
+		cached = global_node_page_state(NR_FILE_PAGES) -
+			 total_swapcache_pages() - i.bufferram;
+	} else {
+		cgroup_override_meminfo(&i, memcg);
+
+		page_cache = memcg_page_state(memcg, NR_LRU_BASE + LRU_ACTIVE_FILE) +
+			memcg_page_state(memcg, NR_LRU_BASE + LRU_INACTIVE_FILE);
+
+		sreclaimable = memcg_page_state(memcg, NR_SLAB_RECLAIMABLE_B) >> PAGE_SHIFT;
+		sunreclaim = memcg_page_state(memcg, NR_SLAB_UNRECLAIMABLE_B) >> PAGE_SHIFT;
+		cached = memcg_page_state(memcg, NR_FILE_PAGES);
+
+		available = i.freeram + page_cache + sreclaimable;
+	}
+
+	mem_cgroup_put(memcg);
+
+	if (cached < 0)
+		cached = 0;
 
 	show_val_kb(m, "MemTotal:       ", i.totalram);
 	show_val_kb(m, "MemFree:        ", i.freeram);

@@ -5,6 +5,7 @@
 #include <linux/cgroup.h>
 #include <linux/cpuset.h>
 #include <linux/sched/task.h>
+#include <linux/memcontrol.h>
 
 int sysctl_cgroup_override_proc;
 
@@ -86,4 +87,57 @@ void cgroup_override_get_cpuset(struct cpumask *cpuset)
 
 	cpumask_clear(cpuset);
 	bitmap_set(cpumask_bits(cpuset), 0, cpumask_weight(&tmp));
+}
+
+struct mem_cgroup *cgroup_override_get_memcg(void)
+{
+	struct mem_cgroup *memcg;
+	struct task_struct *tsk = cgroup_override_get_init_tsk();
+
+	memcg = mem_cgroup_from_task(tsk);
+	if (mem_cgroup_is_root(memcg))
+		memcg = NULL;
+	else
+		css_get(&memcg->css);
+	put_task_struct(tsk);
+
+	return memcg;
+}
+
+void cgroup_override_meminfo(struct sysinfo *info, struct mem_cgroup *memcg)
+{
+	unsigned long mem_limit, memsw_limit, mem_usage;
+	struct mem_cgroup *tmp;
+
+	mem_limit = memsw_limit = PAGE_COUNTER_MAX;
+
+	for (tmp = memcg; tmp; tmp = parent_mem_cgroup(tmp)) {
+		mem_limit = min(mem_limit, tmp->memory.max);
+		memsw_limit = min(memsw_limit, tmp->memsw.max);
+	}
+
+	if (mem_cgroup_is_root(memcg))
+		mem_usage = memcg_page_state(memcg, NR_FILE_PAGES) +
+			    memcg_page_state(memcg, NR_ANON_MAPPED);
+	else
+		mem_usage = page_counter_read(&memcg->memory);
+
+	info->totalram =
+		mem_limit > info->totalram ? info->totalram : mem_limit;
+	info->freeram = info->totalram - mem_usage;
+	info->sharedram = memcg_page_state(memcg, NR_SHMEM);
+	info->bufferram = 0;
+	info->totalhigh = totalhigh_pages();
+	info->freehigh = nr_free_highpages();
+	if (cgroup_memory_noswap) {
+		info->totalswap = 0;
+		info->freeswap = 0;
+	} else {
+		info->totalswap = info->totalswap > memsw_limit ?
+					  memsw_limit :
+					  info->totalswap;
+		info->freeswap =
+			info->totalswap - memcg_page_state(memcg, MEMCG_SWAP);
+	}
+
 }
