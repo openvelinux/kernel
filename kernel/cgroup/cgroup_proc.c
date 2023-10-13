@@ -8,6 +8,7 @@
 #include <linux/memcontrol.h>
 
 int sysctl_cgroup_override_proc;
+int sysctl_cgroup_override_source;
 
 bool cgroup_override_proc(void)
 {
@@ -15,7 +16,7 @@ bool cgroup_override_proc(void)
 	if (sysctl_cgroup_override_proc == 0)
 		return false;
 
-	init_tsk = cgroup_override_get_init_tsk();
+	init_tsk = cgroup_override_get_source_tsk();
 
 	rcu_read_lock();
 	if (task_active_pid_ns(current) == &init_pid_ns ||
@@ -31,12 +32,16 @@ bool cgroup_override_proc(void)
 	return true;
 }
 
-struct task_struct *cgroup_override_get_init_tsk(void)
+struct task_struct *cgroup_override_get_source_tsk(void)
 {
 	struct task_struct *cg_init_tsk;
 
 	rcu_read_lock();
-	cg_init_tsk = task_active_pid_ns(current)->child_reaper;
+	if (sysctl_cgroup_override_source)
+		cg_init_tsk = task_active_pid_ns(current)->child_reaper;
+	else
+		cg_init_tsk = current;
+
 	get_task_struct(cg_init_tsk);
 	rcu_read_unlock();
 
@@ -51,7 +56,7 @@ void cgroup_override_get_raw_cpuset(struct cpumask *cpuset)
 {
 	long quota, period;
 	int cpus, cpu_index, count = 0;
-	struct task_struct *cg_init_tsk = cgroup_override_get_init_tsk();
+	struct task_struct *cg_init_tsk = cgroup_override_get_source_tsk();
 	struct task_group *sched_task_group;
 
 	cpuset_cpus_allowed(cg_init_tsk, cpuset);
@@ -99,7 +104,7 @@ void cgroup_override_get_cpuset(struct cpumask *cpuset)
 struct mem_cgroup *cgroup_override_get_memcg(void)
 {
 	struct mem_cgroup *memcg;
-	struct task_struct *tsk = cgroup_override_get_init_tsk();
+	struct task_struct *tsk = cgroup_override_get_source_tsk();
 
 	memcg = mem_cgroup_from_task(tsk);
 	if (mem_cgroup_is_root(memcg))
