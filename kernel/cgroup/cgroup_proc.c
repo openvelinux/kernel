@@ -11,14 +11,21 @@ int sysctl_cgroup_override_proc;
 
 bool cgroup_override_proc(void)
 {
+	struct task_struct *init_tsk;
 	if (sysctl_cgroup_override_proc == 0)
 		return false;
 
+	init_tsk = cgroup_override_get_init_tsk();
+
 	rcu_read_lock();
-	if (task_active_pid_ns(current) == &init_pid_ns || !cpuacct_not_root(current)) {
+	if (task_active_pid_ns(current) == &init_pid_ns ||
+	    !cpuacct_not_root(current) ||
+	    !tg_get_override_proc(init_tsk->sched_task_group)) {
+		put_task_struct(init_tsk);
 		rcu_read_unlock();
 		return false;
 	}
+	put_task_struct(init_tsk);
 
 	rcu_read_unlock();
 	return true;

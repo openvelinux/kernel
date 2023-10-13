@@ -11756,6 +11756,10 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 
 	tg->shares = NICE_0_LOAD;
 
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+	tg->override_proc = false;
+#endif
+
 	init_cfs_bandwidth(tg_cfs_bandwidth(tg));
 
 	for_each_possible_cpu(i) {
