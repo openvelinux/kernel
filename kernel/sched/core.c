@@ -7181,6 +7181,10 @@ void __init sched_init(void)
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
 #ifdef CONFIG_FAIR_GROUP_SCHED
+
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+		root_task_group.override_proc = false;
+#endif
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
 		rq->tmp_alone_branch = &rq->leaf_cfs_rq_list;
 		/*
@@ -7928,6 +7932,22 @@ static u64 cpu_shares_read_u64(struct cgroup_subsys_state *css,
 	return (u64) scale_load_down(tg->shares);
 }
 
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+bool tg_get_override_proc(struct task_group *tg)
+{
+	struct task_group *iter = tg;
+
+	while (iter) {
+		if (iter->override_proc)
+			return true;
+		iter = css_tg(iter->css.parent);
+	}
+
+	return false;
+}
+EXPORT_SYMBOL(tg_get_override_proc);
+#endif
+
 #ifdef CONFIG_CFS_BANDWIDTH
 static DEFINE_MUTEX(cfs_constraints_mutex);
 
@@ -8230,12 +8250,36 @@ static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
 
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+static s64 cpu_override_proc_read_s64(struct cgroup_subsys_state *css,
+				      struct cftype *cft)
+{
+	return css_tg(css)->override_proc;
+}
+static int cpu_override_proc_write_s64(struct cgroup_subsys_state *css,
+				       struct cftype *cft, s64 override_proc)
+{
+	if (override_proc)
+		css_tg(css)->override_proc = true;
+	else
+		css_tg(css)->override_proc = false;
+	return 0;
+}
+#endif
+
 static struct cftype cpu_legacy_files[] = {
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	{
 		.name = "shares",
 		.read_u64 = cpu_shares_read_u64,
 		.write_u64 = cpu_shares_write_u64,
+	},
+#endif
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+	{
+		.name = "override_proc",
+		.read_s64 = cpu_override_proc_read_s64,
+		.write_s64 = cpu_override_proc_write_s64,
 	},
 #endif
 #ifdef CONFIG_CFS_BANDWIDTH

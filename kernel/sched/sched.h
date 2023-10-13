@@ -393,9 +393,12 @@ struct task_group {
 	struct cfs_rq		**cfs_rq;
 	unsigned long		shares;
 
+#ifdef CONFIG_CGROUP_OVERRIDE_PROC
+	int			override_proc;
+#endif
+
 #ifdef	CONFIG_SMP
 	/*
-	 * load_avg can be heavily contended at clock tick time, so put
 	 * it in its own cacheline separated from the fields above which
 	 * will also be accessed at each tick.
 	 */
