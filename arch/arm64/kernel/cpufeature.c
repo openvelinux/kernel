@@ -2192,6 +2192,14 @@ static void cpu_enable_mte(struct arm64_cpu_capabilities const *cap)
 
 static void user_feature_fixup(void)
 {
+	if (cpus_have_cap(ARM64_WORKAROUND_2658417)) {
+		struct arm64_ftr_reg *regp;
+
+		regp = get_arm64_ftr_reg(SYS_ID_AA64ISAR1_EL1);
+		if (regp)
+			regp->user_mask &= ~ID_AA64ISAR1_EL1_BF16_MASK;
+	}
+
 	if (cpus_have_cap(ARM64_WORKAROUND_SPECULATIVE_SSBS)) {
 		struct arm64_ftr_reg *regp;
 
