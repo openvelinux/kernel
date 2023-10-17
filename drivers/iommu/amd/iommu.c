@@ -2836,7 +2836,7 @@ out:
 	return index;
 }
 
-static int modify_irte_ga(u16 devid, int index, struct irte_ga *irte)
+static int __modify_irte_ga(u16 devid, int index, struct irte_ga *irte)
 {
 	bool ret;
 	struct irq_remap_table *table;
@@ -2869,6 +2869,22 @@ static int modify_irte_ga(u16 devid, int index, struct irte_ga *irte)
 	WARN_ON(!ret);
 
 	raw_spin_unlock_irqrestore(&table->lock, flags);
+
+	return 0;
+}
+
+static int modify_irte_ga(u16 devid, int index, struct irte_ga *irte)
+{
+	bool ret;
+	struct amd_iommu *iommu;
+
+	iommu = amd_iommu_rlookup_table[devid];
+	if (iommu == NULL)
+		return -EINVAL;
+
+	ret = __modify_irte_ga(devid, index, irte);
+	if (ret)
+		return ret;
 
 	iommu_flush_irt_and_complete(iommu, devid);
 
@@ -3546,8 +3562,8 @@ int amd_iommu_update_ga(int cpu, bool is_run, void *data)
 	}
 	entry->lo.fields_vapic.is_run = is_run;
 
-	return modify_irte_ga(ir_data->irq_2_irte.devid,
-			      ir_data->irq_2_irte.index, entry);
+	return __modify_irte_ga(ir_data->irq_2_irte.devid,
+				ir_data->irq_2_irte.index, entry);
 }
 EXPORT_SYMBOL(amd_iommu_update_ga);
 #endif
