@@ -1987,6 +1987,9 @@ static void prep_and_add_allocated_page(struct hstate *h,
 	unsigned long flags;
 	struct page *page, *tmp_p;
 
+	/* Send list for bulk vmemmap optimization processing */
+	hugetlb_vmemmap_optimize_pages(h, page_list);
+
 	/* Add all new pool pages to free lists in one lock cycle */
 	spin_lock_irqsave(&hugetlb_lock, flags);
 	list_for_each_entry_safe(page, tmp_p, page_list, lru) {
@@ -2977,6 +2980,24 @@ found:
 	return 1;
 }
 
+static void __init prep_and_add_bootmem_pages(struct hstate *h,
+					struct list_head *page_list)
+{
+	unsigned long flags;
+	struct page *page, *tmp_p;
+
+	/* Send list for bulk vmemmap optimization processing */
+	hugetlb_vmemmap_optimize_pages(h, page_list);
+
+	/* Add all new pool pages to free lists in one lock cycle */
+	spin_lock_irqsave(&hugetlb_lock, flags);
+	list_for_each_entry_safe(page, tmp_p, page_list, lru) {
+		__prep_account_new_huge_page(h, page_to_nid(page));
+		enqueue_huge_page(h, page);
+	}
+	spin_unlock_irqrestore(&hugetlb_lock, flags);
+}
+
 /*
  * Put bootmem huge pages into the standard lists after mem_map is up.
  * Note: This only applies to gigantic (order > MAX_ORDER) pages.
@@ -2996,14 +3017,14 @@ static void __init gather_bootmem_prealloc(void)
 		 * in this list.  If so, process each size separately.
 		 */
 		if (h != prev_h && prev_h != NULL)
-			prep_and_add_allocated_page(prev_h, &page_list);
+			prep_and_add_bootmem_pages(prev_h, &page_list);
 		prev_h = h;
 
 		VM_BUG_ON(!hstate_is_gigantic(h));
 		WARN_ON(page_count(page) != 1);
 		if (prep_compound_gigantic_page(page, huge_page_order(h))) {
 			WARN_ON(PageReserved(page));
-			__prep_new_huge_page(h, page);
+			init_new_hugetlb_page(h, page);
 			list_add(&page->lru, &page_list);
 		} else {
 			/* VERY unlikely inflated ref count on a tail page */
@@ -3019,7 +3040,7 @@ static void __init gather_bootmem_prealloc(void)
 		cond_resched();
 	}
 
-	prep_and_add_allocated_page(h, &page_list);
+	prep_and_add_bootmem_pages(h, &page_list);
 }
 
 /*
