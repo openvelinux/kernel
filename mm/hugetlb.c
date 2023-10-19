@@ -1571,32 +1571,81 @@ static void update_and_free_page(struct hstate *h, struct page *page,
 		schedule_work(&free_hpage_work);
 }
 
-static void update_and_free_pages_bulk(struct hstate *h, struct list_head *list)
+static void bulk_vmemmap_restore_error(struct hstate *h,
+					struct list_head *page_list,
+					struct list_head *non_hvo_pages)
 {
 	struct page *page, *t_page;
 
-	/*
-	 * First allocate required vmemmmap (if necessary) for all folios on
-	 * list.  If vmemmap can not be allocated, we can not free folio to
-	 * lower level allocator, so add back as hugetlb surplus page.
-	 * add_hugetlb_folio() removes the page from THIS list.
-	 */
-	list_for_each_entry_safe(page, t_page, list, lru) {
-		if (HPageVmemmapOptimized(page)) {
+	if (!list_empty(non_hvo_pages)) {
+		/*
+		 * Free any restored hugetlb pages so that restore of the
+		 * entire list can be retried.
+		 * The idea is that in the common case of ENOMEM errors freeing
+		 * hugetlb pages with vmemmap we will free up memory so that we
+		 * can allocate vmemmap for more hugetlb pages.
+		 */
+		list_for_each_entry_safe(page, t_page, non_hvo_pages, lru) {
+			list_del(&page->lru);
+			update_and_free_page(h, page, false);
+			cond_resched();
+		}
+	} else {
+		/*
+		 * In the case where there are no folios which can be
+		 * immediately freed, we loop through the list trying to restore
+		 * vmemmap individually in the hope that someone elsewhere may
+		 * have done something to cause success (such as freeing some
+		 * memory).  If unable to restore a hugetlb page, the hugetlb
+		 * page is made a surplus page and removed from the list.
+		 * If are able to restore vmemmap and free one hugetlb page, we
+		 * quit processing the list to retry the bulk operation.
+		 */
+		list_for_each_entry_safe(page, t_page, page_list, lru)
 			if (hugetlb_vmemmap_restore(h, page)) {
+				list_del(&page->lru);
 				spin_lock_irq(&hugetlb_lock);
 				add_hugetlb_page(h, page, true);
 				spin_unlock_irq(&hugetlb_lock);
+			} else {
+				list_del(&page->lru);
+				update_and_free_page(h, page, false);
+				cond_resched();
+				break;
 			}
-		}
+	}
+}
+
+static void update_and_free_pages_bulk(struct hstate *h,
+				       struct list_head *page_list)
+{
+	long ret;
+	struct page *page, *t_page;
+	LIST_HEAD(non_hvo_pages);
+
+	/*
+	 * First allocate required vmemmmap (if necessary) for all pages.
+	 * Carefully handle errors and free up any available hugetlb pages
+	 * in an effort to make forward progress.
+	 */
+retry:
+	ret = hugetlb_vmemmap_restore_pages(h, page_list, &non_hvo_pages);
+	if (ret < 0) {
+		bulk_vmemmap_restore_error(h, page_list, &non_hvo_pages);
+		goto retry;
 	}
 
 	/*
-	 * Free folios back to low level allocators.  vmemmap and destructors
-	 * were taken care of above, so update_and_free_hugetlb_folio will
-	 * not need to take hugetlb lock.
+	 * At this point, list should be empty, ret should be >= 0 and there
+	 * should only be pages on the non_hvo_pages list.
+	 * Do note that the non_hvo_pages list could be empty.
+	 * Without HVO enabled, ret will be 0 and there is no need to call
+	 * __clear_hugetlb_destructor as this was done previously.
 	 */
-	list_for_each_entry_safe(page, t_page, list, lru) {
+	VM_WARN_ON(!list_empty(page_list));
+	VM_WARN_ON(ret < 0);
+
+	list_for_each_entry_safe(page, t_page, &non_hvo_pages, lru) {
 		update_and_free_page(h, page, false);
 		cond_resched();
 	}

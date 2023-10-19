@@ -20,6 +20,9 @@ void hugetlb_vmemmap_optimize_pages(struct hstate *h, struct list_head *page_lis
  * Documentation/vm/vmemmap_dedup.rst.
  */
 #define HUGETLB_VMEMMAP_RESERVE_SIZE	PAGE_SIZE
+long hugetlb_vmemmap_restore_pages(const struct hstate *h,
+				   struct list_head *page_list,
+				   struct list_head *non_hvo_pages);
 
 static inline unsigned int hugetlb_vmemmap_size(const struct hstate *h)
 {
@@ -41,6 +44,14 @@ static inline unsigned int hugetlb_vmemmap_optimizable_size(const struct hstate 
 #else
 static inline int hugetlb_vmemmap_restore(const struct hstate *h, struct page *head)
 {
+	return 0;
+}
+
+static long hugetlb_vmemmap_restore_pages(const struct hstate *h,
+				   struct list_head *page_list,
+				   struct list_head *non_hvo_pages)
+{
+	list_splice_init(page_list, non_hvo_pages);
 	return 0;
 }
 
