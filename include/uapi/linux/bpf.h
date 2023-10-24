@@ -997,6 +997,8 @@ enum bpf_attach_type {
 	BPF_STRUCT_OPS=44,
 	BPF_TCX_INGRESS=46,
 	BPF_TCX_EGRESS=47,
+	BPF_NETKIT_PRIMARY=54,
+	BPF_NETKIT_PEER=55,
 	__MAX_BPF_ATTACH_TYPE
 };
 
@@ -1014,6 +1016,7 @@ enum bpf_link_type {
 	BPF_LINK_TYPE_STRUCT_OPS = 9,
 
 	BPF_LINK_TYPE_TCX = 11,
+	BPF_LINK_TYPE_NETKIT = 13,
 	MAX_BPF_LINK_TYPE,
 };
 
@@ -1497,6 +1500,13 @@ union bpf_attr {
 				};
 				__u64		expected_revision;
 			} tcx;
+			struct {
+				union {
+					__u32	relative_fd;
+					__u32	relative_id;
+				};
+				__u64		expected_revision;
+			} netkit;
 		};
 	} link_create;
 
@@ -5706,6 +5716,10 @@ struct bpf_link_info {
 			__u32 ifindex;
 			__u32 attach_type;
 		} tcx;
+		struct {
+			__u32 ifindex;
+			__u32 attach_type;
+		} netkit;
 	};
 } __attribute__((aligned(8)));
 
