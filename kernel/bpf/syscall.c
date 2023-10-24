@@ -33,6 +33,7 @@
 #include <linux/rcupdate_trace.h>
 #include <linux/memcontrol.h>
 
+#include <net/netkit.h>
 #include <net/tcx.h>
 
 #define IS_FD_ARRAY(map) ((map)->map_type == BPF_MAP_TYPE_PERF_EVENT_ARRAY || \
@@ -3165,6 +3166,8 @@ attach_type_to_prog_type(enum bpf_attach_type attach_type)
 		return BPF_PROG_TYPE_XDP;
 	case BPF_TCX_INGRESS:
 	case BPF_TCX_EGRESS:
+	case BPF_NETKIT_PRIMARY:
+	case BPF_NETKIT_PEER:
 		return BPF_PROG_TYPE_SCHED_CLS;
 	default:
 		return BPF_PROG_TYPE_UNSPEC;
@@ -3238,7 +3241,11 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 		ret = cgroup_bpf_prog_attach(attr, ptype, prog);
 		break;
 	case BPF_PROG_TYPE_SCHED_CLS:
-		ret = tcx_prog_attach(attr, prog);
+		if (attr->attach_type == BPF_TCX_INGRESS ||
+		    attr->attach_type == BPF_TCX_EGRESS)
+			ret = tcx_prog_attach(attr, prog);
+		else
+			ret = netkit_prog_attach(attr, prog);
 		break;
 	default:
 		ret = -EINVAL;
@@ -3298,7 +3305,11 @@ static int bpf_prog_detach(const union bpf_attr *attr)
 		ret = cgroup_bpf_prog_detach(attr, ptype);
 		break;
 	case BPF_PROG_TYPE_SCHED_CLS:
-		ret = tcx_prog_detach(attr, prog);
+		if (attr->attach_type == BPF_TCX_INGRESS ||
+		    attr->attach_type == BPF_TCX_EGRESS)
+			ret = tcx_prog_detach(attr, prog);
+		else
+			ret = netkit_prog_detach(attr, prog);
 		break;
 	default:
 		ret = -EINVAL;
@@ -3354,6 +3365,9 @@ static int bpf_prog_query(const union bpf_attr *attr,
 	case BPF_TCX_INGRESS:
 	case BPF_TCX_EGRESS:
 		return tcx_prog_query(attr, uattr);
+	case BPF_NETKIT_PRIMARY:
+	case BPF_NETKIT_PEER:
+		return netkit_prog_query(attr, uattr);
 	default:
 		return -EINVAL;
 	}
@@ -4315,7 +4329,9 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 		break;
 	case BPF_PROG_TYPE_SCHED_CLS:
 		if (attr->link_create.attach_type != BPF_TCX_INGRESS &&
-		    attr->link_create.attach_type != BPF_TCX_EGRESS) {
+		    attr->link_create.attach_type != BPF_TCX_EGRESS &&
+		    attr->link_create.attach_type != BPF_NETKIT_PRIMARY &&
+		    attr->link_create.attach_type != BPF_NETKIT_PEER) {
 			ret = -EINVAL;
 			goto out;
 		}
@@ -4353,7 +4369,11 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 		break;
 #endif
 	case BPF_PROG_TYPE_SCHED_CLS:
-		ret = tcx_link_attach(attr, prog);
+		if (attr->link_create.attach_type == BPF_TCX_INGRESS ||
+		    attr->link_create.attach_type == BPF_TCX_EGRESS)
+			ret = tcx_link_attach(attr, prog);
+		else
+			ret = netkit_link_attach(attr, prog);
 		break;
 #ifdef CONFIG_PERF_EVENTS
 	case BPF_PROG_TYPE_PERF_EVENT:
