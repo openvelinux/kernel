@@ -189,6 +189,10 @@ struct io_pgtable_ops {
 			       unsigned long iova, size_t size,
 			       unsigned long *bitmap, unsigned long base_iova,
 			       unsigned long bitmap_pgshift);
+	int (*read_and_clear_dirty)(struct io_pgtable_ops *ops,
+				    unsigned long iova, size_t size,
+				    unsigned long flags,
+				    struct iommu_dirty_bitmap *dirty);
 };
 
 /**
