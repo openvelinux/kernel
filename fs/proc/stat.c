@@ -141,10 +141,12 @@ static int show_stat(struct seq_file *p, void *v)
 		struct kernel_cpustat kcpustat;
 		u64 *cpustat = kcpustat.cpustat;
 
-		if (!override)
+		if (!override) {
 			kcpustat_cpu_fetch(&kcpustat, i);
-		else
+		} else {
 			cpuacct_get_kcpustat(tsk, i, &kcpustat);
+			cgroup_override_kcpustat(&kcpustat, &kcpustat_cpu(i));
+		}
 
 		user		+= cpustat[CPUTIME_USER];
 		nice		+= cpustat[CPUTIME_NICE];
@@ -197,6 +199,7 @@ static int show_stat(struct seq_file *p, void *v)
 			kcpustat_cpu_fetch(&kcpustat, i);
 		} else {
 			cpuacct_get_kcpustat(tsk, i, &kcpustat);
+			cgroup_override_kcpustat(&kcpustat, &kcpustat_cpu(i));
 		}
 
 		/* Copy values here to work around gcc-2.95.3, gcc-2.96 */
