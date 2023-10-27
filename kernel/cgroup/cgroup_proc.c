@@ -101,6 +101,26 @@ void cgroup_override_get_cpuset(struct cpumask *cpuset)
 	bitmap_set(cpumask_bits(cpuset), 0, cpumask_weight(&tmp));
 }
 
+void cgroup_override_kcpustat(struct kernel_cpustat *kcs,
+			      struct kernel_cpustat *raw_kcs)
+{
+	u64 ca_usage, raw_usage;
+	int i;
+
+	ca_usage = kcs->cpustat[CPUTIME_NICE] +
+		   kcs->cpustat[CPUTIME_USER] +
+		   kcs->cpustat[CPUTIME_SYSTEM];
+	raw_usage = raw_kcs->cpustat[CPUTIME_NICE] +
+		    raw_kcs->cpustat[CPUTIME_USER] +
+		    raw_kcs->cpustat[CPUTIME_SYSTEM];
+
+	for (i = CPUTIME_SOFTIRQ; i < NR_STATS; i++)
+		kcs->cpustat[i] = raw_kcs->cpustat[i];
+
+	/* treat cpu used by a process on host as steal, like VM. */
+	kcs->cpustat[CPUTIME_STEAL] += raw_usage - ca_usage;
+}
+
 struct mem_cgroup *cgroup_override_get_memcg(void)
 {
 	struct mem_cgroup *memcg;
