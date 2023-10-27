@@ -738,6 +738,7 @@ struct mm_cid {
 #endif
 
 struct kioctx_table;
+struct iommu_mm_data;
 struct mm_struct {
 	struct {
 		/*
@@ -951,6 +952,7 @@ struct mm_struct {
 
 #ifdef CONFIG_IOMMU_MM_DATA
 		u32 pasid;
+		struct iommu_mm_data *iommu_mm;
 #endif
 #ifdef CONFIG_KSM
 		/*
