@@ -6108,7 +6108,7 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 	if (!buf)
 		goto out;
 
-	mutex_lock(&cgroup_mutex);
+	rcu_read_lock();
 	spin_lock_irq(&css_set_lock);
 
 	for_each_root(root) {
@@ -6117,6 +6117,11 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 		int ssid, count = 0;
 
 		if (root == &cgrp_dfl_root && !READ_ONCE(cgrp_dfl_visible))
+			continue;
+
+		cgrp = task_cgroup_from_root(tsk, root);
+		/* The root has already been unmounted. */
+		if (!cgrp)
 			continue;
 
 		seq_printf(m, "%d:", root->hierarchy_id);
@@ -6129,9 +6134,6 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 			seq_printf(m, "%sname=%s", count ? "," : "",
 				   root->name);
 		seq_putc(m, ':');
-
-		cgrp = task_cgroup_from_root(tsk, root);
-
 		/*
 		 * On traditional hierarchies, all zombie tasks show up as
 		 * belonging to the root cgroup.  On the default hierarchy,
@@ -6163,7 +6165,7 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 	retval = 0;
 out_unlock:
 	spin_unlock_irq(&css_set_lock);
-	mutex_unlock(&cgroup_mutex);
+	rcu_read_unlock();
 	kfree(buf);
 out:
 	return retval;
