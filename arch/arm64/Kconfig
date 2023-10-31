@@ -1217,6 +1217,17 @@ config HISILICON_ERRATUM_161600802
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_162102203
+	bool "Hisilicon erratum 162102203"
+	default n
+	help
+	  On HIP09, SMS_ATN bit may be cleared by hardware before it is driven
+	  to process. This will causes bridge commands timeout. Avoid these issues
+	  by modifying the IPMI driver to use variables to store SMS_ATNs that may
+	  be lost.
+
+	  If unsure, say N.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
