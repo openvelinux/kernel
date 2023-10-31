@@ -1423,15 +1423,42 @@ static inline unsigned long group_weight(struct task_struct *p, int nid,
 	return 1000 * faults / total_faults;
 }
 
+enum {
+	BPF_MIGRATE_DEFAULT,
+	BPF_MIGRATE_ABORT,
+	BPF_MIGRATE_OVERRIDE,
+};
+
+noinline int bpf_should_numa_migrate(struct task_struct *p, int nodes)
+{
+	return BPF_MIGRATE_DEFAULT;
+}
+ALLOW_ERROR_INJECTION(bpf_should_numa_migrate, ERRNO);
+
 bool should_numa_migrate_memory(struct task_struct *p, struct page * page,
 				int src_nid, int dst_cpu)
 {
 	struct numa_group *ng = deref_curr_numa_group(p);
 	int dst_nid = cpu_to_node(dst_cpu);
 	int last_cpupid, this_cpupid;
+	int nodes;
 
 	this_cpupid = cpu_pid_to_cpupid(dst_cpu, current->pid);
 	last_cpupid = page_cpupid_xchg_last(page, this_cpupid);
+
+	/*
+	 * BPF hook point. We can inject new migration rules
+	 * from the user space.
+	 */
+	nodes = (src_nid << NODES_SHIFT) | dst_nid;
+	switch (bpf_should_numa_migrate(p, nodes)) {
+	case BPF_MIGRATE_ABORT:
+		return false; /* abort migration by BPF hook */
+	case BPF_MIGRATE_OVERRIDE:
+		return true; /* override migration by BPF hook */
+	default:
+		break; /* No BPF policy */
+	}
 
 	/*
 	 * Allow first faults or private faults to migrate immediately early in
@@ -2108,6 +2135,12 @@ static int task_numa_migrate(struct task_struct *p)
 	return ret;
 }
 
+noinline int bpf_disable_migrate_preferred(struct task_struct *p)
+{
+	return BPF_MIGRATE_DEFAULT;
+}
+ALLOW_ERROR_INJECTION(bpf_disable_migrate_preferred, ERRNO);
+
 /* Attempt to migrate a task to a CPU on the preferred node. */
 static void numa_migrate_preferred(struct task_struct *p)
 {
@@ -2123,6 +2156,10 @@ static void numa_migrate_preferred(struct task_struct *p)
 
 	/* Success if task is already running on preferred CPU */
 	if (task_node(p) == p->numa_preferred_nid)
+		return;
+
+	/* BPF hook to determin migration based on userspace */
+	if (bpf_disable_migrate_preferred(p))
 		return;
 
 	/* Otherwise, try migrate to a CPU on the preferred node */
