@@ -264,7 +264,7 @@ static void job_release(struct kref *ref)
 
 	for (i = 0; i < job->bo_count; i++)
 		if (job->bos[i])
-			drm_gem_object_put(&job->bos[i]->base);
+			drm_gem_object_put(&job->bos[i]->base.base);
 
 	dma_fence_put(job->done_fence);
 	ivpu_file_priv_put(&job->file_priv);
@@ -448,7 +448,7 @@ ivpu_job_prepare_bos_for_submit(struct drm_file *file, struct ivpu_job *job, u32
 	}
 
 	bo = job->bos[CMD_BUF_IDX];
-	if (!dma_resv_test_signaled(bo->base.resv, DMA_RESV_USAGE_READ)) {
+	if (!dma_resv_test_signaled(bo->base.base.resv, DMA_RESV_USAGE_READ)) {
 		ivpu_warn(vdev, "Buffer is already in use\n");
 		return -EBUSY;
 	}
@@ -468,7 +468,7 @@ ivpu_job_prepare_bos_for_submit(struct drm_file *file, struct ivpu_job *job, u32
 	}
 
 	for (i = 0; i < buf_count; i++) {
-		ret = dma_resv_reserve_fences(job->bos[i]->base.resv, 1);
+		ret = dma_resv_reserve_fences(job->bos[i]->base.base.resv, 1);
 		if (ret) {
 			ivpu_warn(vdev, "Failed to reserve fences: %d\n", ret);
 			goto unlock_reservations;
@@ -477,7 +477,7 @@ ivpu_job_prepare_bos_for_submit(struct drm_file *file, struct ivpu_job *job, u32
 
 	for (i = 0; i < buf_count; i++) {
 		usage = (i == CMD_BUF_IDX) ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_BOOKKEEP;
-		dma_resv_add_fence(job->bos[i]->base.resv, job->done_fence, usage);
+		dma_resv_add_fence(job->bos[i]->base.base.resv, job->done_fence, usage);
 	}
 
 unlock_reservations:

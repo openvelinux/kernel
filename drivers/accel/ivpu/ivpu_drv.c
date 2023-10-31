@@ -346,7 +346,7 @@ int ivpu_boot(struct ivpu_device *vdev)
 	int ret;
 
 	/* Update boot params located at first 4KB of FW memory */
-	ivpu_fw_boot_params_setup(vdev, vdev->fw->mem->kvaddr);
+	ivpu_fw_boot_params_setup(vdev, ivpu_bo_vaddr(vdev->fw->mem));
 
 	ret = ivpu_hw_boot_fw(vdev);
 	if (ret) {
@@ -398,7 +398,9 @@ static const struct drm_driver driver = {
 
 	.open = ivpu_open,
 	.postclose = ivpu_postclose,
-	.gem_prime_import = ivpu_gem_prime_import,
+
+	.gem_create_object = ivpu_gem_create_object,
+	.gem_prime_import_sg_table = drm_gem_shmem_prime_import_sg_table,
 
 #if defined(CONFIG_DEBUG_FS)
 	.debugfs_init = ivpu_debugfs_init,
