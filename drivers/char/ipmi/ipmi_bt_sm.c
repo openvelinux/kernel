@@ -88,6 +88,13 @@ struct si_sm_data {
 	enum bt_states	complete;	/* to divert the state machine */
 	long		BT_CAP_req2rsp;
 	int		BT_CAP_retries;	/* Recommended retries */
+
+#ifdef CONFIG_HISILICON_ERRATUM_162102203
+	/* Record sms_atn when sms_atn set && bt_state not in idle */
+	int		sms_atn_flag;
+	/* If true, need to store SMS_ATN bit */
+	bool	sms_atn_quirk;
+#endif
 };
 
 #define BT_CLR_WR_PTR	0x01	/* See IPMI 1.5 table 11.6.4 */
@@ -168,6 +175,32 @@ static char *status2txt(unsigned char status)
 }
 #define STATUS2TXT status2txt(status)
 
+#ifdef CONFIG_HISILICON_ERRATUM_162102203
+/*
+ * To confirm whether the SMS_ATN flag needs to be stored and get
+ * quirk through the method reported by the BIOS. Because in special
+ * cases SMS_ATN flag bits may be lost before being processed.
+ */
+static bool get_sms_atn_quirk(struct si_sm_io *io)
+{
+	acpi_handle handle;
+	acpi_status status;
+	unsigned long long tmp;
+
+	handle = ACPI_HANDLE(io->dev);
+	if (!handle)
+		return false;
+
+	status = acpi_evaluate_integer(handle, "SATN", NULL, &tmp);
+	if (ACPI_FAILURE(status))
+		return false;
+	else if (tmp != 1)
+		return false;
+
+	return true;
+}
+#endif
+
 /* called externally at insmod time, and internally on cleanup */
 
 static unsigned int bt_init_data(struct si_sm_data *bt, struct si_sm_io *io)
@@ -182,6 +215,12 @@ static unsigned int bt_init_data(struct si_sm_data *bt, struct si_sm_io *io)
 	bt->complete = BT_STATE_IDLE;	/* end here */
 	bt->BT_CAP_req2rsp = BT_NORMAL_TIMEOUT * USEC_PER_SEC;
 	bt->BT_CAP_retries = BT_NORMAL_RETRY_LIMIT;
+
+#ifdef CONFIG_HISILICON_ERRATUM_162102203
+	bt->sms_atn_quirk = get_sms_atn_quirk(io);
+	bt->sms_atn_flag = 0;
+#endif
+
 	return 3; /* We claim 3 bytes of space; ought to check SPMI table */
 }
 
@@ -283,6 +322,11 @@ static void reset_flags(struct si_sm_data *bt)
 		BT_CONTROL(BT_H_BUSY);	/* force clear */
 	BT_CONTROL(BT_CLR_WR_PTR);	/* always reset */
 	BT_CONTROL(BT_SMS_ATN);		/* always clear */
+
+#ifdef CONFIG_HISILICON_ERRATUM_162102203
+	bt->sms_atn_flag = 0;	/* Reset sms_atn_flag */
+#endif
+
 	BT_INTMASK_W(BT_BMC_HWRST);
 }
 
@@ -454,6 +498,36 @@ static enum si_sm_result bt_event(struct si_sm_data *bt, long time)
 	int i;
 
 	status = BT_STATUS;
+#ifdef CONFIG_HISILICON_ERRATUM_162102203
+	if (bt->sms_atn_quirk) {
+		/*
+		 * Identify whether the current BT_B2H_ATN is possibly due to
+		 * receiving an SMS message from BMC. If so, only clear the
+		 * incorrectly set BT_B2H_ATN without returning, and continue
+		 * to execute downwards.
+		 */
+		if ((bt->state < BT_STATE_WRITE_BYTES) && (status & BT_B2H_ATN) &&
+			(status & BT_SMS_ATN)) {
+			BT_CONTROL(BT_B2H_ATN); /* Clear it */
+			status &= ~BT_B2H_ATN; /* Refresh status */
+			if (bt_debug)
+				dev_dbg(bt->io->dev, "clear wrong B2H_ATN, BT: %s\n",
+					status2txt(BT_STATUS));
+		}
+
+		/*
+		 * Record the SMS_ATN by sms_atn_flag, because SMS_ATN would be clear
+		 * incorrectly by hardware when received a SMS message from BMC if
+		 * bt->state is not in IDLE state. And the BT_SMS_ATN will be lost.
+		 */
+		if ((bt->state >= BT_STATE_XACTION_START) && (status & BT_SMS_ATN))
+			bt->sms_atn_flag = 1;
+
+		/* Restore SMS_ATN */
+		if (bt->sms_atn_flag)
+			status |= BT_SMS_ATN;
+	}
+#endif
 	bt->nonzero_status |= status;
 	if ((bt_debug & BT_DEBUG_STATES) && (bt->state != last_printed)) {
 		dev_dbg(bt->io->dev, "BT: %s %s TO=%ld - %ld\n",
@@ -496,6 +570,10 @@ static enum si_sm_result bt_event(struct si_sm_data *bt, long time)
 	case BT_STATE_IDLE:
 		if (status & BT_SMS_ATN) {
 			BT_CONTROL(BT_SMS_ATN);	/* clear it */
+
+#ifdef CONFIG_HISILICON_ERRATUM_162102203
+			bt->sms_atn_flag = 0; /* Reset sms_atn_flag */
+#endif
 			return SI_SM_ATTN;
 		}
 
