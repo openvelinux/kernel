@@ -4484,6 +4484,28 @@ static int mem_cgroup_oom_control_write(struct cgroup_subsys_state *css,
 	return 0;
 }
 
+static int mem_cgroup_socket_urgent_read(struct seq_file *sf, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
+
+	seq_printf(sf, "%d\n", READ_ONCE(memcg->socket_urgent));
+
+	return 0;
+}
+
+static int mem_cgroup_socket_urgent_write(struct cgroup_subsys_state *css,
+	struct cftype *cft, u64 val)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	if (val != 0 && val != 1)
+		return -EINVAL;
+
+	WRITE_ONCE(memcg->socket_urgent, val);
+
+	return 0;
+}
+
 #ifdef CONFIG_CGROUP_WRITEBACK
 
 #include <trace/events/writeback.h>
@@ -4994,6 +5016,11 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.seq_show = mem_cgroup_oom_control_read,
 		.write_u64 = mem_cgroup_oom_control_write,
 		.private = MEMFILE_PRIVATE(_OOM_TYPE, OOM_CONTROL),
+	},
+	{
+		.name = "socket.urgent",
+		.seq_show = mem_cgroup_socket_urgent_read,
+		.write_u64 = mem_cgroup_socket_urgent_write,
 	},
 	{
 		.name = "pressure_level",
@@ -6538,6 +6565,35 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 	return nbytes;
 }
 
+static int memory_sock_urgent_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+	seq_printf(m, "%d\n", READ_ONCE(memcg->socket_urgent));
+
+	return 0;
+}
+
+static ssize_t memory_sock_urgent_write(struct kernfs_open_file *of,
+					char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	bool socket_urgent;
+	int ret;
+
+	buf = strstrip(buf);
+	if (!buf)
+		return -EINVAL;
+
+	ret = kstrtobool(buf, &socket_urgent);
+	if (ret)
+		return ret;
+
+	WRITE_ONCE(memcg->socket_urgent, socket_urgent);
+
+	return nbytes;
+}
+
 static struct cftype memory_files[] = {
 	{
 		.name = "current",
@@ -6605,6 +6661,12 @@ static struct cftype memory_files[] = {
 		.name = "reclaim",
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
+	},
+	{
+		.name = "socket.urgent",
+		.flags = CFTYPE_NOT_ON_ROOT | CFTYPE_NS_DELEGATABLE,
+		.seq_show = memory_sock_urgent_show,
+		.write = memory_sock_urgent_write,
 	},
 	{ }	/* terminate */
 };
