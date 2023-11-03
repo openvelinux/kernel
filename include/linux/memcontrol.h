@@ -317,6 +317,13 @@ struct mem_cgroup {
 	 */
 	unsigned long		socket_pressure;
 
+	/*
+	 * Urgent sockets can escape from the contrains under global memory
+	 * pressure/limit iff !socket_pressure. So this two variables are
+	 * always used together, make sure they are in same cacheline.
+	 */
+	bool			socket_urgent;
+
 	/* Legacy tcp memory accounting */
 	bool			tcpmem_active;
 	int			tcpmem_pressure;
@@ -1630,13 +1637,17 @@ extern struct static_key_false memcg_sockets_enabled_key;
 #define mem_cgroup_sockets_enabled static_branch_unlikely(&memcg_sockets_enabled_key)
 void mem_cgroup_sk_alloc(struct sock *sk);
 void mem_cgroup_sk_free(struct sock *sk);
-static inline bool mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg)
+
+static inline bool
+mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg, bool *urgent)
 {
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys))
 		return !!memcg->tcpmem_pressure;
 	do {
 		if (time_before(jiffies, memcg->socket_pressure))
 			return true;
+		if (urgent && !*urgent && memcg->socket_urgent)
+			*urgent = true;
 	} while ((memcg = parent_mem_cgroup(memcg)));
 	return false;
 }
@@ -1649,7 +1660,9 @@ void reparent_shrinker_deferred(struct mem_cgroup *memcg);
 #define mem_cgroup_sockets_enabled 0
 static inline void mem_cgroup_sk_alloc(struct sock *sk) { };
 static inline void mem_cgroup_sk_free(struct sock *sk) { };
-static inline bool mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg)
+
+static inline bool
+mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg, bool *urgent)
 {
 	return false;
 }
