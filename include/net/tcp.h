@@ -261,9 +261,14 @@ extern unsigned long tcp_memory_pressure;
 /* optimized version of sk_under_memory_pressure() for TCP sockets */
 static inline bool tcp_under_memory_pressure(const struct sock *sk)
 {
-	if (mem_cgroup_sockets_enabled && sk->sk_memcg &&
-	    mem_cgroup_under_socket_pressure(sk->sk_memcg))
-		return true;
+	if (mem_cgroup_sockets_enabled && sk->sk_memcg) {
+		bool urgent = false;
+
+		if (mem_cgroup_under_socket_pressure(sk->sk_memcg, &urgent))
+			return true;
+		if (urgent)
+			return false;
+	}
 
 	return READ_ONCE(tcp_memory_pressure);
 }
@@ -286,9 +291,18 @@ static inline bool between(__u32 seq1, __u32 seq2, __u32 seq3)
 
 static inline bool tcp_out_of_memory(struct sock *sk)
 {
-	if (sk->sk_wmem_queued > SOCK_MIN_SNDBUF &&
-	    sk_memory_allocated(sk) > sk_prot_mem_limits(sk, 2))
-		return true;
+	if (sk->sk_wmem_queued > SOCK_MIN_SNDBUF) {
+		bool urgent = false;
+
+		if (mem_cgroup_sockets_enabled && sk->sk_memcg &&
+		    !mem_cgroup_under_socket_pressure(sk->sk_memcg, &urgent) &&
+		    urgent)
+			return false;
+
+		if (sk_memory_allocated(sk) > sk_prot_mem_limits(sk, 2))
+			return true;
+	}
+
 	return false;
 }
 
