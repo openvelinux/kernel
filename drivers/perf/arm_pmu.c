@@ -313,6 +313,11 @@ armpmu_del(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int idx = hwc->idx;
 
+	WARN_ON_ONCE(!hw_events->brbe_users);
+	hw_events->brbe_users--;
+	if (!hw_events->brbe_users)
+		hw_events->brbe_context = NULL;
+
 	armpmu_stop(event, PERF_EF_UPDATE);
 	hw_events->events[idx] = NULL;
 	armpmu->clear_event_idx(hw_events, event);
@@ -328,6 +333,13 @@ armpmu_add(struct perf_event *event, int flags)
 	struct pmu_hw_events *hw_events = this_cpu_ptr(armpmu->hw_events);
 	struct hw_perf_event *hwc = &event->hw;
 	int idx;
+
+	if (event->ctx->task && hw_events->brbe_context != event->ctx) {
+		hw_events->brbe_context = event->ctx;
+		if (armpmu->branch_reset)
+			armpmu->branch_reset();
+	}
+	hw_events->brbe_users++;
 
 	/* An event following a process won't be stopped earlier */
 	if (!cpumask_test_cpu(smp_processor_id(), &armpmu->supported_cpus))
@@ -508,8 +520,11 @@ static int armpmu_event_init(struct perf_event *event)
 		!cpumask_test_cpu(event->cpu, &armpmu->supported_cpus))
 		return -ENOENT;
 
-	/* does not support taken branch sampling */
-	if (has_branch_stack(event))
+	/*
+	 * Branch stack sampling events are allowed
+	 * only on PMU which has required support.
+	 */
+	if (has_branch_stack(event) && !armpmu->has_branch_stack)
 		return -EOPNOTSUPP;
 
 	if (armpmu->map_event(event) == -ENOENT)
