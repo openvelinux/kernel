@@ -334,6 +334,12 @@ armpmu_add(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int idx;
 
+	/*
+	 * Reset branch records buffer if a new task event gets
+	 * scheduled on a PMU which might have existing records.
+	 * Otherwise older branch records present in the buffer
+	 * might leak into the new task event.
+	 */
 	if (event->ctx->task && hw_events->brbe_context != event->ctx) {
 		hw_events->brbe_context = event->ctx;
 		if (armpmu->branch_reset)
