@@ -147,6 +147,17 @@ config ARM_DMC620_PMU
 	  Support for PMU events monitoring on the ARM DMC-620 memory
 	  controller.
 
+config ARM64_BRBE
+	bool "Enable support for Branch Record Buffer Extension (BRBE)"
+	depends on PERF_EVENTS && ARM64 && ARM_PMU
+	default y
+	help
+	  Enable perf support for Branch Record Buffer Extension (BRBE) which
+	  records all branches taken in an execution path. This supports some
+	  branch types and privilege based filtering. It captures additional
+	  relevant information such as cycle count, misprediction and branch
+	  type, branch privilege level etc.
+
 source "drivers/perf/hisilicon/Kconfig"
 
 source "drivers/perf/arm_cspmu/Kconfig"
