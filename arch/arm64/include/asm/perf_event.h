@@ -28,7 +28,18 @@ extern unsigned long perf_misc_flags(struct pt_regs *regs);
 	(regs)->pstate = PSR_MODE_EL1h;	\
 }
 
-
+#ifdef CONFIG_ARM64_BRBE
+void armv8pmu_branch_reset(void);
+void armv8pmu_branch_probe(struct arm_pmu *arm_pmu);
+bool armv8pmu_branch_attr_valid(struct perf_event *event);
+void armv8pmu_branch_enable(struct perf_event *event);
+void armv8pmu_branch_disable(struct perf_event *event);
+void armv8pmu_branch_read(struct pmu_hw_events *cpuc,
+			  struct perf_event *event);
+void armv8pmu_branch_save(struct arm_pmu *arm_pmu, void *ctx);
+int armv8pmu_task_ctx_cache_alloc(struct arm_pmu *arm_pmu);
+void armv8pmu_task_ctx_cache_free(struct arm_pmu *arm_pmu);
+#else  /* !CONFIG_ARM64_BRBE */
 static inline void armv8pmu_branch_reset(void)
 {
 }
@@ -68,4 +79,5 @@ static inline void armv8pmu_task_ctx_cache_free(struct arm_pmu *arm_pmu)
 {
 }
 
+#endif /* CONFIG_ARM64_BRBE */
 #endif

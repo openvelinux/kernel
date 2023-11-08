@@ -186,6 +186,52 @@
 	msr	spsr_el2, x0
 .endm
 
+#ifdef CONFIG_ARM64_BRBE
+/*
+ * Enable BRBE cycle count
+ *
+ * BRBE requires both BRBCR_EL1.CC and BRBCR_EL2.CC fields, be set
+ * for the cycle counts to be available in BRBINF<N>_EL1.CC during
+ * branch record processing after a PMU interrupt. This enables CC
+ * field on both these registers while still executing inside EL2.
+ *
+ * BRBE driver would still be able to toggle branch records cycle
+ * count support via BRBCR_EL1.CC field regardless of whether the
+ * kernel ends up executing in EL1 or EL2.
+ */
+.macro __init_el2_brbe
+	mrs	x1, id_aa64dfr0_el1
+	ubfx	x1, x1, #ID_AA64DFR0_EL1_BRBE_SHIFT, #4
+	cbz	x1, .Lskip_brbe_cc_\@
+
+	mrs_s	x0, SYS_BRBCR_EL2
+	orr	x0, x0, BRBCR_ELx_CC
+	msr_s	SYS_BRBCR_EL2, x0
+
+	/*
+	 * Accessing BRBCR_EL1 register here does not require
+	 * BRBCR_EL12 addressing mode as HCR_EL2.E2H is still
+	 * clear. Regardless, check for HCR_E2H and be on the
+	 * safer side.
+	 */
+	mrs	x1, hcr_el2
+	and	x1, x1, #HCR_E2H
+	cbz	x1, .Lset_brbe_el1_direct_\@
+
+	mrs_s	x0, SYS_BRBCR_EL12
+	orr	x0, x0, BRBCR_ELx_CC
+	msr_s	SYS_BRBCR_EL12, x0
+	b	.Lskip_brbe_cc_\@
+
+.Lset_brbe_el1_direct_\@:
+	mrs_s	x0, SYS_BRBCR_EL1
+	orr	x0, x0, BRBCR_ELx_CC
+	msr_s	SYS_BRBCR_EL1, x0
+.Lskip_brbe_cc_\@:
+.endm
+
+#endif
+
 /**
  * Initialize EL2 registers to sane values. This should be called early on all
  * cores that were booted in EL2. Note that everything gets initialised as
@@ -207,6 +253,9 @@
 	__init_el2_nvhe_cptr
 	__init_el2_nvhe_sve
 	__init_el2_fgt
+#ifdef CONFIG_ARM64_BRBE
+	__init_el2_brbe
+#endif
 	__init_el2_nvhe_prepare_eret
 .endm
 
