@@ -145,6 +145,109 @@
 #define SYS_DBGDTRTX_EL0		sys_reg(2, 3, 0, 5, 0)
 #define SYS_DBGVCR32_EL2		sys_reg(2, 4, 0, 7, 0)
 
+#define __SYS_BRBINF(n)			sys_reg(2, 1, 8, ((n) & 0xf), ((((n) & 0x10) >> 2) + 0))
+#define __SYS_BRBSRC(n)			sys_reg(2, 1, 8, ((n) & 0xf), ((((n) & 0x10) >> 2) + 1))
+#define __SYS_BRBTGT(n)			sys_reg(2, 1, 8, ((n) & 0xf), ((((n) & 0x10) >> 2) + 2))
+
+#define SYS_BRBINF0_EL1			__SYS_BRBINF(0)
+#define SYS_BRBINF1_EL1			__SYS_BRBINF(1)
+#define SYS_BRBINF2_EL1			__SYS_BRBINF(2)
+#define SYS_BRBINF3_EL1			__SYS_BRBINF(3)
+#define SYS_BRBINF4_EL1			__SYS_BRBINF(4)
+#define SYS_BRBINF5_EL1			__SYS_BRBINF(5)
+#define SYS_BRBINF6_EL1			__SYS_BRBINF(6)
+#define SYS_BRBINF7_EL1			__SYS_BRBINF(7)
+#define SYS_BRBINF8_EL1			__SYS_BRBINF(8)
+#define SYS_BRBINF9_EL1			__SYS_BRBINF(9)
+#define SYS_BRBINF10_EL1		__SYS_BRBINF(10)
+#define SYS_BRBINF11_EL1		__SYS_BRBINF(11)
+#define SYS_BRBINF12_EL1		__SYS_BRBINF(12)
+#define SYS_BRBINF13_EL1		__SYS_BRBINF(13)
+#define SYS_BRBINF14_EL1		__SYS_BRBINF(14)
+#define SYS_BRBINF15_EL1		__SYS_BRBINF(15)
+#define SYS_BRBINF16_EL1		__SYS_BRBINF(16)
+#define SYS_BRBINF17_EL1		__SYS_BRBINF(17)
+#define SYS_BRBINF18_EL1		__SYS_BRBINF(18)
+#define SYS_BRBINF19_EL1		__SYS_BRBINF(19)
+#define SYS_BRBINF20_EL1		__SYS_BRBINF(20)
+#define SYS_BRBINF21_EL1		__SYS_BRBINF(21)
+#define SYS_BRBINF22_EL1		__SYS_BRBINF(22)
+#define SYS_BRBINF23_EL1		__SYS_BRBINF(23)
+#define SYS_BRBINF24_EL1		__SYS_BRBINF(24)
+#define SYS_BRBINF25_EL1		__SYS_BRBINF(25)
+#define SYS_BRBINF26_EL1		__SYS_BRBINF(26)
+#define SYS_BRBINF27_EL1		__SYS_BRBINF(27)
+#define SYS_BRBINF28_EL1		__SYS_BRBINF(28)
+#define SYS_BRBINF29_EL1		__SYS_BRBINF(29)
+#define SYS_BRBINF30_EL1		__SYS_BRBINF(30)
+#define SYS_BRBINF31_EL1		__SYS_BRBINF(31)
+
+#define SYS_BRBSRC0_EL1			__SYS_BRBSRC(0)
+#define SYS_BRBSRC1_EL1			__SYS_BRBSRC(1)
+#define SYS_BRBSRC2_EL1			__SYS_BRBSRC(2)
+#define SYS_BRBSRC3_EL1			__SYS_BRBSRC(3)
+#define SYS_BRBSRC4_EL1			__SYS_BRBSRC(4)
+#define SYS_BRBSRC5_EL1			__SYS_BRBSRC(5)
+#define SYS_BRBSRC6_EL1			__SYS_BRBSRC(6)
+#define SYS_BRBSRC7_EL1			__SYS_BRBSRC(7)
+#define SYS_BRBSRC8_EL1			__SYS_BRBSRC(8)
+#define SYS_BRBSRC9_EL1			__SYS_BRBSRC(9)
+#define SYS_BRBSRC10_EL1		__SYS_BRBSRC(10)
+#define SYS_BRBSRC11_EL1		__SYS_BRBSRC(11)
+#define SYS_BRBSRC12_EL1		__SYS_BRBSRC(12)
+#define SYS_BRBSRC13_EL1		__SYS_BRBSRC(13)
+#define SYS_BRBSRC14_EL1		__SYS_BRBSRC(14)
+#define SYS_BRBSRC15_EL1		__SYS_BRBSRC(15)
+#define SYS_BRBSRC16_EL1		__SYS_BRBSRC(16)
+#define SYS_BRBSRC17_EL1		__SYS_BRBSRC(17)
+#define SYS_BRBSRC18_EL1		__SYS_BRBSRC(18)
+#define SYS_BRBSRC19_EL1		__SYS_BRBSRC(19)
+#define SYS_BRBSRC20_EL1		__SYS_BRBSRC(20)
+#define SYS_BRBSRC21_EL1		__SYS_BRBSRC(21)
+#define SYS_BRBSRC22_EL1		__SYS_BRBSRC(22)
+#define SYS_BRBSRC23_EL1		__SYS_BRBSRC(23)
+#define SYS_BRBSRC24_EL1		__SYS_BRBSRC(24)
+#define SYS_BRBSRC25_EL1		__SYS_BRBSRC(25)
+#define SYS_BRBSRC26_EL1		__SYS_BRBSRC(26)
+#define SYS_BRBSRC27_EL1		__SYS_BRBSRC(27)
+#define SYS_BRBSRC28_EL1		__SYS_BRBSRC(28)
+#define SYS_BRBSRC29_EL1		__SYS_BRBSRC(29)
+#define SYS_BRBSRC30_EL1		__SYS_BRBSRC(30)
+#define SYS_BRBSRC31_EL1		__SYS_BRBSRC(31)
+
+#define SYS_BRBTGT0_EL1			__SYS_BRBTGT(0)
+#define SYS_BRBTGT1_EL1			__SYS_BRBTGT(1)
+#define SYS_BRBTGT2_EL1			__SYS_BRBTGT(2)
+#define SYS_BRBTGT3_EL1			__SYS_BRBTGT(3)
+#define SYS_BRBTGT4_EL1			__SYS_BRBTGT(4)
+#define SYS_BRBTGT5_EL1			__SYS_BRBTGT(5)
+#define SYS_BRBTGT6_EL1			__SYS_BRBTGT(6)
+#define SYS_BRBTGT7_EL1			__SYS_BRBTGT(7)
+#define SYS_BRBTGT8_EL1			__SYS_BRBTGT(8)
+#define SYS_BRBTGT9_EL1			__SYS_BRBTGT(9)
+#define SYS_BRBTGT10_EL1		__SYS_BRBTGT(10)
+#define SYS_BRBTGT11_EL1		__SYS_BRBTGT(11)
+#define SYS_BRBTGT12_EL1		__SYS_BRBTGT(12)
+#define SYS_BRBTGT13_EL1		__SYS_BRBTGT(13)
+#define SYS_BRBTGT14_EL1		__SYS_BRBTGT(14)
+#define SYS_BRBTGT15_EL1		__SYS_BRBTGT(15)
+#define SYS_BRBTGT16_EL1		__SYS_BRBTGT(16)
+#define SYS_BRBTGT17_EL1		__SYS_BRBTGT(17)
+#define SYS_BRBTGT18_EL1		__SYS_BRBTGT(18)
+#define SYS_BRBTGT19_EL1		__SYS_BRBTGT(19)
+#define SYS_BRBTGT20_EL1		__SYS_BRBTGT(20)
+#define SYS_BRBTGT21_EL1		__SYS_BRBTGT(21)
+#define SYS_BRBTGT22_EL1		__SYS_BRBTGT(22)
+#define SYS_BRBTGT23_EL1		__SYS_BRBTGT(23)
+#define SYS_BRBTGT24_EL1		__SYS_BRBTGT(24)
+#define SYS_BRBTGT25_EL1		__SYS_BRBTGT(25)
+#define SYS_BRBTGT26_EL1		__SYS_BRBTGT(26)
+#define SYS_BRBTGT27_EL1		__SYS_BRBTGT(27)
+#define SYS_BRBTGT28_EL1		__SYS_BRBTGT(28)
+#define SYS_BRBTGT29_EL1		__SYS_BRBTGT(29)
+#define SYS_BRBTGT30_EL1		__SYS_BRBTGT(30)
+#define SYS_BRBTGT31_EL1		__SYS_BRBTGT(31)
+
 #define SYS_MIDR_EL1			sys_reg(3, 0, 0, 0, 0)
 #define SYS_MPIDR_EL1			sys_reg(3, 0, 0, 0, 5)
 #define SYS_REVIDR_EL1			sys_reg(3, 0, 0, 0, 6)
@@ -475,6 +578,396 @@
 #define SYS_TPIDRRO_EL0			sys_reg(3, 3, 13, 0, 3)
 
 #define SYS_SCXTNUM_EL0			sys_reg(3, 3, 13, 0, 7)
+
+/*** Branch Record Buffer Extension ***/
+/* ID registers */
+#define BRBINFx_EL1_CCU                                 GENMASK(46, 46)
+#define BRBINFx_EL1_CCU_MASK                            GENMASK(46, 46)
+#define BRBINFx_EL1_CCU_SHIFT                           46
+#define BRBINFx_EL1_CCU_WIDTH                           1
+
+#define BRBINFx_EL1_CC                                  GENMASK(45, 32)
+#define BRBINFx_EL1_CC_MASK                             GENMASK(45, 32)
+#define BRBINFx_EL1_CC_SHIFT                            32
+#define BRBINFx_EL1_CC_WIDTH                            14
+
+#define BRBINFx_EL1_LASTFAILED                          GENMASK(17, 17)
+#define BRBINFx_EL1_LASTFAILED_MASK                     GENMASK(17, 17)
+#define BRBINFx_EL1_LASTFAILED_SHIFT                    17
+#define BRBINFx_EL1_LASTFAILED_WIDTH                    1
+
+#define BRBINFx_EL1_T                                   GENMASK(16, 16)
+#define BRBINFx_EL1_T_MASK                              GENMASK(16, 16)
+#define BRBINFx_EL1_T_SHIFT                             16
+#define BRBINFx_EL1_T_WIDTH                             1
+
+#define BRBINFx_EL1_TYPE                                GENMASK(13, 8)
+#define BRBINFx_EL1_TYPE_MASK                           GENMASK(13, 8)
+#define BRBINFx_EL1_TYPE_SHIFT                          8
+#define BRBINFx_EL1_TYPE_WIDTH                          6
+#define BRBINFx_EL1_TYPE_UNCOND_DIRECT                  UL(0b000000)
+#define BRBINFx_EL1_TYPE_INDIRECT                       UL(0b000001)
+#define BRBINFx_EL1_TYPE_DIRECT_LINK                    UL(0b000010)
+#define BRBINFx_EL1_TYPE_INDIRECT_LINK                  UL(0b000011)
+#define BRBINFx_EL1_TYPE_RET                            UL(0b000101)
+#define BRBINFx_EL1_TYPE_ERET                           UL(0b000111)
+#define BRBINFx_EL1_TYPE_COND_DIRECT                    UL(0b001000)
+#define BRBINFx_EL1_TYPE_DEBUG_HALT                     UL(0b100001)
+#define BRBINFx_EL1_TYPE_CALL                           UL(0b100010)
+#define BRBINFx_EL1_TYPE_TRAP                           UL(0b100011)
+#define BRBINFx_EL1_TYPE_SERROR                         UL(0b100100)
+#define BRBINFx_EL1_TYPE_INSN_DEBUG                     UL(0b100110)
+#define BRBINFx_EL1_TYPE_DATA_DEBUG                     UL(0b100111)
+#define BRBINFx_EL1_TYPE_ALIGN_FAULT                    UL(0b101010)
+#define BRBINFx_EL1_TYPE_INSN_FAULT                     UL(0b101011)
+#define BRBINFx_EL1_TYPE_DATA_FAULT                     UL(0b101100)
+#define BRBINFx_EL1_TYPE_IRQ                            UL(0b101110)
+#define BRBINFx_EL1_TYPE_FIQ                            UL(0b101111)
+#define BRBINFx_EL1_TYPE_DEBUG_EXIT                     UL(0b111001)
+
+#define BRBINFx_EL1_EL                                  GENMASK(7, 6)
+#define BRBINFx_EL1_EL_MASK                             GENMASK(7, 6)
+#define BRBINFx_EL1_EL_SHIFT                            6
+#define BRBINFx_EL1_EL_WIDTH                            2
+#define BRBINFx_EL1_EL_EL0                              UL(0b00)
+#define BRBINFx_EL1_EL_EL1                              UL(0b01)
+#define BRBINFx_EL1_EL_EL2                              UL(0b10)
+#define BRBINFx_EL1_EL_EL3                              UL(0b11)
+
+#define BRBINFx_EL1_MPRED                               GENMASK(5, 5)
+#define BRBINFx_EL1_MPRED_MASK                          GENMASK(5, 5)
+#define BRBINFx_EL1_MPRED_SHIFT                         5
+#define BRBINFx_EL1_MPRED_WIDTH                         1
+
+#define BRBINFx_EL1_VALID                               GENMASK(1, 0)
+#define BRBINFx_EL1_VALID_MASK                          GENMASK(1, 0)
+#define BRBINFx_EL1_VALID_SHIFT                         0
+#define BRBINFx_EL1_VALID_WIDTH                         2
+#define BRBINFx_EL1_VALID_NONE                          UL(0b00)
+#define BRBINFx_EL1_VALID_TARGET                        UL(0b01)
+#define BRBINFx_EL1_VALID_SOURCE                        UL(0b10)
+#define BRBINFx_EL1_VALID_FULL                          UL(0b11)
+
+#define BRBINFx_EL1_RES0                                (UL(0) | GENMASK_ULL(63, 47) | \
+								 GENMASK_ULL(31, 18) | \
+								 GENMASK_ULL(15, 14) | \
+								 GENMASK_ULL(4, 2))
+#define BRBINFx_EL1_RES1                                (UL(0))
+#define BRBINFx_EL1_UNKN                                (UL(0))
+
+#define BRBCR_ELx_EXCEPTION                             GENMASK(23, 23)
+#define BRBCR_ELx_EXCEPTION_MASK                        GENMASK(23, 23)
+#define BRBCR_ELx_EXCEPTION_SHIFT                       23
+#define BRBCR_ELx_EXCEPTION_WIDTH                       1
+
+#define BRBCR_ELx_ERTN                                  GENMASK(22, 22)
+#define BRBCR_ELx_ERTN_MASK                             GENMASK(22, 22)
+#define BRBCR_ELx_ERTN_SHIFT                            22
+#define BRBCR_ELx_ERTN_WIDTH                            1
+
+#define BRBCR_ELx_FZP                                   GENMASK(8, 8)
+#define BRBCR_ELx_FZP_MASK                              GENMASK(8, 8)
+#define BRBCR_ELx_FZP_SHIFT                             8
+#define BRBCR_ELx_FZP_WIDTH                             1
+
+#define BRBCR_ELx_TS                                    GENMASK(6, 5)
+#define BRBCR_ELx_TS_MASK                               GENMASK(6, 5)
+#define BRBCR_ELx_TS_SHIFT                              5
+#define BRBCR_ELx_TS_WIDTH                              2
+#define BRBCR_ELx_TS_VIRTUAL                            UL(0b01)
+#define BRBCR_ELx_TS_GUEST_PHYSICAL                     UL(0b10)
+#define BRBCR_ELx_TS_PHYSICAL                           UL(0b11)
+
+#define BRBCR_ELx_MPRED                                 GENMASK(4, 4)
+#define BRBCR_ELx_MPRED_MASK                            GENMASK(4, 4)
+#define BRBCR_ELx_MPRED_SHIFT                           4
+#define BRBCR_ELx_MPRED_WIDTH                           1
+
+#define BRBCR_ELx_CC                                    GENMASK(3, 3)
+#define BRBCR_ELx_CC_MASK                               GENMASK(3, 3)
+#define BRBCR_ELx_CC_SHIFT                              3
+#define BRBCR_ELx_CC_WIDTH                              1
+
+#define BRBCR_ELx_ExBRE                                 GENMASK(1, 1)
+#define BRBCR_ELx_ExBRE_MASK                            GENMASK(1, 1)
+#define BRBCR_ELx_ExBRE_SHIFT                           1
+#define BRBCR_ELx_ExBRE_WIDTH                           1
+
+#define BRBCR_ELx_E0BRE                                 GENMASK(0, 0)
+#define BRBCR_ELx_E0BRE_MASK                            GENMASK(0, 0)
+#define BRBCR_ELx_E0BRE_SHIFT                           0
+#define BRBCR_ELx_E0BRE_WIDTH                           1
+
+#define BRBCR_ELx_RES0                                  (UL(0) | GENMASK_ULL(63, 24) | \
+								 GENMASK_ULL(21, 9)  | \
+								 GENMASK_ULL(7, 7)   | \
+								 GENMASK_ULL(2, 2))
+#define BRBCR_ELx_RES1                                  (UL(0))
+#define BRBCR_ELx_UNKN                                  (UL(0))
+
+#define REG_BRBCR_EL2                                   S2_4_C9_C0_0
+#define SYS_BRBCR_EL2                                   sys_reg(2, 4, 9, 0, 0)
+#define SYS_BRBCR_EL2_Op0                               2
+#define SYS_BRBCR_EL2_Op1                               4
+#define SYS_BRBCR_EL2_CRn                               9
+#define SYS_BRBCR_EL2_CRm                               0
+#define SYS_BRBCR_EL2_Op2                               0
+
+/* For BRBCR_EL2 fields see BRBCR_ELx */
+
+#define REG_BRBCR_EL1                                   S2_1_C9_C0_0
+#define SYS_BRBCR_EL1                                   sys_reg(2, 1, 9, 0, 0)
+#define SYS_BRBCR_EL1_Op0                               2
+#define SYS_BRBCR_EL1_Op1                               1
+#define SYS_BRBCR_EL1_CRn                               9
+#define SYS_BRBCR_EL1_CRm                               0
+#define SYS_BRBCR_EL1_Op2                               0
+
+/* For BRBCR_EL1 fields see BRBCR_ELx */
+
+#define REG_BRBCR_EL12                                  S2_5_C9_C0_0
+#define SYS_BRBCR_EL12                                  sys_reg(2, 5, 9, 0, 0)
+#define SYS_BRBCR_EL12_Op0                              2
+#define SYS_BRBCR_EL12_Op1                              5
+#define SYS_BRBCR_EL12_CRn                              9
+#define SYS_BRBCR_EL12_CRm                              0
+#define SYS_BRBCR_EL12_Op2                              0
+
+/* For BRBCR_EL12 fields see BRBCR_ELx */
+
+#define REG_BRBFCR_EL1                                  S2_1_C9_C0_1
+#define SYS_BRBFCR_EL1                                  sys_reg(2, 1, 9, 0, 1)
+#define SYS_BRBFCR_EL1_Op0                              2
+#define SYS_BRBFCR_EL1_Op1                              1
+#define SYS_BRBFCR_EL1_CRn                              9
+#define SYS_BRBFCR_EL1_CRm                              0
+#define SYS_BRBFCR_EL1_Op2                              1
+
+#define BRBFCR_EL1_BANK                                 GENMASK(29, 28)
+#define BRBFCR_EL1_BANK_MASK                            GENMASK(29, 28)
+#define BRBFCR_EL1_BANK_SHIFT                           28
+#define BRBFCR_EL1_BANK_WIDTH                           2
+#define BRBFCR_EL1_BANK_FIRST                           UL(0b0)
+#define BRBFCR_EL1_BANK_SECOND                          UL(0b1)
+
+#define BRBFCR_EL1_CONDDIR                              GENMASK(22, 22)
+#define BRBFCR_EL1_CONDDIR_MASK                         GENMASK(22, 22)
+#define BRBFCR_EL1_CONDDIR_SHIFT                        22
+#define BRBFCR_EL1_CONDDIR_WIDTH                        1
+
+#define BRBFCR_EL1_DIRCALL                              GENMASK(21, 21)
+#define BRBFCR_EL1_DIRCALL_MASK                         GENMASK(21, 21)
+#define BRBFCR_EL1_DIRCALL_SHIFT                        21
+#define BRBFCR_EL1_DIRCALL_WIDTH                        1
+
+#define BRBFCR_EL1_INDCALL                              GENMASK(20, 20)
+#define BRBFCR_EL1_INDCALL_MASK                         GENMASK(20, 20)
+#define BRBFCR_EL1_INDCALL_SHIFT                        20
+#define BRBFCR_EL1_INDCALL_WIDTH                        1
+
+#define BRBFCR_EL1_RTN                                  GENMASK(19, 19)
+#define BRBFCR_EL1_RTN_MASK                             GENMASK(19, 19)
+#define BRBFCR_EL1_RTN_SHIFT                            19
+#define BRBFCR_EL1_RTN_WIDTH                            1
+
+#define BRBFCR_EL1_INDIRECT                             GENMASK(18, 18)
+#define BRBFCR_EL1_INDIRECT_MASK                        GENMASK(18, 18)
+#define BRBFCR_EL1_INDIRECT_SHIFT                       18
+#define BRBFCR_EL1_INDIRECT_WIDTH                       1
+
+#define BRBFCR_EL1_DIRECT                               GENMASK(17, 17)
+#define BRBFCR_EL1_DIRECT_MASK                          GENMASK(17, 17)
+#define BRBFCR_EL1_DIRECT_SHIFT                         17
+#define BRBFCR_EL1_DIRECT_WIDTH                         1
+
+#define BRBFCR_EL1_EnI                                  GENMASK(16, 16)
+#define BRBFCR_EL1_EnI_MASK                             GENMASK(16, 16)
+#define BRBFCR_EL1_EnI_SHIFT                            16
+#define BRBFCR_EL1_EnI_WIDTH                            1
+
+#define BRBFCR_EL1_PAUSED                               GENMASK(7, 7)
+#define BRBFCR_EL1_PAUSED_MASK                          GENMASK(7, 7)
+#define BRBFCR_EL1_PAUSED_SHIFT                         7
+#define BRBFCR_EL1_PAUSED_WIDTH                         1
+
+#define BRBFCR_EL1_LASTFAILED                           GENMASK(6, 6)
+#define BRBFCR_EL1_LASTFAILED_MASK                      GENMASK(6, 6)
+#define BRBFCR_EL1_LASTFAILED_SHIFT                     6
+#define BRBFCR_EL1_LASTFAILED_WIDTH                     1
+
+#define BRBFCR_EL1_RES0                                 (UL(0) | GENMASK_ULL(63, 30) | \
+								 GENMASK_ULL(27, 23) | \
+								 GENMASK_ULL(15, 8) | \
+								 GENMASK_ULL(5, 0))
+#define BRBFCR_EL1_RES1                                 (UL(0))
+#define BRBFCR_EL1_UNKN                                 (UL(0))
+
+#define REG_BRBTS_EL1                                   S2_1_C9_C0_2
+#define SYS_BRBTS_EL1                                   sys_reg(2, 1, 9, 0, 2)
+#define SYS_BRBTS_EL1_Op0                               2
+#define SYS_BRBTS_EL1_Op1                               1
+#define SYS_BRBTS_EL1_CRn                               9
+#define SYS_BRBTS_EL1_CRm                               0
+#define SYS_BRBTS_EL1_Op2                               2
+
+#define BRBTS_EL1_TS                                    GENMASK(63, 0)
+#define BRBTS_EL1_TS_MASK                               GENMASK(63, 0)
+#define BRBTS_EL1_TS_SHIFT                              0
+#define BRBTS_EL1_TS_WIDTH                              64
+
+#define BRBTS_EL1_RES0                                  (UL(0))
+#define BRBTS_EL1_RES1                                  (UL(0))
+#define BRBTS_EL1_UNKN                                  (UL(0))
+
+#define REG_BRBINFINJ_EL1                               S2_1_C9_C1_0
+#define SYS_BRBINFINJ_EL1                               sys_reg(2, 1, 9, 1, 0)
+#define SYS_BRBINFINJ_EL1_Op0                           2
+#define SYS_BRBINFINJ_EL1_Op1                           1
+#define SYS_BRBINFINJ_EL1_CRn                           9
+#define SYS_BRBINFINJ_EL1_CRm                           1
+#define SYS_BRBINFINJ_EL1_Op2                           0
+
+#define BRBINFINJ_EL1_CCU                               GENMASK(46, 46)
+#define BRBINFINJ_EL1_CCU_MASK                          GENMASK(46, 46)
+#define BRBINFINJ_EL1_CCU_SHIFT                         46
+#define BRBINFINJ_EL1_CCU_WIDTH                         1
+
+#define BRBINFINJ_EL1_CC                                GENMASK(45, 32)
+#define BRBINFINJ_EL1_CC_MASK                           GENMASK(45, 32)
+#define BRBINFINJ_EL1_CC_SHIFT                          32
+#define BRBINFINJ_EL1_CC_WIDTH                          14
+
+#define BRBINFINJ_EL1_LASTFAILED                        GENMASK(17, 17)
+#define BRBINFINJ_EL1_LASTFAILED_MASK                   GENMASK(17, 17)
+#define BRBINFINJ_EL1_LASTFAILED_SHIFT                  17
+#define BRBINFINJ_EL1_LASTFAILED_WIDTH                  1
+
+#define BRBINFINJ_EL1_T                                 GENMASK(16, 16)
+#define BRBINFINJ_EL1_T_MASK                            GENMASK(16, 16)
+#define BRBINFINJ_EL1_T_SHIFT                           16
+#define BRBINFINJ_EL1_T_WIDTH                           1
+
+#define BRBINFINJ_EL1_TYPE                              GENMASK(13, 8)
+#define BRBINFINJ_EL1_TYPE_MASK                         GENMASK(13, 8)
+#define BRBINFINJ_EL1_TYPE_SHIFT                        8
+#define BRBINFINJ_EL1_TYPE_WIDTH                        6
+#define BRBINFINJ_EL1_TYPE_UNCOND_DIRECT                UL(0b000000)
+#define BRBINFINJ_EL1_TYPE_INDIRECT                     UL(0b000001)
+#define BRBINFINJ_EL1_TYPE_DIRECT_LINK                  UL(0b000010)
+#define BRBINFINJ_EL1_TYPE_INDIRECT_LINK                UL(0b000011)
+#define BRBINFINJ_EL1_TYPE_RET                          UL(0b000101)
+#define BRBINFINJ_EL1_TYPE_ERET                         UL(0b000111)
+#define BRBINFINJ_EL1_TYPE_COND_DIRECT                  UL(0b001000)
+#define BRBINFINJ_EL1_TYPE_DEBUG_HALT                   UL(0b100001)
+#define BRBINFINJ_EL1_TYPE_CALL                         UL(0b100010)
+#define BRBINFINJ_EL1_TYPE_TRAP                         UL(0b100011)
+#define BRBINFINJ_EL1_TYPE_SERROR                       UL(0b100100)
+#define BRBINFINJ_EL1_TYPE_INSN_DEBUG                   UL(0b100110)
+#define BRBINFINJ_EL1_TYPE_DATA_DEBUG                   UL(0b100111)
+#define BRBINFINJ_EL1_TYPE_ALIGN_FAULT                  UL(0b101010)
+#define BRBINFINJ_EL1_TYPE_INSN_FAULT                   UL(0b101011)
+#define BRBINFINJ_EL1_TYPE_DATA_FAULT                   UL(0b101100)
+#define BRBINFINJ_EL1_TYPE_IRQ                          UL(0b101110)
+#define BRBINFINJ_EL1_TYPE_FIQ                          UL(0b101111)
+#define BRBINFINJ_EL1_TYPE_DEBUG_EXIT                   UL(0b111001)
+
+#define BRBINFINJ_EL1_EL                                GENMASK(7, 6)
+#define BRBINFINJ_EL1_EL_MASK                           GENMASK(7, 6)
+#define BRBINFINJ_EL1_EL_SHIFT                          6
+#define BRBINFINJ_EL1_EL_WIDTH                          2
+#define BRBINFINJ_EL1_EL_EL0                            UL(0b00)
+#define BRBINFINJ_EL1_EL_EL1                            UL(0b01)
+#define BRBINFINJ_EL1_EL_EL2                            UL(0b10)
+#define BRBINFINJ_EL1_EL_EL3                            UL(0b11)
+
+#define BRBINFINJ_EL1_MPRED                             GENMASK(5, 5)
+#define BRBINFINJ_EL1_MPRED_MASK                        GENMASK(5, 5)
+#define BRBINFINJ_EL1_MPRED_SHIFT                       5
+#define BRBINFINJ_EL1_MPRED_WIDTH                       1
+
+#define BRBINFINJ_EL1_VALID                             GENMASK(1, 0)
+#define BRBINFINJ_EL1_VALID_MASK                        GENMASK(1, 0)
+#define BRBINFINJ_EL1_VALID_SHIFT                       0
+#define BRBINFINJ_EL1_VALID_WIDTH                       2
+#define BRBINFINJ_EL1_VALID_NONE                        UL(0b00)
+#define BRBINFINJ_EL1_VALID_TARGET                      UL(0b01)
+#define BRBINFINJ_EL1_VALID_SOURCE                      UL(0b10)
+#define BRBINFINJ_EL1_VALID_FULL                        UL(0b11)
+
+#define BRBINFINJ_EL1_RES0                              (UL(0) | GENMASK_ULL(63, 47) | \
+								 GENMASK_ULL(31, 18) | \
+								 GENMASK_ULL(15, 14) | \
+								 GENMASK_ULL(4, 2))
+#define BRBINFINJ_EL1_RES1                              (UL(0))
+#define BRBINFINJ_EL1_UNKN                              (UL(0))
+
+#define REG_BRBSRCINJ_EL1                               S2_1_C9_C1_1
+#define SYS_BRBSRCINJ_EL1                               sys_reg(2, 1, 9, 1, 1)
+#define SYS_BRBSRCINJ_EL1_Op0                           2
+#define SYS_BRBSRCINJ_EL1_Op1                           1
+#define SYS_BRBSRCINJ_EL1_CRn                           9
+#define SYS_BRBSRCINJ_EL1_CRm                           1
+#define SYS_BRBSRCINJ_EL1_Op2                           1
+
+#define BRBSRCINJ_EL1_ADDRESS                           GENMASK(63, 0)
+#define BRBSRCINJ_EL1_ADDRESS_MASK                      GENMASK(63, 0)
+#define BRBSRCINJ_EL1_ADDRESS_SHIFT                     0
+#define BRBSRCINJ_EL1_ADDRESS_WIDTH                     64
+
+#define BRBSRCINJ_EL1_RES0                              (UL(0))
+#define BRBSRCINJ_EL1_RES1                              (UL(0))
+#define BRBSRCINJ_EL1_UNKN                              (UL(0))
+
+#define REG_BRBTGTINJ_EL1                               S2_1_C9_C1_2
+#define SYS_BRBTGTINJ_EL1                               sys_reg(2, 1, 9, 1, 2)
+#define SYS_BRBTGTINJ_EL1_Op0                           2
+#define SYS_BRBTGTINJ_EL1_Op1                           1
+#define SYS_BRBTGTINJ_EL1_CRn                           9
+#define SYS_BRBTGTINJ_EL1_CRm                           1
+#define SYS_BRBTGTINJ_EL1_Op2                           2
+
+#define BRBTGTINJ_EL1_ADDRESS                           GENMASK(63, 0)
+#define BRBTGTINJ_EL1_ADDRESS_MASK                      GENMASK(63, 0)
+#define BRBTGTINJ_EL1_ADDRESS_SHIFT                     0
+#define BRBTGTINJ_EL1_ADDRESS_WIDTH                     64
+
+#define BRBTGTINJ_EL1_RES0                              (UL(0))
+#define BRBTGTINJ_EL1_RES1                              (UL(0))
+#define BRBTGTINJ_EL1_UNKN                              (UL(0))
+
+#define REG_BRBIDR0_EL1                                 S2_1_C9_C2_0
+#define SYS_BRBIDR0_EL1                                 sys_reg(2, 1, 9, 2, 0)
+#define SYS_BRBIDR0_EL1_Op0                             2
+#define SYS_BRBIDR0_EL1_Op1                             1
+#define SYS_BRBIDR0_EL1_CRn                             9
+#define SYS_BRBIDR0_EL1_CRm                             2
+#define SYS_BRBIDR0_EL1_Op2                             0
+
+#define BRBIDR0_EL1_CC                                  GENMASK(15, 12)
+#define BRBIDR0_EL1_CC_MASK                             GENMASK(15, 12)
+#define BRBIDR0_EL1_CC_SHIFT                            12
+#define BRBIDR0_EL1_CC_WIDTH                            4
+#define BRBIDR0_EL1_CC_20_BIT                           UL(0b101)
+
+#define BRBIDR0_EL1_FORMAT                              GENMASK(11, 8)
+#define BRBIDR0_EL1_FORMAT_MASK                         GENMASK(11, 8)
+#define BRBIDR0_EL1_FORMAT_SHIFT                        8
+#define BRBIDR0_EL1_FORMAT_WIDTH                        4
+#define BRBIDR0_EL1_FORMAT_0                            UL(0b0)
+
+#define BRBIDR0_EL1_NUMREC                              GENMASK(7, 0)
+#define BRBIDR0_EL1_NUMREC_MASK                         GENMASK(7, 0)
+#define BRBIDR0_EL1_NUMREC_SHIFT                        0
+#define BRBIDR0_EL1_NUMREC_WIDTH                        8
+#define BRBIDR0_EL1_NUMREC_8                            UL(0b0001000)
+#define BRBIDR0_EL1_NUMREC_16                           UL(0b0010000)
+#define BRBIDR0_EL1_NUMREC_32                           UL(0b0100000)
+#define BRBIDR0_EL1_NUMREC_64                           UL(0b1000000)
+
+#define BRBIDR0_EL1_RES0                                (UL(0) | GENMASK_ULL(63, 16))
+#define BRBIDR0_EL1_RES1                                (UL(0))
+#define BRBIDR0_EL1_UNKN                                (UL(0))
+/*** End of Branch Record Buffer Extension ***/
 
 /* Definitions for system register interface to AMU for ARMv8.4 onwards */
 #define SYS_AM_EL0(crm, op2)		sys_reg(3, 3, 13, (crm), (op2))
@@ -965,6 +1458,7 @@
 #define ID_AA64MMFR2_CNP_SHIFT		0
 
 /* id_aa64dfr0 */
+#define ID_AA64DFR0_EL1_BRBE_SHIFT	52
 #define ID_AA64DFR0_MTPMU_SHIFT		48
 #define ID_AA64DFR0_TRBE_SHIFT		44
 #define ID_AA64DFR0_TRACE_FILT_SHIFT	40
@@ -977,6 +1471,9 @@
 #define ID_AA64DFR0_TRACEVER_SHIFT	4
 #define ID_AA64DFR0_DEBUGVER_SHIFT	0
 
+#define ID_AA64DFR0_EL1_BRBE_NI		0x0
+#define ID_AA64DFR0_EL1_BRBE_IMP	0x1
+#define ID_AA64DFR0_EL1_BRBE_BRBE_V1P1	0x2
 #define ID_AA64DFR0_PMUVER_8_0		0x1
 #define ID_AA64DFR0_PMUVER_8_1		0x4
 #define ID_AA64DFR0_PMUVER_8_4		0x5
