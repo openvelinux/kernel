@@ -33,6 +33,7 @@
 #include <linux/rcupdate_trace.h>
 #include <linux/memcontrol.h>
 
+#include <linux/indirect_call_wrapper.h>
 #include <net/netkit.h>
 #include <net/tcx.h>
 

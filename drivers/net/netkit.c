@@ -6,6 +6,7 @@
 #include <linux/etherdevice.h>
 #include <linux/filter.h>
 #include <linux/bpf_mprog.h>
+#include <linux/indirect_call_wrapper.h>
 
 #include <net/netkit.h>
 #include <net/dst.h>
@@ -175,7 +176,7 @@ out:
 	rcu_read_unlock();
 }
 
-static struct net_device *netkit_peer_dev(struct net_device *dev)
+INDIRECT_CALLABLE_SCOPE struct net_device *netkit_peer_dev(struct net_device *dev)
 {
 	return rcu_dereference(netkit_priv(dev)->peer);
 }
