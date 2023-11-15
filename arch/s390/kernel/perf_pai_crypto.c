@@ -248,10 +248,14 @@ static void paicrypt_start(struct perf_event *event, int flags)
 {
 	u64 sum;
 
-	if (!event->hw.last_tag) {
-		event->hw.last_tag = 1;
-		sum = paicrypt_getall(event);		/* Get current value */
-		local64_set(&event->hw.prev_count, sum);
+	if (!event->attr.sample_period) {	/* Counting */
+		if (!event->hw.last_tag) {
+			event->hw.last_tag = 1;
+			sum = paicrypt_getall(event);	/* Get current value */
+			local64_set(&event->hw.prev_count, sum);
+		}
+	} else {				/* Sampling */
+		perf_sched_cb_inc(event->pmu);
 	}
 }
 
@@ -266,19 +270,18 @@ static int paicrypt_add(struct perf_event *event, int flags)
 		__ctl_set_bit(0, 50);
 	}
 	cpump->event = event;
-	if (flags & PERF_EF_START && !event->attr.sample_period) {
-		/* Only counting needs initial counter value */
+	if (flags & PERF_EF_START)
 		paicrypt_start(event, PERF_EF_RELOAD);
-	}
 	event->hw.state = 0;
-	if (event->attr.sample_period)
-		perf_sched_cb_inc(event->pmu);
 	return 0;
 }
 
 static void paicrypt_stop(struct perf_event *event, int flags)
 {
-	paicrypt_read(event);
+	if (!event->attr.sample_period)	/* Counting */
+		paicrypt_read(event);
+	else				/* Sampling */
+		perf_sched_cb_dec(event->pmu);
 	event->hw.state = PERF_HES_STOPPED;
 }
 
@@ -286,11 +289,7 @@ static void paicrypt_del(struct perf_event *event, int flags)
 {
 	struct paicrypt_map *cpump = this_cpu_ptr(&paicrypt_map);
 
-	if (event->attr.sample_period)
-		perf_sched_cb_dec(event->pmu);
-	if (!event->attr.sample_period)
-		/* Only counting needs to read counter */
-		paicrypt_stop(event, PERF_EF_UPDATE);
+	paicrypt_stop(event, PERF_EF_UPDATE);
 	if (cpump->users-- == 1) {
 		__ctl_clear_bit(0, 50);
 		WRITE_ONCE(S390_lowcore.ccd, 0);
