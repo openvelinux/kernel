@@ -526,6 +526,13 @@ static int __init parse_core(struct device_node *core, int package_id,
 		i++;
 	} while (t);
 
+	/*
+	 * We've already gotten threads number in this core, update the SMT
+	 * threads number when necessary.
+	 */
+	if (i > topology_smt_get_num_threads())
+		topology_smt_set_num_threads(i);
+
 	cpu = get_cpu_for_node(core);
 	if (cpu >= 0) {
 		if (!leaf) {
