@@ -90,6 +90,15 @@ int acpi_passive_trip_temp(struct acpi_device *adev, int *ret_temp);
 int acpi_hot_trip_temp(struct acpi_device *adev, int *ret_temp);
 int acpi_critical_trip_temp(struct acpi_device *adev, int *ret_temp);
 
+#ifdef CONFIG_ARM64
+int acpi_arch_thermal_cpufreq_pctg(void);
+#else
+static inline int acpi_arch_thermal_cpufreq_pctg(void)
+{
+	return 0;
+}
+#endif
+
 /* --------------------------------------------------------------------------
                      Device Node Initialization / Removal
    -------------------------------------------------------------------------- */
