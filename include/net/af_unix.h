@@ -88,6 +88,8 @@ static inline void unix_state_lock_nested(struct sock *sk,
 	spin_lock_nested(&unix_sk(sk)->lock, subclass);
 }
 
+#define unix_peer(sk) (unix_sk(sk)->peer)
+
 #define peer_wait peer_wq.wait
 
 long unix_inq_len(struct sock *sk);

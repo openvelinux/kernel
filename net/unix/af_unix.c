@@ -178,8 +178,6 @@ static inline unsigned int unix_hash_fold(__wsum n)
 	return hash&(UNIX_HASH_SIZE-1);
 }
 
-#define unix_peer(sk) (unix_sk(sk)->peer)
-
 static inline int unix_our_peer(struct sock *sk, struct sock *osk)
 {
 	return unix_peer(osk) == sk;
