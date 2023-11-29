@@ -296,12 +296,8 @@ void workingset_refault(struct page *page, void *shadow)
 	bool workingset;
 	int memcgid;
 
-	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
-
-	/* Flush stats (and potentially sleep) before holding RCU read lock */
-	mem_cgroup_flush_stats_ratelimited();
-
 	rcu_read_lock();
+	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
 	/*
 	 * Look up the memcg associated with the stored ID. It might
 	 * have been deleted since the page's eviction.
@@ -319,8 +315,17 @@ void workingset_refault(struct page *page, void *shadow)
 	 * configurations instead.
 	 */
 	eviction_memcg = mem_cgroup_from_id(memcgid);
-	if (!mem_cgroup_disabled() && !eviction_memcg)
-		goto out;
+	if (!mem_cgroup_disabled() &&
+	    (!eviction_memcg || !mem_cgroup_tryget(eviction_memcg))) {
+		rcu_read_unlock();
+		return;
+	}
+
+	rcu_read_unlock();
+
+	/* Flush stats (and potentially sleep) outside the RCU read section */
+	mem_cgroup_flush_stats_ratelimited();
+
 	eviction_lruvec = mem_cgroup_lruvec(eviction_memcg, pgdat);
 	refault = atomic_long_read(&eviction_lruvec->nonresident_age);
 
@@ -374,8 +379,9 @@ void workingset_refault(struct page *page, void *shadow)
 						     NR_INACTIVE_ANON);
 		}
 	}
+	mem_cgroup_put(eviction_memcg);
 	if (refault_distance > workingset_size)
-		goto out;
+		return;
 
 	SetPageActive(page);
 	workingset_age_nonresident(lruvec, thp_nr_pages(page));
@@ -388,8 +394,6 @@ void workingset_refault(struct page *page, void *shadow)
 		lru_note_cost_page(page);
 		inc_lruvec_state(lruvec, WORKINGSET_RESTORE_BASE + file);
 	}
-out:
-	rcu_read_unlock();
 }
 
 /**
