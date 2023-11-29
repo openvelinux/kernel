@@ -313,10 +313,12 @@ armpmu_del(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int idx = hwc->idx;
 
-	WARN_ON_ONCE(!hw_events->brbe_users);
-	hw_events->brbe_users--;
-	if (!hw_events->brbe_users)
-		hw_events->brbe_context = NULL;
+	if (has_branch_stack(event)) {
+		WARN_ON_ONCE(!hw_events->brbe_users);
+		hw_events->brbe_users--;
+		if (!hw_events->brbe_users)
+			hw_events->brbe_context = NULL;
+	}
 
 	armpmu_stop(event, PERF_EF_UPDATE);
 	hw_events->events[idx] = NULL;
@@ -334,18 +336,20 @@ armpmu_add(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int idx;
 
-	/*
-	 * Reset branch records buffer if a new task event gets
-	 * scheduled on a PMU which might have existing records.
-	 * Otherwise older branch records present in the buffer
-	 * might leak into the new task event.
-	 */
-	if (event->ctx->task && hw_events->brbe_context != event->ctx) {
-		hw_events->brbe_context = event->ctx;
-		if (armpmu->branch_reset)
-			armpmu->branch_reset();
+	if (has_branch_stack(event)) {
+		/*
+		 * Reset branch records buffer if a new task event gets
+		 * scheduled on a PMU which might have existing records.
+		 * Otherwise older branch records present in the buffer
+		 * might leak into the new task event.
+		 */
+		if (event->ctx->task && hw_events->brbe_context != event->ctx) {
+			hw_events->brbe_context = event->ctx;
+			if (armpmu->branch_reset)
+				armpmu->branch_reset();
+		}
+		hw_events->brbe_users++;
 	}
-	hw_events->brbe_users++;
 
 	/* An event following a process won't be stopped earlier */
 	if (!cpumask_test_cpu(smp_processor_id(), &armpmu->supported_cpus))
