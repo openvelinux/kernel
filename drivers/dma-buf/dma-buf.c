@@ -1408,6 +1408,8 @@ static int dma_buf_pages_release(struct inode *inode, struct file *file)
 	dma_buf_put(priv->dmabuf);
 	pci_dev_put(priv->pci_dev);
 
+	xa_destroy(&priv->bound_rxq_list);
+
 	percpu_ref_kill(&priv->pgmap.ref);
 	/* Drop initial ref after percpu_ref_kill(). */
 	percpu_ref_put(&priv->pgmap.ref);
