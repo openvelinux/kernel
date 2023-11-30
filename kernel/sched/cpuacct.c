@@ -383,9 +383,8 @@ int cpuacct_get_kcpustat(struct task_struct *tsk, int cpu, struct kernel_cpustat
 	}
 
 	stat = per_cpu_ptr(ca->cpustat, cpu);
-	rcu_read_unlock();
-
 	memcpy(kcpustat, stat, sizeof(struct kernel_cpustat));
 
+	rcu_read_unlock();
 	return 0;
 }
