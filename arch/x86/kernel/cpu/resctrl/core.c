@@ -999,29 +999,40 @@ static const struct x86_cpu_id snc_cpu_ids[] __initconst = {
  */
 static __init int get_snc_config(void)
 {
-	unsigned long *node_caches;
+	unsigned long *cache_ids;
 	int mem_only_nodes = 0;
 	int cpu, node, ret;
+	int nodes;
 
 	if (!x86_match_cpu(snc_cpu_ids))
 		return 1;
 
-	node_caches = kcalloc(BITS_TO_LONGS(nr_node_ids), sizeof(*node_caches), GFP_KERNEL);
-	if (!node_caches)
+	cache_ids = kcalloc(BITS_TO_LONGS(nr_cpu_ids), sizeof(*cache_ids), GFP_KERNEL);
+	if (!cache_ids)
 		return 1;
 
 	cpus_read_lock();
 	for_each_node(node) {
 		cpu = cpumask_first(cpumask_of_node(node));
-		if (cpu < nr_cpu_ids)
-			set_bit(get_cpu_cacheinfo_id(cpu, 3), node_caches);
-		else
+		if (cpu < nr_cpu_ids) {
+			int idx = get_cpu_cacheinfo_id(cpu, 3);
+			if (idx < 0 || idx >= nr_cpu_ids) {
+				cpus_read_unlock();
+				kfree(cache_ids);
+				return 1;
+			}
+			set_bit(idx, cache_ids);
+		} else
 			mem_only_nodes++;
 	}
 	cpus_read_unlock();
 
-	ret = (nr_node_ids - mem_only_nodes) / bitmap_weight(node_caches, nr_node_ids);
-	kfree(node_caches);
+	nodes = bitmap_weight(cache_ids, nr_node_ids);
+	if (nodes > 0)
+		ret = (nr_node_ids - mem_only_nodes) / nodes;
+	else
+		ret = 1;
+	kfree(cache_ids);
 
 	if (ret > 1)
 		rdt_resources_all[RDT_RESOURCE_L3].r_resctrl.mon_scope = MON_SCOPE_NODE;
