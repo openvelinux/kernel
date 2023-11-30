@@ -44,12 +44,10 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	si_swapinfo(&i);
 	committed = vm_memory_committed();
 
-	memcg = cgroup_override_get_memcg();
-
 	for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)
 		pages[lru] = global_node_page_state(NR_LRU_BASE + lru);
 
-	if (!cgroup_override_proc() || !memcg) {
+	if (!cgroup_override_proc() || !(memcg = cgroup_override_get_memcg())) {
 		available = si_mem_available();
 		sreclaimable =
 			global_node_page_state_pages(NR_SLAB_RECLAIMABLE_B);
@@ -68,9 +66,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		cached = memcg_page_state(memcg, NR_FILE_PAGES);
 
 		available = i.freeram + page_cache + sreclaimable;
-	}
 
-	mem_cgroup_put(memcg);
+		mem_cgroup_put(memcg);
+	}
 
 	if (cached < 0)
 		cached = 0;
