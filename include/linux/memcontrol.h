@@ -814,6 +814,11 @@ static inline bool mem_cgroup_tryget(struct mem_cgroup *memcg)
 	return !memcg || css_tryget(&memcg->css);
 }
 
+static inline bool mem_cgroup_tryget_online(struct mem_cgroup *memcg)
+{
+	return !memcg || css_tryget_online(&memcg->css);
+}
+
 static inline void mem_cgroup_put(struct mem_cgroup *memcg)
 {
 	if (memcg)
@@ -1312,6 +1317,11 @@ static inline void obj_cgroup_put(struct obj_cgroup *objcg)
 }
 
 static inline bool mem_cgroup_tryget(struct mem_cgroup *memcg)
+{
+	return true;
+}
+
+static inline bool mem_cgroup_tryget_online(struct mem_cgroup *memcg)
 {
 	return true;
 }
