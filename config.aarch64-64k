@@ -4201,7 +4201,7 @@ CONFIG_I2C_XGENE_SLIMPRO=m
 # end of I2C Hardware Bus support
 
 # CONFIG_I2C_STUB is not set
-# CONFIG_I2C_SLAVE is not set
+CONFIG_I2C_SLAVE=y
 # CONFIG_I2C_DEBUG_CORE is not set
 # CONFIG_I2C_DEBUG_ALGO is not set
 # CONFIG_I2C_DEBUG_BUS is not set
