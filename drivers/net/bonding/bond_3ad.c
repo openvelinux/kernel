@@ -2499,7 +2499,8 @@ static void ad_update_actor_keys(struct port *port, bool reset)
 					  port->slave->dev,
 					  "speed changed to 0 on port %d\n",
 					  port->actor_port_number);
-			} else if (duplex && ospeed != speed) {
+			}
+			if (duplex && (ospeed != speed || speed == 0)) {
 				/* Speed change restarts LACP state-machine */
 				port->sm_vars |= AD_PORT_BEGIN;
 			}
