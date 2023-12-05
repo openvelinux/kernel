@@ -34,6 +34,8 @@ void watchdog_hardlockup_enable(unsigned int cpu)
 	 * secure timer correctly
 	 */
 	watchdog_hardlockup_touch_cpu(cpu);
+	sdei_api_set_secure_timer_period(watchdog_thresh);
+
 	ret = sdei_api_event_enable(sdei_watchdog_event_num);
 	if (ret) {
 		pr_err("Enable NMI Watchdog failed on cpu%d\n",
@@ -101,6 +103,17 @@ int __init watchdog_hardlockup_probe(void)
 	if (sdei_watchdog_event_num < 0) {
 		pr_err("Bind interrupt failed. Firmware may not support SDEI !\n");
 		return sdei_watchdog_event_num;
+	}
+
+	/*
+	 * After we introduced 'sdei_api_set_secure_timer_period', we disselect
+	 * 'CONFIG_HARDLOCKUP_CHECK_TIMESTAMP'. So we need to make sure that
+	 * firmware can set the period of the secure timer and the timer
+	 * interrupt doesn't trigger too soon.
+	 */
+	if (sdei_api_set_secure_timer_period(watchdog_thresh)) {
+		pr_err("Firmware doesn't support setting the secure timer period, please update your BIOS !\n");
+		return -EINVAL;
 	}
 
 	on_each_cpu(sdei_nmi_watchdog_bind, NULL, true);
