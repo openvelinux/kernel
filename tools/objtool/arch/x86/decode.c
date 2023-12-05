@@ -465,10 +465,20 @@ int arch_decode_instruction(const struct elf *elf, const struct section *sec,
 
 		if (op2 == 0x01) {
 
-			if (modrm == 0xca)
-				*type = INSN_CLAC;
-			else if (modrm == 0xcb)
-				*type = INSN_STAC;
+			switch (insn_last_prefix_id(&insn)) {
+			case INAT_PFX_REPE:
+			case INAT_PFX_REPNE:
+				if (modrm == 0xca)
+					/* eretu/erets */
+					*type = INSN_CONTEXT_SWITCH;
+				break;
+			default:
+				if (modrm == 0xca)
+					*type = INSN_CLAC;
+				else if (modrm == 0xcb)
+					*type = INSN_STAC;
+				break;
+			}
 
 		} else if (op2 >= 0x80 && op2 <= 0x8f) {
 
