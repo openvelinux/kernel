@@ -61,6 +61,7 @@ static struct idxd_driver_data idxd_driver_data[] = {
 		.user_submission_safe = false, /* See INTEL-SA-01084 security advisory */
 		.cr_status_off = offsetof(struct iax_completion_record, status),
 		.cr_result_off = offsetof(struct iax_completion_record, error_code),
+		.load_device_defaults = idxd_load_iaa_device_defaults,
 	},
 };
 
@@ -831,6 +832,12 @@ static int idxd_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (rc) {
 		dev_err(dev, "Intel(R) IDXD DMA Engine init failed\n");
 		goto err;
+	}
+
+	if (data->load_device_defaults) {
+		rc = data->load_device_defaults(idxd);
+		if (rc)
+			dev_warn(dev, "IDXD loading device defaults failed\n");
 	}
 
 	rc = idxd_register_devices(idxd);
