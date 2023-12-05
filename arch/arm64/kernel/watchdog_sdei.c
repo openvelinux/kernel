@@ -20,7 +20,7 @@
 #define SDEI_NMI_WATCHDOG_HWIRQ		29
 
 static int sdei_watchdog_event_num;
-static bool disable_sdei_nmi_watchdog;
+bool disable_sdei_nmi_watchdog;
 static bool sdei_watchdog_registered;
 static DEFINE_PER_CPU(ktime_t, last_check_time);
 
