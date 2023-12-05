@@ -22,6 +22,7 @@
 static int sdei_watchdog_event_num;
 static bool disable_sdei_nmi_watchdog;
 static bool sdei_watchdog_registered;
+static DEFINE_PER_CPU(ktime_t, last_check_time);
 
 void watchdog_hardlockup_enable(unsigned int cpu)
 {
@@ -34,6 +35,7 @@ void watchdog_hardlockup_enable(unsigned int cpu)
 	 * secure timer correctly */
 	watchdog_hardlockup_touch_cpu(cpu);
 	sdei_api_set_secure_timer_period(watchdog_thresh);
+	__this_cpu_write(last_check_time, ktime_get_mono_fast_ns());
 
 	ret = sdei_api_event_enable(sdei_watchdog_event_num);
 	if (ret) {
@@ -58,6 +60,22 @@ void watchdog_hardlockup_disable(unsigned int cpu)
 static int sdei_watchdog_callback(u32 event,
 		struct pt_regs *regs, void *arg)
 {
+	ktime_t delta, now = ktime_get_mono_fast_ns();
+
+	delta = now - __this_cpu_read(last_check_time);
+	__this_cpu_write(last_check_time, now);
+
+	/*
+	 * Set delta to 4/5 of the actual watchdog threshold period so the
+	 * hrtimer is guaranteed to fire at least once within the real
+	 * watchdog threshold.
+	 */
+	if (delta < watchdog_thresh * (u64)NSEC_PER_SEC * 4 / 5) {
+		pr_err(FW_BUG "SDEI Watchdog event triggered too soon, "
+			"time to last check:%lld ns\n", delta);
+		return 0;
+	}
+
 	watchdog_hardlockup_check(smp_processor_id(), regs);
 
 	return 0;
