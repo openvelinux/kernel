@@ -16,6 +16,7 @@
 #include <linux/cpu.h>
 #include <linux/nmi.h>
 #include <linux/init.h>
+#include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/sysctl.h>
 #include <linux/tick.h>
@@ -127,6 +128,7 @@ static bool is_hardlockup(unsigned int cpu)
 
 	return false;
 }
+NOKPROBE_SYMBOL(is_hardlockup);
 
 static void watchdog_hardlockup_kick(void)
 {
@@ -184,6 +186,7 @@ void watchdog_hardlockup_check(unsigned int cpu, struct pt_regs *regs)
 		per_cpu(watchdog_hardlockup_warned, cpu) = false;
 	}
 }
+NOKPROBE_SYMBOL(watchdog_hardlockup_check);
 
 #else /* CONFIG_HARDLOCKUP_DETECTOR_COUNTS_HRTIMER */
 
