@@ -146,7 +146,8 @@ struct netns_ipv4 {
 	u8 sysctl_tcp_abort_on_overflow;
 	u8 sysctl_tcp_fack; /* obsolete */
 	int sysctl_tcp_max_reordering;
-	int sysctl_tcp_adv_win_scale; /* obsolete */
+	int sysctl_tcp_adv_win_scale; /* obsolete if sysctl_tcp_win_scale_auto_tuning set */
+	u8 sysctl_tcp_win_scale_auto_tuning;
 	u8 sysctl_tcp_dsack;
 	u8 sysctl_tcp_app_win;
 	u8 sysctl_tcp_frto;

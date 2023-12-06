@@ -1902,8 +1902,9 @@ static void mptcp_rcv_space_adjust(struct mptcp_sock *msk, int copied)
 
 	if (READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_moderate_rcvbuf) &&
 	    !(sk->sk_userlocks & SOCK_RCVBUF_LOCK)) {
+		u8 auto_tuning = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_win_scale_auto_tuning);
+		int rcvmem, rcvbuf;
 		u64 rcvwin, grow;
-		int rcvbuf;
 
 		rcvwin = ((u64)msk->rcvq_space.copied << 1) + 16 * advmss;
 
@@ -1912,13 +1913,23 @@ static void mptcp_rcv_space_adjust(struct mptcp_sock *msk, int copied)
 		do_div(grow, msk->rcvq_space.space);
 		rcvwin += (grow << 1);
 
-		rcvbuf = min_t(u64, __tcp_space_from_win(scaling_ratio, rcvwin),
-			       READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_rmem[2]));
+		if (!auto_tuning) {
+			rcvmem = SKB_TRUESIZE(advmss + MAX_TCP_HEADER);
+			while (tcp_win_from_space(sk, rcvmem) < advmss)
+				rcvmem += 128;
+
+			do_div(rcvwin, advmss);
+			rcvbuf = min_t(u64, rcvwin * rcvmem,
+				       READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_rmem[2]));
+		} else {
+			rcvbuf = min_t(u64, __tcp_space_from_win(scaling_ratio, rcvwin),
+				       READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_rmem[2]));
+		}
 
 		if (rcvbuf > sk->sk_rcvbuf) {
 			u32 window_clamp;
 
-			window_clamp = __tcp_win_from_space(scaling_ratio, rcvbuf);
+			window_clamp = __tcp_win_from_space(sk, scaling_ratio, rcvbuf);
 			WRITE_ONCE(sk->sk_rcvbuf, rcvbuf);
 
 			/* Make subflows follow along.  If we do not do this, we

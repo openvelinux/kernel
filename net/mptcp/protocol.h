@@ -313,7 +313,7 @@ static inline int __mptcp_rmem(const struct sock *sk)
 
 static inline int mptcp_win_from_space(const struct sock *sk, int space)
 {
-	return __tcp_win_from_space(mptcp_sk(sk)->scaling_ratio, space);
+	return __tcp_win_from_space(sk, mptcp_sk(sk)->scaling_ratio, space);
 }
 
 static inline int __mptcp_space(const struct sock *sk)

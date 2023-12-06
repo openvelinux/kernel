@@ -1772,6 +1772,7 @@ EXPORT_SYMBOL(tcp_peek_len);
 /* Make sure sk_rcvbuf is big enough to satisfy SO_RCVLOWAT hint */
 int tcp_set_rcvlowat(struct sock *sk, int val)
 {
+	u8 auto_tuning = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_win_scale_auto_tuning);
 	int space, cap;
 
 	if (sk->sk_userlocks & SOCK_RCVBUF_LOCK)
@@ -1787,7 +1788,13 @@ int tcp_set_rcvlowat(struct sock *sk, int val)
 	if (sk->sk_userlocks & SOCK_RCVBUF_LOCK)
 		return 0;
 
-	space = tcp_space_from_win(sk, val);
+	if (auto_tuning) {
+		space = tcp_space_from_win(sk, val);
+	} else {
+		space = val << 1;
+		val = tcp_win_from_space(sk, val);
+	}
+
 	if (space > sk->sk_rcvbuf) {
 		WRITE_ONCE(sk->sk_rcvbuf, space);
 		tcp_sk(sk)->window_clamp = val;
