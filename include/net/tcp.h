@@ -1413,16 +1413,27 @@ void tcp_select_initial_window(const struct sock *sk, int __space,
 			       __u32 *window_clamp, int wscale_ok,
 			       __u8 *rcv_wscale, __u32 init_rcv_wnd);
 
-static inline int __tcp_win_from_space(u8 scaling_ratio, int space)
+static inline int __tcp_win_from_space(const struct sock *sk, u8 scaling_ratio, int space)
 {
-	s64 scaled_space = (s64)space * scaling_ratio;
+	u8 auto_tuning = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_win_scale_auto_tuning);
+	int tcp_adv_win_scale;
+	s64 scaled_space;
+
+	if (!auto_tuning) {
+		tcp_adv_win_scale = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_adv_win_scale);
+		return tcp_adv_win_scale <= 0 ?
+			(space >> (-tcp_adv_win_scale)) :
+			space - (space >> tcp_adv_win_scale);
+	}
+
+	scaled_space = (s64)space * scaling_ratio;
 
 	return scaled_space >> TCP_RMEM_TO_WIN_SCALE;
 }
 
 static inline int tcp_win_from_space(const struct sock *sk, int space)
 {
-	return __tcp_win_from_space(tcp_sk(sk)->scaling_ratio, space);
+	return __tcp_win_from_space(sk, tcp_sk(sk)->scaling_ratio, space);
 }
 
 /* inverse of __tcp_win_from_space() */
