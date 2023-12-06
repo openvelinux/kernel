@@ -3192,6 +3192,7 @@ static int __net_init tcp_sk_init(struct net *net)
 	net->ipv4.sysctl_tcp_invalid_ratelimit = HZ/2;
 	net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;
 	net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;
+	net->ipv4.sysctl_tcp_backlog_ack_defer = 0;
 	if (net != &init_net) {
 		memcpy(net->ipv4.sysctl_tcp_rmem,
 		       init_net.ipv4.sysctl_tcp_rmem,
@@ -3199,11 +3200,11 @@ static int __net_init tcp_sk_init(struct net *net)
 		memcpy(net->ipv4.sysctl_tcp_wmem,
 		       init_net.ipv4.sysctl_tcp_wmem,
 		       sizeof(init_net.ipv4.sysctl_tcp_wmem));
+		net->ipv4.sysctl_tcp_backlog_ack_defer = init_net.ipv4.sysctl_tcp_backlog_ack_defer;
 	}
 	net->ipv4.sysctl_tcp_comp_sack_delay_ns = NSEC_PER_MSEC;
 	net->ipv4.sysctl_tcp_comp_sack_slack_ns = 100 * NSEC_PER_USEC;
 	net->ipv4.sysctl_tcp_comp_sack_nr = 44;
-	net->ipv4.sysctl_tcp_backlog_ack_defer = 1;
 	net->ipv4.sysctl_tcp_fastopen = TFO_CLIENT_ENABLE;
 	net->ipv4.sysctl_tcp_fastopen_blackhole_timeout = 0;
 	atomic_set(&net->ipv4.tfo_active_disable_times, 0);
