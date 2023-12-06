@@ -303,7 +303,7 @@ tcp_abort_on_overflow - BOOLEAN
 	option can harm clients of your server.
 
 tcp_adv_win_scale - INTEGER
-	Obsolete since linux-6.6
+	Obsolete if tcp_win_scale_auto_tuning set
 	Count buffering overhead as bytes/2^tcp_adv_win_scale
 	(if tcp_adv_win_scale > 0) or bytes-bytes/2^(-tcp_adv_win_scale),
 	if it is <= 0.
@@ -311,6 +311,12 @@ tcp_adv_win_scale - INTEGER
 	Possible values are [-31, 31], inclusive.
 
 	Default: 1
+
+tcp_win_scale_auto_tuning - BOOLEAN
+	auto tuning win scale for tcp
+	Possible values are [0, 1], inclusive.
+
+	Default: 0
 
 tcp_allowed_congestion_control - STRING
 	Show/set the congestion control choices available to non-privileged
