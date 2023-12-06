@@ -3175,6 +3175,7 @@ static int __net_init tcp_sk_init(struct net *net)
 	net->ipv4.sysctl_tcp_dsack = 1;
 	net->ipv4.sysctl_tcp_app_win = 31;
 	net->ipv4.sysctl_tcp_adv_win_scale = 1;
+	net->ipv4.sysctl_tcp_win_scale_auto_tuning = 0;
 	net->ipv4.sysctl_tcp_frto = 2;
 	net->ipv4.sysctl_tcp_moderate_rcvbuf = 1;
 	/* This limits the percentage of the congestion window which we
@@ -3201,6 +3202,7 @@ static int __net_init tcp_sk_init(struct net *net)
 		       init_net.ipv4.sysctl_tcp_wmem,
 		       sizeof(init_net.ipv4.sysctl_tcp_wmem));
 		net->ipv4.sysctl_tcp_backlog_ack_defer = init_net.ipv4.sysctl_tcp_backlog_ack_defer;
+		net->ipv4.sysctl_tcp_win_scale_auto_tuning = init_net.ipv4.sysctl_tcp_win_scale_auto_tuning;
 	}
 	net->ipv4.sysctl_tcp_comp_sack_delay_ns = NSEC_PER_MSEC;
 	net->ipv4.sysctl_tcp_comp_sack_slack_ns = 100 * NSEC_PER_USEC;
