@@ -106,6 +106,8 @@
 #include <linux/nmi.h>
 #endif
 
+extern unsigned int no_check_ksoftirqd_running;
+
 #if defined(CONFIG_SYSCTL)
 
 /* Constants used for minimum and  maximum */
@@ -2711,6 +2713,15 @@ static struct ctl_table kern_table[] = {
 		.extra2		= SYSCTL_ONE,
 	},
 #endif
+	{
+		.procname	= "no_check_ksoftirqd_running",
+		.data		= &no_check_ksoftirqd_running,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
 	{ }
 };
 
