@@ -65,6 +65,9 @@ const char * const softirq_to_name[NR_SOFTIRQS] = {
 	"TASKLET", "SCHED", "HRTIMER", "RCU"
 };
 
+/* Global variables, exported for sysctl */
+unsigned int __read_mostly no_check_ksoftirqd_running = 0;
+
 /*
  * we cannot loop indefinitely here to avoid userspace starvation,
  * but we also don't want to introduce a worst case 1/HZ latency
@@ -89,6 +92,9 @@ static void wakeup_softirqd(void)
 static bool ksoftirqd_running(unsigned long pending)
 {
 	struct task_struct *tsk = __this_cpu_read(ksoftirqd);
+
+	if (unlikely(no_check_ksoftirqd_running))
+		return false;
 
 	if (pending & SOFTIRQ_NOW_MASK)
 		return false;
