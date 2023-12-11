@@ -192,6 +192,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	unsigned int freq;
 
 	freq = get_capacity_ref_freq(policy);
+	util = map_util_perf(util);
 	freq = map_util_freq(util, freq, max);
 
 	if (freq == sg_policy->cached_raw_freq && !sg_policy->need_freq_update)
