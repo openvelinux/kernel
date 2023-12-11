@@ -23,6 +23,7 @@
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/units.h>
+#include <acpi/cppc_acpi.h>
 
 static DEFINE_PER_CPU(struct scale_freq_data __rcu *, sft_data);
 static struct cpumask scale_freq_counters_mask;
