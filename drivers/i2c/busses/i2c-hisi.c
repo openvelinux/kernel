@@ -496,7 +496,10 @@ static void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr)
 	struct acpi_device *adev = ACPI_COMPANION(ctlr->dev);
 	struct gpio_desc *gpio;
 
-	if (!acpi_has_method(adev->handle, HISI_I2C_PIN_MUX_METHOD))
+	if (acpi_disabled)
+		return;
+
+	if (!adev || !acpi_has_method(adev->handle, HISI_I2C_PIN_MUX_METHOD))
 		return;
 
 	gpio = devm_gpiod_get_optional(ctlr->dev, "scl", GPIOD_OUT_HIGH);
