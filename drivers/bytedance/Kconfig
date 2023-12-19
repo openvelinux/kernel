@@ -61,6 +61,17 @@ config BYTEDANCE_CORE_SCHED_HELPER
 
 	  Bytedance TCE will use this thread to mark some threads.
 
+config BYTEDANCE_CGV2_PERCPU_STAT
+	tristate "bytedance cgroup v2 per-cpu time statistics"
+	depends on BYTEDANCE && CGROUPS
+	default n
+	help
+	  This option will provide you with 4 cgroupfs interfaces to
+	  obtain the per-cpu time of cgroup v2.
+
+	  Bytedance TCE will use these interfaces to monitor the
+	  per-cpu time of the cgroup v2.
+
 if BYTEDANCE
 source "drivers/bytedance/hookbind/Kconfig"
 source "drivers/bytedance/blackholefs/Kconfig"
