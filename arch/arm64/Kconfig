@@ -1264,6 +1264,16 @@ config HISILICON_ERRATUM_162100125
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_1980005
+	bool "Hisilicon erratum 1980005: IDC support"
+	default n
+	help
+	  Some of the Hisilicon linxicore support idc but report wrong value to
+	  the kernel, which result to the unnecessary cache flush, leading to
+	  performance degradation.
+
+	  If unsure, say N.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
