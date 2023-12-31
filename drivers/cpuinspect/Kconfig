@@ -10,4 +10,15 @@ config CPU_INSPECT
 	  of SDC by proactively executing CPU inspection test cases. It
 	  includes modular inspector that can be swapped during runtime.
 
+if CPU_INSPECT
+
+config CPU_INSPECTOR_ATF
+    tristate "ATF CPU inspector"
+        depends on ARM64
+        default n
+        help
+          This inspector implements the execution of inspection instructions
+          in BIOS.
+
+endif
 endmenu
