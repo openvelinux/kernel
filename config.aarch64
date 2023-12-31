@@ -402,6 +402,12 @@ CONFIG_HISILICON_ERRATUM_162100125=y
 # end of ARM errata workarounds via the alternatives framework
 
 CONFIG_ARM64_BRBE=y
+#
+# CPU Inspect
+#
+CONFIG_CPU_INSPECT=m
+CONFIG_CPU_INSPECTOR_ATF=m
+# end of CPU Inspect
 
 CONFIG_ARM64_4K_PAGES=y
 # CONFIG_ARM64_16K_PAGES is not set
