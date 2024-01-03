@@ -378,9 +378,9 @@ static inline void cna_lock_handoff(struct mcs_spinlock *node,
 
 /*
  * Constant (boot-param configurable) flag selecting the NUMA-aware variant
- * of spinlock.  Possible values: -1 (off) / 0 (auto, default) / 1 (on).
+ * of spinlock.  Possible values: -1 (off, default) / 0 (auto) / 1 (on).
  */
-static int numa_spinlock_flag;
+static int numa_spinlock_flag = -1;
 
 static int __init numa_spinlock_setup(char *str)
 {
