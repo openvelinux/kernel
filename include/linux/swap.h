@@ -410,7 +410,8 @@ extern unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 						  unsigned long nr_pages,
 						  gfp_t gfp_mask,
-						  unsigned int reclaim_options);
+						  unsigned int reclaim_options,
+						  int *swappiness);
 #ifdef CONFIG_MEMCG_BGD_RECLAIM
 extern unsigned long try_to_free_mem_cgroup_pages_async(struct mem_cgroup *memcg,
 						       unsigned long nr_pages,
