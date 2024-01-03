@@ -129,7 +129,7 @@ static int expand_one_shrinker_info(struct mem_cgroup *memcg, int new_size,
 		if (new_nr_max <= old->map_nr_max)
 			continue;
 
-		new = kvmalloc_node(sizeof(*new) + new_size, GFP_KERNEL,
+		new = kvzalloc_node(sizeof(*new) + new_size, GFP_KERNEL,
 				    node_online(nid) ? nid : NUMA_NO_NODE);
 		if (!new)
 			return -ENOMEM;
