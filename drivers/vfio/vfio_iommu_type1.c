@@ -1157,6 +1157,46 @@ static void vfio_update_pgsize_bitmap(struct vfio_iommu *iommu)
 	}
 }
 
+static int vfio_iommu_dirty_log_clear(struct vfio_iommu *iommu,
+				      dma_addr_t start_iova, size_t size,
+				      unsigned long *bitmap_buffer,
+				      dma_addr_t base_iova,
+				      unsigned long pgshift)
+{
+	struct vfio_domain *d;
+	int ret = 0;
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		ret = iommu_clear_dirty_log(d->domain, start_iova, size,
+					    bitmap_buffer, base_iova, pgshift);
+		if (ret) {
+			pr_warn("vfio_iommu dirty log clear failed!\n");
+			break;
+		}
+	}
+
+	return ret;
+}
+
+static int vfio_iommu_dirty_log_sync(struct vfio_iommu *iommu,
+				     struct vfio_dma *dma,
+				     unsigned long pgshift)
+{
+	struct vfio_domain *d;
+	int ret = 0;
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		ret = iommu_sync_dirty_log(d->domain, dma->iova, dma->size,
+					   dma->bitmap, dma->iova, pgshift);
+		if (ret) {
+			pr_warn("vfio_iommu dirty log sync failed!\n");
+			break;
+		}
+	}
+
+	return ret;
+}
+
 static int update_user_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 			      struct vfio_dma *dma, dma_addr_t base_iova,
 			      size_t pgsize)
@@ -1167,13 +1207,24 @@ static int update_user_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 	unsigned long copy_offset = bit_offset / BITS_PER_LONG;
 	unsigned long shift = bit_offset % BITS_PER_LONG;
 	unsigned long leftover;
+	bool iommu_hwdbm_dirty = false;
+	int ret;
 
-	/*
-	 * mark all pages dirty if any IOMMU capable device is not able
-	 * to report dirty pages and all pages are pinned and mapped.
-	 */
-	if (iommu->num_non_pinned_groups && dma->iommu_mapped)
-		bitmap_set(dma->bitmap, 0, nbits);
+	if (iommu->num_non_pinned_groups && dma->iommu_mapped) {
+		if (!iommu->num_non_hwdbm_domains) {
+			/* try to get dirty log from IOMMU */
+			iommu_hwdbm_dirty = true;
+			ret = vfio_iommu_dirty_log_sync(iommu, dma, pgshift);
+			if (ret)
+				return ret;
+		} else {
+			/*
+			 * mark all pages dirty if any IOMMU capable device is not able
+			 * to report dirty pages and all pages are pinned and mapped.
+			 */
+			bitmap_set(dma->bitmap, 0, nbits);
+		}
+	}
 
 	if (shift) {
 		bitmap_shift_left(dma->bitmap, dma->bitmap, shift,
@@ -1190,6 +1241,11 @@ static int update_user_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 	if (copy_to_user((void __user *)(bitmap + copy_offset), dma->bitmap,
 			 DIRTY_BITMAP_BYTES(nbits + shift)))
 		return -EFAULT;
+
+	/* Recover the bitmap if it'll be used to clear hardware dirty log */
+	if (shift && iommu_hwdbm_dirty)
+		bitmap_shift_right(dma->bitmap, dma->bitmap, shift,
+				   nbits + shift);
 
 	return 0;
 }
@@ -1228,6 +1284,16 @@ static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 		ret = update_user_bitmap(bitmap, iommu, dma, iova, pgsize);
 		if (ret)
 			return ret;
+
+		/* Clear iommu dirty log to re-enable dirty log tracking */
+		if (iommu->num_non_pinned_groups && dma->iommu_mapped &&
+		    !iommu->num_non_hwdbm_domains) {
+			ret = vfio_iommu_dirty_log_clear(iommu,	dma->iova,
+					dma->size, dma->bitmap, dma->iova,
+					pgshift);
+			if (ret)
+				return ret;
+		}
 
 		/*
 		 * Re-populate bitmap to include all pinned pages which are
@@ -1276,6 +1342,22 @@ static void vfio_notify_dma_unmap(struct vfio_iommu *iommu,
 
 	mutex_unlock(&iommu->device_list_lock);
 	mutex_lock(&iommu->lock);
+}
+
+static void vfio_dma_dirty_log_switch(struct vfio_iommu *iommu,
+				      struct vfio_dma *dma, bool enable)
+{
+	struct vfio_domain *d;
+
+	if (!dma->iommu_mapped)
+		return;
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		if (!d->iommu_hwdbm)
+			continue;
+		WARN_ON(iommu_switch_dirty_log(d->domain, enable, dma->iova,
+					       dma->size, IOMMU_CACHE | dma->prot));
+	}
 }
 
 static int vfio_dma_do_unmap(struct vfio_iommu *iommu,
@@ -1414,6 +1496,10 @@ again:
 			if (ret)
 				break;
 		}
+
+		/* Stop log for removed dma */
+		if (iommu->dirty_page_tracking)
+			vfio_dma_dirty_log_switch(iommu, dma, false);
 
 		unmapped += dma->size;
 		n = rb_next(n);
@@ -1667,8 +1753,13 @@ static int vfio_dma_do_map(struct vfio_iommu *iommu,
 
 	if (!ret && iommu->dirty_page_tracking) {
 		ret = vfio_dma_bitmap_alloc(dma, pgsize);
-		if (ret)
+		if (ret) {
 			vfio_remove_dma(iommu, dma);
+			goto out_unlock;
+		}
+
+		/* Start dirty log for newly added dma */
+		vfio_dma_dirty_log_switch(iommu, dma, true);
 	}
 
 out_unlock:
@@ -2151,6 +2242,21 @@ static int vfio_iommu_domain_alloc(struct device *dev, void *data)
 	return 1; /* Don't iterate */
 }
 
+static void vfio_domain_dirty_log_switch(struct vfio_iommu *iommu,
+					 struct vfio_domain *d, bool enable)
+{
+	struct rb_node *n;
+	struct vfio_dma *dma;
+
+	for (n = rb_first(&iommu->dma_list); n; n = rb_next(n)) {
+		dma = rb_entry(n, struct vfio_dma, node);
+		if (!dma->iommu_mapped)
+			continue;
+		WARN_ON(iommu_switch_dirty_log(d->domain, enable, dma->iova,
+					       dma->size, IOMMU_CACHE | dma->prot));
+	}
+}
+
 /*
  * Called after a new group is added to the iommu_domain, or an old group is
  * removed from the iommu_domain. Update the HWDBM status of vfio_domain and
@@ -2162,13 +2268,48 @@ static void vfio_iommu_update_hwdbm(struct vfio_iommu *iommu,
 {
 	bool old_hwdbm = domain->iommu_hwdbm;
 	bool new_hwdbm = iommu_support_dirty_log(domain->domain);
+	bool singular = list_is_singular(&domain->group_list);
+	bool num_non_hwdbm_zeroed = false;
+	bool log_enabled, should_enable;
 
-	if (old_hwdbm && !new_hwdbm && attach)
+	if ((old_hwdbm || singular) && !new_hwdbm && attach)
 		iommu->num_non_hwdbm_domains++;
-	else if (!old_hwdbm && new_hwdbm && !attach)
+	else if (!old_hwdbm && (new_hwdbm || singular) && !attach) {
 		iommu->num_non_hwdbm_domains--;
-
+		if (!iommu->num_non_hwdbm_domains)
+			num_non_hwdbm_zeroed = true;
+	}
 	domain->iommu_hwdbm = new_hwdbm;
+
+	if (!iommu->dirty_page_tracking)
+		return;
+
+	/*
+	 * When switch the dirty policy from full dirty to iommu hwdbm, we must
+	 * populate full dirty now to avoid losing dirty.
+	 */
+	if (iommu->num_non_pinned_groups && num_non_hwdbm_zeroed)
+		vfio_iommu_populate_bitmap_full(iommu);
+
+	/*
+	 * The vfio_domain can switch dirty log tracking dynamically due to
+	 * group attach/detach. The basic idea is to convert current dirty log
+	 * status to desired dirty log status.
+	 *
+	 * If old_hwdbm is true then dirty log has been enabled. One exception
+	 * is that this is the first group attached to a domain.
+	 *
+	 * If new_hwdbm is true then dirty log should be enabled. One exception
+	 * is that this is the last group detached from a domain.
+	 */
+	log_enabled = old_hwdbm && !(attach && singular);
+	should_enable = new_hwdbm && !(!attach && singular);
+
+	/* Switch dirty log tracking when status changed */
+	if (should_enable && !log_enabled)
+		vfio_domain_dirty_log_switch(iommu, domain, true);
+	else if (!should_enable && log_enabled)
+		vfio_domain_dirty_log_switch(iommu, domain, false);
 }
 
 static int vfio_iommu_type1_attach_group(void *iommu_data,
@@ -2562,7 +2703,11 @@ detach_group_done:
 	 */
 	if (update_dirty_scope) {
 		iommu->num_non_pinned_groups--;
-		if (iommu->dirty_page_tracking)
+		/*
+		 * When switch the dirty policy from full dirty to pinned scope,
+		 * we must populate full dirty now to avoid losing dirty.
+		 */
+		if (iommu->dirty_page_tracking && iommu->num_non_hwdbm_domains)
 			vfio_iommu_populate_bitmap_full(iommu);
 	}
 	mutex_unlock(&iommu->lock);
@@ -2915,6 +3060,22 @@ static int vfio_iommu_type1_unmap_dma(struct vfio_iommu *iommu,
 			-EFAULT : 0;
 }
 
+static void vfio_iommu_dirty_log_switch(struct vfio_iommu *iommu, bool enable)
+{
+	struct vfio_domain *d;
+
+	/*
+	 * We enable dirty log tracking for these vfio_domains that support
+	 * HWDBM. Even if all iommu domains don't support HWDBM for now. They
+	 * may support it after detach some groups.
+	 */
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		if (!d->iommu_hwdbm)
+			continue;
+		vfio_domain_dirty_log_switch(iommu, d, enable);
+	}
+}
+
 static int vfio_iommu_type1_dirty_pages(struct vfio_iommu *iommu,
 					unsigned long arg)
 {
@@ -2947,8 +3108,10 @@ static int vfio_iommu_type1_dirty_pages(struct vfio_iommu *iommu,
 		pgsize = 1 << __ffs(iommu->pgsize_bitmap);
 		if (!iommu->dirty_page_tracking) {
 			ret = vfio_dma_bitmap_alloc_all(iommu, pgsize);
-			if (!ret)
+			if (!ret) {
 				iommu->dirty_page_tracking = true;
+				vfio_iommu_dirty_log_switch(iommu, true);
+			}
 		}
 		mutex_unlock(&iommu->lock);
 		return ret;
@@ -2957,6 +3120,7 @@ static int vfio_iommu_type1_dirty_pages(struct vfio_iommu *iommu,
 		if (iommu->dirty_page_tracking) {
 			iommu->dirty_page_tracking = false;
 			vfio_dma_bitmap_free_all(iommu);
+			vfio_iommu_dirty_log_switch(iommu, false);
 		}
 		mutex_unlock(&iommu->lock);
 		return 0;
