@@ -124,6 +124,69 @@ TRACE_EVENT(unmap,
 	)
 );
 
+TRACE_EVENT(switch_dirty_log,
+
+	TP_PROTO(unsigned long iova, size_t size, bool enable),
+
+	TP_ARGS(iova, size, enable),
+
+	TP_STRUCT__entry(
+		__field(u64, iova)
+		__field(size_t, size)
+		__field(bool, enable)
+	),
+
+	TP_fast_assign(
+		__entry->iova = iova;
+		__entry->size = size;
+		__entry->enable = enable;
+	),
+
+	TP_printk("IOMMU: iova=0x%016llx size=%zu enable=%u",
+			__entry->iova, __entry->size, __entry->enable
+	)
+);
+
+TRACE_EVENT(sync_dirty_log,
+
+	TP_PROTO(unsigned long iova, size_t size),
+
+	TP_ARGS(iova, size),
+
+	TP_STRUCT__entry(
+		__field(u64, iova)
+		__field(size_t, size)
+	),
+
+	TP_fast_assign(
+		__entry->iova = iova;
+		__entry->size = size;
+	),
+
+	TP_printk("IOMMU: iova=0x%016llx size=%zu", __entry->iova,
+			__entry->size)
+);
+
+TRACE_EVENT(clear_dirty_log,
+
+	TP_PROTO(unsigned long iova, size_t size),
+
+	TP_ARGS(iova, size),
+
+	TP_STRUCT__entry(
+		__field(u64, iova)
+		__field(size_t, size)
+	),
+
+	TP_fast_assign(
+		__entry->iova = iova;
+		__entry->size = size;
+	),
+
+	TP_printk("IOMMU: iova=0x%016llx size=%zu", __entry->iova,
+			__entry->size)
+);
+
 DECLARE_EVENT_CLASS(iommu_error,
 
 	TP_PROTO(struct device *dev, unsigned long iova, int flags),
