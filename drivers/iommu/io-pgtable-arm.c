@@ -242,13 +242,19 @@ static void __arm_lpae_sync_pte(arm_lpae_iopte *ptep, int num_entries,
 				   sizeof(*ptep) * num_entries, DMA_TO_DEVICE);
 }
 
-static void __arm_lpae_clear_pte(arm_lpae_iopte *ptep, struct io_pgtable_cfg *cfg)
+static void __arm_lpae_set_pte(arm_lpae_iopte *ptep, arm_lpae_iopte pte,
+			       struct io_pgtable_cfg *cfg)
 {
-
-	*ptep = 0;
+	*ptep = pte;
 
 	if (!cfg->coherent_walk)
 		__arm_lpae_sync_pte(ptep, 1, cfg);
+}
+
+static void __arm_lpae_clear_pte(arm_lpae_iopte *ptep, struct io_pgtable_cfg *cfg)
+{
+
+	__arm_lpae_set_pte(ptep, 0, cfg);
 }
 
 static size_t __arm_lpae_unmap(struct arm_lpae_io_pgtable *data,
