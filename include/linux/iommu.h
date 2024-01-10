@@ -496,6 +496,8 @@ extern int iommu_sva_unbind_gpasid(struct iommu_domain *domain,
 				   struct device *dev, ioasid_t pasid);
 extern struct iommu_domain *iommu_get_domain_for_dev(struct device *dev);
 extern struct iommu_domain *iommu_get_dma_domain(struct device *dev);
+extern size_t iommu_pgsize(struct iommu_domain *domain, unsigned long iova,
+			   phys_addr_t paddr, size_t size, size_t *count);
 extern int iommu_map(struct iommu_domain *domain, unsigned long iova,
 		     phys_addr_t paddr, size_t size, int prot, gfp_t gfp);
 extern size_t iommu_unmap(struct iommu_domain *domain, unsigned long iova,

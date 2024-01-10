@@ -2800,6 +2800,147 @@ static int arm_smmu_enable_nesting(struct iommu_domain *domain)
 	return ret;
 }
 
+static int arm_smmu_split_block(struct iommu_domain *domain,
+				unsigned long iova, size_t size)
+{
+	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+	struct arm_smmu_device *smmu = smmu_domain->smmu;
+	struct io_pgtable_ops *ops = smmu_domain->pgtbl_ops;
+	size_t handled_size;
+
+	if (!(smmu->features & (ARM_SMMU_FEAT_BBML1 | ARM_SMMU_FEAT_BBML2))) {
+		dev_err(smmu->dev, "don't support BBML1/2, can't split block\n");
+		return -ENODEV;
+	}
+	if (!ops || !ops->split_block) {
+		pr_err("io-pgtable don't realize split block\n");
+		return -ENODEV;
+	}
+
+	handled_size = ops->split_block(ops, iova, size);
+	if (handled_size != size) {
+		pr_err("split block failed\n");
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
+static int __arm_smmu_merge_page(struct iommu_domain *domain,
+				 unsigned long iova, phys_addr_t paddr,
+				 size_t size, int prot)
+{
+	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+	struct io_pgtable_ops *ops = smmu_domain->pgtbl_ops;
+	size_t handled_size;
+
+	if (!ops || !ops->merge_page) {
+		pr_err("io-pgtable don't realize merge page\n");
+		return -ENODEV;
+	}
+
+	while (size) {
+		size_t pgsize = iommu_pgsize(domain, iova, paddr, size, NULL);
+
+		handled_size = ops->merge_page(ops, iova, paddr, pgsize, prot);
+		if (handled_size != pgsize) {
+			pr_err("merge page failed\n");
+			return -EFAULT;
+		}
+
+		pr_debug("merge handled: iova 0x%lx pa %pa size 0x%zx\n",
+			 iova, &paddr, pgsize);
+
+		iova += pgsize;
+		paddr += pgsize;
+		size -= pgsize;
+	}
+
+	return 0;
+}
+
+static int arm_smmu_merge_page(struct iommu_domain *domain, unsigned long iova,
+			       size_t size, int prot)
+{
+	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+	struct arm_smmu_device *smmu = smmu_domain->smmu;
+	struct io_pgtable_ops *ops = smmu_domain->pgtbl_ops;
+	phys_addr_t phys;
+	dma_addr_t p, i;
+	size_t cont_size;
+	int ret = 0;
+
+	if (!(smmu->features & (ARM_SMMU_FEAT_BBML1 | ARM_SMMU_FEAT_BBML2))) {
+		dev_err(smmu->dev, "don't support BBML1/2, can't merge page\n");
+		return -ENODEV;
+	}
+
+	if (!ops || !ops->iova_to_phys)
+		return -ENODEV;
+
+	while (size) {
+		phys = ops->iova_to_phys(ops, iova);
+		cont_size = PAGE_SIZE;
+		p = phys + cont_size;
+		i = iova + cont_size;
+
+		while (cont_size < size && p == ops->iova_to_phys(ops, i)) {
+			p += PAGE_SIZE;
+			i += PAGE_SIZE;
+			cont_size += PAGE_SIZE;
+		}
+
+		if (cont_size != PAGE_SIZE) {
+			ret = __arm_smmu_merge_page(domain, iova, phys,
+						    cont_size, prot);
+			if (ret)
+				break;
+		}
+
+		iova += cont_size;
+		size -= cont_size;
+	}
+
+	return ret;
+}
+
+static int arm_smmu_switch_dirty_log(struct iommu_domain *domain, bool enable,
+				     unsigned long iova, size_t size, int prot)
+{
+	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+	struct arm_smmu_device *smmu = smmu_domain->smmu;
+
+	if (!(smmu->features & ARM_SMMU_FEAT_HD))
+		return -ENODEV;
+	if (smmu_domain->stage != ARM_SMMU_DOMAIN_S1)
+		return -EINVAL;
+
+	if (enable) {
+		/*
+		 * For SMMU, the hardware dirty management is always enabled if
+		 * hardware supports HTTU HD. The action to start dirty log is
+		 * spliting block mapping.
+		 *
+		 * We don't return error even if the split operation fail, as we
+		 * can still track dirty at block granule, which is still a much
+		 * better choice compared to full dirty policy.
+		 */
+		arm_smmu_split_block(domain, iova, size);
+	} else {
+		/*
+		 * For SMMU, the hardware dirty management is always enabled if
+		 * hardware supports HTTU HD. The action to stop dirty log is
+		 * merging page mapping.
+		 *
+		 * We don't return error even if the merge operation fail, as it
+		 * just effects performace of DMA transaction.
+		 */
+		arm_smmu_merge_page(domain, iova, size, prot);
+	}
+
+	return 0;
+}
+
 static int arm_smmu_of_xlate(struct device *dev, struct of_phandle_args *args)
 {
 	return iommu_fwspec_add_ids(dev, args->args, 1);
@@ -2930,6 +3071,7 @@ static struct iommu_ops arm_smmu_ops = {
 #endif
 		.iova_to_phys		= arm_smmu_iova_to_phys,
 		.enable_nesting		= arm_smmu_enable_nesting,
+		.switch_dirty_log	= arm_smmu_switch_dirty_log,
 		.free			= arm_smmu_domain_free,
 	}
 };
