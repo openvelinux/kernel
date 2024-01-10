@@ -661,6 +661,8 @@ struct arm_smmu_device {
 #define ARM_SMMU_FEAT_HA		(1 << 19)
 #define ARM_SMMU_FEAT_HD		(1 << 20)
 #define ARM_SMMU_FEAT_NESTING		(1 << 21)
+#define ARM_SMMU_FEAT_BBML1		(1 << 22)
+#define ARM_SMMU_FEAT_BBML2		(1 << 23)
 	u32				features;
 
 #define ARM_SMMU_OPT_SKIP_PREFETCH	(1 << 0)
