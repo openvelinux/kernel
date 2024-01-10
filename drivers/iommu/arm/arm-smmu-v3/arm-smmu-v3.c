@@ -2904,6 +2904,13 @@ static int arm_smmu_merge_page(struct iommu_domain *domain, unsigned long iova,
 	return ret;
 }
 
+static bool arm_smmu_support_dirty_log(struct iommu_domain *domain)
+{
+	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+
+	return !!(smmu_domain->smmu->features & ARM_SMMU_FEAT_HD);
+}
+
 static int arm_smmu_switch_dirty_log(struct iommu_domain *domain, bool enable,
 				     unsigned long iova, size_t size, int prot)
 {
@@ -3124,6 +3131,7 @@ static struct iommu_ops arm_smmu_ops = {
 #endif
 		.iova_to_phys		= arm_smmu_iova_to_phys,
 		.enable_nesting		= arm_smmu_enable_nesting,
+		.support_dirty_log	= arm_smmu_support_dirty_log,
 		.switch_dirty_log	= arm_smmu_switch_dirty_log,
 		.sync_dirty_log		= arm_smmu_sync_dirty_log,
 		.clear_dirty_log	= arm_smmu_clear_dirty_log,
