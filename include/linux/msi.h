@@ -684,6 +684,11 @@ struct irq_domain *pci_msi_create_irq_domain(struct fwnode_handle *fwnode,
 					     struct irq_domain *parent);
 u32 pci_msi_domain_get_msi_rid(struct irq_domain *domain, struct pci_dev *pdev);
 struct irq_domain *pci_msi_get_device_domain(struct pci_dev *pdev);
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+struct irq_domain *vp_get_irq_domain(void);
+extern bool rsv_devid_pool_cap;
+#endif
 #else /* CONFIG_PCI_MSI */
 static inline struct irq_domain *pci_msi_get_device_domain(struct pci_dev *pdev)
 {

@@ -67,7 +67,7 @@ static LIST_HEAD(rsv_devid_pools);
 static DEFINE_RAW_SPINLOCK(rsv_devid_pools_lock);
 
 /* Do we have usable rsv_devid_pool? Initialized to be true. */
-static bool rsv_devid_pool_cap = true;
+bool rsv_devid_pool_cap = true;
 static u8 rsv_buses_start, rsv_buses_count;
 
 static int __init rsv_buses_start_cfg(char *buf)
