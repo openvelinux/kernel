@@ -229,6 +229,11 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 			/* PPIs */
 			irq->config = VGIC_CONFIG_LEVEL;
 		}
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		/* Needed? */
+		irq->vtimer_info = NULL;
+#endif
 	}
 
 	if (!irqchip_in_kernel(vcpu->kvm))
