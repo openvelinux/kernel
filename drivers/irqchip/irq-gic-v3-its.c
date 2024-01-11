@@ -266,6 +266,12 @@ struct its_device {
 	u32			nr_ites;
 	u32			device_id;
 	bool			shared;
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+	/* For virtual devices which needed the devid managed */
+	bool			is_vdev;
+	struct rsv_devid_pool	*devid_pool;
+#endif
 };
 
 static struct {
@@ -292,6 +298,60 @@ static u16 vmovp_seq_num;
 static DEFINE_RAW_SPINLOCK(vmovp_lock);
 
 static DEFINE_IDA(its_vpeid_ida);
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+static void free_devid_to_rsv_pools(struct its_device *its_dev)
+{
+	struct rsv_devid_pool *pool = its_dev->devid_pool;
+	u32 id, size;
+
+	WARN_ON(!pool);
+
+	id = its_dev->device_id - pool->start;
+	size = pool->end - pool->start;
+	WARN_ON(id >= size);
+
+	raw_spin_lock(&pool->devid_bm_lock);
+	clear_bit(id, pool->devid_bm);
+	raw_spin_unlock(&pool->devid_bm_lock);
+
+	pr_debug("ITS: free devid (%u) to rsv_devid_pools\n", its_dev->device_id);
+}
+
+static int alloc_devid_from_rsv_pools(struct rsv_devid_pool **devid_pool,
+				      u32 *dev_id)
+{
+	struct rsv_devid_pool *pool;
+	int err = -ENOSPC;
+
+	raw_spin_lock(&rsv_devid_pools_lock);
+	list_for_each_entry(pool, &rsv_devid_pools, entry) {
+		u32 size, id;
+
+		size = pool->end - pool->start;
+
+		raw_spin_lock(&pool->devid_bm_lock);
+		id = find_first_zero_bit(pool->devid_bm, size);
+		if (id >= size) {
+			/* No usable device id in this pool, try next. */
+			raw_spin_unlock(&pool->devid_bm_lock);
+			continue;
+		}
+
+		*dev_id = pool->start + id;
+		set_bit(id, pool->devid_bm);
+		raw_spin_unlock(&pool->devid_bm_lock);
+
+		*devid_pool = pool;
+		err = 0;
+		break;
+	}
+	raw_spin_unlock(&rsv_devid_pools_lock);
+
+	pr_debug("ITS: alloc devid (%u) from rsv_devid_pools\n", *dev_id);
+	return err;
+}
+#endif
 
 #define gic_data_rdist()		(raw_cpu_ptr(gic_rdists->rdist))
 #define gic_data_rdist_cpu(cpu)		(per_cpu_ptr(gic_rdists->rdist, cpu))
@@ -3578,6 +3638,13 @@ static void its_free_device(struct its_device *its_dev)
 	raw_spin_unlock_irqrestore(&its_dev->its->lock, flags);
 	kfree(its_dev->event_map.col_map);
 	kfree(its_dev->itt);
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+	if (its_dev->is_vdev) {
+		WARN_ON(!rsv_devid_pool_cap);
+		free_devid_to_rsv_pools(its_dev);
+	}
+#endif
 	kfree(its_dev);
 }
 
@@ -3614,6 +3681,23 @@ static int its_msi_prepare(struct irq_domain *domain, struct device *dev,
 	 */
 	dev_id = info->scratchpad[0].ul;
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+	int use_devid_pool = false;
+	struct rsv_devid_pool *pool = NULL;
+
+	if (rsv_devid_pool_cap && !dev->of_node && !dev->fwnode &&
+	    info->scratchpad[0].ul == -1)
+		use_devid_pool = true;
+
+	if (use_devid_pool) {
+		err = alloc_devid_from_rsv_pools(&pool, &dev_id);
+		if (err) {
+			pr_warn("ITS: No remaining device id\n");
+			return err;
+		}
+	}
+#endif
+
 	msi_info = msi_get_domain_info(domain);
 	its = msi_info->data;
 
@@ -3630,6 +3714,10 @@ static int its_msi_prepare(struct irq_domain *domain, struct device *dev,
 	mutex_lock(&its->dev_alloc_lock);
 	its_dev = its_find_device(its, dev_id);
 	if (its_dev) {
+#ifdef CONFIG_VIRT_PLAT_DEV
+		/* Impossible ...*/
+		WARN_ON_ONCE(use_devid_pool);
+#endif
 		/*
 		 * We already have seen this ID, probably through
 		 * another alias (PCI bridge of some sort). No need to
@@ -3650,6 +3738,13 @@ static int its_msi_prepare(struct irq_domain *domain, struct device *dev,
 		its_dev->shared = true;
 
 	pr_debug("ITT %d entries, %d bits\n", nvec, ilog2(nvec));
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+	if (use_devid_pool) {
+		its_dev->is_vdev = true;
+		its_dev->devid_pool = pool;
+	}
+#endif
 out:
 	mutex_unlock(&its->dev_alloc_lock);
 	info->scratchpad[0].ptr = its_dev;
