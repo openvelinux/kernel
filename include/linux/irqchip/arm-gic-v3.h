@@ -645,6 +645,10 @@ int its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	     struct irq_domain *domain);
 int mbi_init(struct fwnode_handle *fwnode, struct irq_domain *parent);
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+phys_addr_t get_gicr_paddr(int cpu);
+#endif
+
 static inline bool gic_enable_sre(void)
 {
 	u32 val;

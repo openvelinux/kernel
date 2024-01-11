@@ -53,6 +53,60 @@
  */
 #define REG_MBIGEN_TYPE_OFFSET		0x0
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+#include <linux/list.h>
+#include <linux/cpumask.h>
+#include <linux/cpuhotplug.h>
+#include <asm/smp_plat.h>
+#include <asm/cputype.h>
+#include <asm/barrier.h>
+
+#include <clocksource/arm_arch_timer.h>
+#include <linux/irqchip/arm-gic-v3.h>
+
+#define MBIGEN_CTLR_OFFSET                     0x0
+#define MBIGEN_AFF3_MASK                       0xff000000
+#define MBIGEN_AFF3_SHIFT                      24
+
+/**
+ * MBIX config register
+ * bit[25:24] mbi_type:
+ * - 0b10 support vtimer irqbypass
+ */
+#define MBIGEN_NODE_CFG_OFFSET                 0x0004
+#define MBIGEN_TYPE_MASK                       0x03000000
+#define MBIGEN_TYPE_SHIFT                      24
+#define TYPE_VTIMER_ENABLED                    0x02
+
+#define VTIMER_MBIGEN_REG_WIDTH                4
+#define PPIS_PER_MBIGEN_NODE                   32
+#define VTIMER_MBIGEN_REG_TYPE_OFFSET          0x1000
+#define VTIMER_MBIGEN_REG_SET_AUTO_CLR_OFFSET  0x1100
+#define VTIMER_MBIGEN_REG_CLR_AUTO_CLR_OFFSET  0x1110
+#define VTIMER_MBIGEN_REG_ATV_STAT_OFFSET      0x1120
+#define VTIMER_MBIGEN_REG_VEC_OFFSET           0x1200
+#define VTIMER_MBIGEN_REG_ATV_CLR_OFFSET       0xa008
+
+/**
+ * struct vtimer_mbigen_device - holds the information of vtimer mbigen device.
+ *
+ * @base: mapped address of this mbigen chip.
+ * @cpu_base : the base cpu_id attached to the mbigen chip.
+ * @cpu_num : the num of the cpus attached to the mbigen chip.
+ * @mpidr_aff3 : [socket_id : die_id] of the mbigen chip.
+ * @entry: list_head connecting this vtimer_mbigen to the full list.
+ * @vmgn_lock: spinlock for set type.
+ */
+struct vtimer_mbigen_device {
+	void __iomem            *base;
+	int                     cpu_base;
+	int                     cpu_num;
+	int                     mpidr_aff3;
+	struct list_head        entry;
+	spinlock_t              vmgn_lock;
+};
+#endif
+
 /**
  * struct mbigen_device - holds the information of mbigen device.
  *
@@ -62,7 +116,159 @@
 struct mbigen_device {
 	struct platform_device	*pdev;
 	void __iomem		*base;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	struct vtimer_mbigen_device	*vtimer_mbigen_chip;
+#endif
 };
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static LIST_HEAD(vtimer_mgn_list);
+
+/**
+ * Due to the existence of hyper-threading technology, We need to get the
+ * absolute offset of a cpu relative to the base cpu.
+ */
+#define GICR_LENGTH                            0x40000
+static inline int get_abs_offset(int cpu, int cpu_base)
+{
+	return ((get_gicr_paddr(cpu) - get_gicr_paddr(cpu_base)) / GICR_LENGTH);
+}
+
+static struct vtimer_mbigen_device *get_vtimer_mbigen(int cpu_id)
+{
+	unsigned int mpidr_aff3;
+	struct vtimer_mbigen_device *chip;
+
+	mpidr_aff3 = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu_id), 3);
+
+	list_for_each_entry(chip, &vtimer_mgn_list, entry) {
+		if (chip->mpidr_aff3 == mpidr_aff3)
+			return chip;
+	}
+
+	pr_debug("Failed to get vtimer mbigen of cpu%d!\n", cpu_id);
+	return NULL;
+}
+
+void vtimer_mbigen_set_vector(int cpu_id, u16 vpeid)
+{
+
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	int cpu_abs_offset, count = 100;
+
+	chip = get_vtimer_mbigen(cpu_id);
+	if (!chip)
+		return;
+
+	cpu_abs_offset = get_abs_offset(cpu_id, chip->cpu_base);
+	addr = chip->base + VTIMER_MBIGEN_REG_VEC_OFFSET +
+	       cpu_abs_offset * VTIMER_MBIGEN_REG_WIDTH;
+
+	writel_relaxed(vpeid, addr);
+
+	/* Make sure correct vpeid set */
+	do {
+		if (readl_relaxed(addr) == vpeid)
+			break;
+	} while (count--);
+
+	if (!count)
+		pr_err("Failed to set mbigen vector of CPU%d!\n", cpu_id);
+}
+
+bool vtimer_mbigen_get_active(int cpu_id)
+{
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	int cpu_abs_offset;
+	u32 val;
+
+	chip = get_vtimer_mbigen(cpu_id);
+	if (!chip)
+		return false;
+
+	cpu_abs_offset = get_abs_offset(cpu_id, chip->cpu_base);
+	addr = chip->base + VTIMER_MBIGEN_REG_ATV_STAT_OFFSET +
+		(cpu_abs_offset / PPIS_PER_MBIGEN_NODE) * VTIMER_MBIGEN_REG_WIDTH;
+
+	dsb(sy);
+	val = readl_relaxed(addr);
+	return (!!(val & (1 << (cpu_abs_offset % PPIS_PER_MBIGEN_NODE))));
+}
+
+void vtimer_mbigen_set_auto_clr(int cpu_id, bool set)
+{
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	int cpu_abs_offset;
+	u64 offset;
+	u32 val;
+
+	chip = get_vtimer_mbigen(cpu_id);
+	if (!chip)
+		return;
+
+	cpu_abs_offset = get_abs_offset(cpu_id, chip->cpu_base);
+	offset = set ? VTIMER_MBIGEN_REG_SET_AUTO_CLR_OFFSET :
+		 VTIMER_MBIGEN_REG_CLR_AUTO_CLR_OFFSET;
+	addr = chip->base + offset +
+		(cpu_abs_offset / PPIS_PER_MBIGEN_NODE) * VTIMER_MBIGEN_REG_WIDTH;
+	val = 1 << (cpu_abs_offset % PPIS_PER_MBIGEN_NODE);
+
+	writel_relaxed(val, addr);
+	dsb(sy);
+}
+
+void vtimer_mbigen_set_active(int cpu_id, bool set)
+{
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	int cpu_abs_offset;
+	u64 offset;
+	u32 val;
+
+	chip = get_vtimer_mbigen(cpu_id);
+	if (!chip)
+		return;
+
+	cpu_abs_offset = get_abs_offset(cpu_id, chip->cpu_base);
+	offset = set ? VTIMER_MBIGEN_REG_ATV_STAT_OFFSET :
+		 VTIMER_MBIGEN_REG_ATV_CLR_OFFSET;
+	addr = chip->base + offset +
+		(cpu_abs_offset / PPIS_PER_MBIGEN_NODE) * VTIMER_MBIGEN_REG_WIDTH;
+	val = 1 << (cpu_abs_offset % PPIS_PER_MBIGEN_NODE);
+
+	writel_relaxed(val, addr);
+	dsb(sy);
+}
+
+static int vtimer_mbigen_set_type(unsigned int cpu_id)
+{
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	int cpu_abs_offset;
+	u32 val, mask;
+
+	chip = get_vtimer_mbigen(cpu_id);
+	if (!chip)
+		return -EINVAL;
+
+	cpu_abs_offset = get_abs_offset(cpu_id, chip->cpu_base);
+	addr = chip->base + VTIMER_MBIGEN_REG_TYPE_OFFSET +
+	       (cpu_abs_offset / PPIS_PER_MBIGEN_NODE) * VTIMER_MBIGEN_REG_WIDTH;
+
+	mask = 1 << (cpu_abs_offset % PPIS_PER_MBIGEN_NODE);
+
+	spin_lock(&chip->vmgn_lock);
+	val = readl_relaxed(addr);
+	val |= mask;
+	writel_relaxed(val, addr);
+	dsb(sy);
+	spin_unlock(&chip->vmgn_lock);
+	return 0;
+}
+#endif
 
 static inline unsigned int get_mbigen_node_offset(unsigned int nid)
 {
@@ -344,6 +550,131 @@ static inline int mbigen_acpi_create_domain(struct platform_device *pdev,
 }
 #endif
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static void vtimer_mbigen_set_kvm_info(void)
+{
+	struct arch_timer_kvm_info *info = arch_timer_get_kvm_info();
+
+	info->irqbypass_flag |= VT_EXPANDDEV_PROBED;
+}
+
+static int vtimer_mbigen_chip_read_aff3(struct vtimer_mbigen_device *chip)
+{
+	void __iomem *base = chip->base;
+	void __iomem *addr = base + MBIGEN_CTLR_OFFSET;
+	u32 val = readl_relaxed(addr);
+
+	return ((val & MBIGEN_AFF3_MASK) >> MBIGEN_AFF3_SHIFT);
+}
+
+static int vtimer_mbigen_chip_match_cpu(struct vtimer_mbigen_device *chip)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		int mpidr_aff3 = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 3);
+
+		if (chip->mpidr_aff3 == mpidr_aff3) {
+			/* get the first cpu attached to the mbigen */
+			if (chip->cpu_base == -1) {
+				/* Make sure cpu_base is attached to PIN0 */
+				u64 mpidr = cpu_logical_map(cpu);
+
+				if (!MPIDR_AFFINITY_LEVEL(mpidr, 2) &&
+				    !MPIDR_AFFINITY_LEVEL(mpidr, 1) &&
+				    !MPIDR_AFFINITY_LEVEL(mpidr, 0))
+					chip->cpu_base = cpu;
+			}
+		}
+	}
+
+	if (chip->cpu_base == -1)
+		return -EINVAL;
+
+	return 0;
+}
+
+static bool is_mbigen_vtimer_bypass_enabled(struct mbigen_device *mgn_chip)
+{
+	void __iomem *base = mgn_chip->base;
+	void __iomem *addr = base + MBIGEN_NODE_CFG_OFFSET;
+	u32 val = readl_relaxed(addr);
+
+	return ((val & MBIGEN_TYPE_MASK) >> MBIGEN_TYPE_SHIFT)
+		== TYPE_VTIMER_ENABLED;
+}
+
+/**
+ * MBIX_VPPI_ITS_TA: Indicates the address of the ITS corresponding
+ * to the mbigen.
+ */
+#define MBIX_VPPI_ITS_TA	0x0038
+static bool vtimer_mbigen_should_probe(struct mbigen_device *mgn_chip)
+{
+	unsigned int mpidr_aff3;
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	u32 val;
+
+	/* find the valid mbigen */
+	addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+	val = readl_relaxed(addr);
+	if (!val)
+		return false;
+
+	addr = mgn_chip->base + MBIGEN_CTLR_OFFSET;
+	val = readl_relaxed(addr);
+	mpidr_aff3 = (val & MBIGEN_AFF3_MASK) >> MBIGEN_AFF3_SHIFT;
+	list_for_each_entry(chip, &vtimer_mgn_list, entry) {
+		if (chip->mpidr_aff3 == mpidr_aff3)
+			return false;
+	}
+
+	return true;
+}
+
+static int vtimer_mbigen_device_probe(struct platform_device *pdev)
+{
+	struct mbigen_device *mgn_chip = platform_get_drvdata(pdev);
+	struct vtimer_mbigen_device *vtimer_mgn_chip;
+	int err;
+
+	if (!is_mbigen_vtimer_bypass_enabled(mgn_chip) ||
+	    !vtimer_mbigen_should_probe(mgn_chip))
+		return 0;
+
+	vtimer_mgn_chip = kzalloc(sizeof(*vtimer_mgn_chip), GFP_KERNEL);
+	if (!vtimer_mgn_chip)
+		return -ENOMEM;
+
+	mgn_chip->vtimer_mbigen_chip = vtimer_mgn_chip;
+	vtimer_mgn_chip->base = mgn_chip->base;
+	vtimer_mgn_chip->mpidr_aff3 = vtimer_mbigen_chip_read_aff3(vtimer_mgn_chip);
+	vtimer_mgn_chip->cpu_base = -1;
+	err = vtimer_mbigen_chip_match_cpu(vtimer_mgn_chip);
+	if (err) {
+		dev_err(&pdev->dev,
+			"Fail to match vtimer mbigen device with cpu\n");
+		goto out;
+	}
+
+	spin_lock_init(&vtimer_mgn_chip->vmgn_lock);
+	list_add(&vtimer_mgn_chip->entry, &vtimer_mgn_list);
+	vtimer_mbigen_set_kvm_info();
+	cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "irqchip/mbigen-vtimer:online",
+			  vtimer_mbigen_set_type, NULL);
+
+	pr_info("vtimer mbigen device @%p probed success!\n", mgn_chip->base);
+	return 0;
+
+out:
+	kfree(vtimer_mgn_chip);
+	dev_err(&pdev->dev, "vtimer mbigen device @%p probed failed\n",
+		mgn_chip->base);
+	return err;
+}
+#endif
+
 static int mbigen_device_probe(struct platform_device *pdev)
 {
 	struct mbigen_device *mgn_chip;
@@ -380,6 +711,15 @@ static int mbigen_device_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, mgn_chip);
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	err = vtimer_mbigen_device_probe(pdev);
+
+	if (err) {
+		dev_err(&pdev->dev, "Failed to probe vtimer mbigen device\n");
+		return err;
+	}
+#endif
 	return 0;
 }
 
