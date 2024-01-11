@@ -216,12 +216,19 @@ struct its_node {
 	int			numa_node;
 	unsigned int		msi_domain_flags;
 	u32			pre_its_base; /* for Socionext Synquacer */
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	u32			version;
+#endif
 	int			vlpi_redist_offset;
 };
 
 #define is_v4(its)		(!!((its)->typer & GITS_TYPER_VLPIS))
 #define is_v4_1(its)		(!!((its)->typer & GITS_TYPER_VMAPP))
 #define device_ids(its)		(FIELD_GET(GITS_TYPER_DEVBITS, (its)->typer) + 1)
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+#define is_vtimer_irqbypass(its)	(!!((its)->version & GITS_VERSION_VTIMER))
+#endif
 
 #define ITS_ITT_ALIGN		SZ_256
 
@@ -5615,6 +5622,10 @@ static struct its_node __init *its_node_init(struct resource *res,
 	its->numa_node = numa_node;
 	its->fwnode_handle = handle;
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (readl_relaxed(its_base + GITS_IIDR) == 0x00051736)
+		its->version = readl_relaxed(its_base + GITS_VERSION);
+#endif
 	return its;
 
 out_unmap:
