@@ -35,6 +35,23 @@
 #define irq_is_spi(irq) ((irq) >= VGIC_NR_PRIVATE_IRQS && \
 			 (irq) <= VGIC_MAX_SPI)
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+struct shadow_dev {
+	struct kvm              *kvm;
+	struct list_head        entry;
+
+	u32                     devid;  /* guest visible device id */
+	u32                     nvecs;
+	unsigned long           *enable;
+	int                     *host_irq;
+	struct kvm_msi          *msi;
+
+	struct platform_device  *pdev;
+
+	struct work_struct      destroy;
+};
+#endif
+
 enum vgic_type {
 	VGIC_V2,		/* Good ol' GICv2 */
 	VGIC_V3,		/* New fancy GICv3 */
@@ -292,6 +309,10 @@ struct vgic_dist {
 	 * else.
 	 */
 	struct its_vm		its_vm;
+#ifdef CONFIG_VIRT_PLAT_DEV
+	raw_spinlock_t		sdev_list_lock;
+	struct list_head	sdev_list_head;
+#endif
 };
 
 struct vgic_v2_cpu_if {
@@ -436,5 +457,14 @@ int vgic_v4_put(struct kvm_vcpu *vcpu);
 /* CPU HP callbacks */
 void kvm_vgic_cpu_up(void);
 void kvm_vgic_cpu_down(void);
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+extern bool sdev_enable;
+
+void kvm_shadow_dev_init(void);
+int kvm_shadow_dev_create(struct kvm *kvm, struct kvm_master_dev_info *mdi);
+void kvm_shadow_dev_delete(struct kvm *kvm, u32 devid);
+void kvm_shadow_dev_delete_all(struct kvm *kvm);
+#endif
 
 #endif /* __KVM_ARM_VGIC_H */

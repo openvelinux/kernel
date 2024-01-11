@@ -1193,6 +1193,8 @@ struct kvm_ppc_resize_hpt {
 #define KVM_CAP_ARM_EAGER_SPLIT_CHUNK_SIZE 228
 #define KVM_CAP_ARM_SUPPORTED_BLOCK_SIZES 229
 
+#define KVM_CAP_ARM_VIRT_MSI_BYPASS 799
+
 #ifdef KVM_CAP_IRQ_ROUTING
 
 struct kvm_irq_routing_irqchip {
@@ -1461,6 +1463,11 @@ struct kvm_vfio_spapr_tce {
 	__s32	tablefd;
 };
 
+struct kvm_master_dev_info {
+	__u32 nvectors;
+	struct kvm_msi msi[];
+};
+
 /*
  * KVM_CREATE_VCPU receives as a parameter the vcpu slot, and returns
  * a vcpu fd.
@@ -1570,6 +1577,9 @@ struct kvm_s390_ucas_mapping {
 #define KVM_SET_DEVICE_ATTR	  _IOW(KVMIO,  0xe1, struct kvm_device_attr)
 #define KVM_GET_DEVICE_ATTR	  _IOW(KVMIO,  0xe2, struct kvm_device_attr)
 #define KVM_HAS_DEVICE_ATTR	  _IOW(KVMIO,  0xe3, struct kvm_device_attr)
+
+#define KVM_CREATE_SHADOW_DEV	  _IOW(KVMIO,  0xf0, struct kvm_master_dev_info)
+#define KVM_DEL_SHADOW_DEV	  _IOW(KVMIO,  0xf1, __u32)
 
 /*
  * ioctls for vcpu fds
