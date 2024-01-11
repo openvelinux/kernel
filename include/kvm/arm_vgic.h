@@ -465,6 +465,7 @@ void kvm_shadow_dev_init(void);
 int kvm_shadow_dev_create(struct kvm *kvm, struct kvm_master_dev_info *mdi);
 void kvm_shadow_dev_delete(struct kvm *kvm, u32 devid);
 void kvm_shadow_dev_delete_all(struct kvm *kvm);
+struct shadow_dev *kvm_shadow_dev_get(struct kvm *kvm, struct kvm_msi *msi);
 #endif
 
 #endif /* __KVM_ARM_VGIC_H */
