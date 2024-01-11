@@ -6031,8 +6031,10 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 	/* vtimer irqbypass depends on rvpeid support */
-	if (WARN_ON(!has_v4_1 && has_vtimer_irqbypass))
+	if (WARN_ON(!has_v4_1 && has_vtimer_irqbypass)) {
 		has_vtimer_irqbypass = false;
+		rdists->has_vtimer = false;
+	}
 #endif
 
 	if (has_v4 & rdists->has_vlpis) {

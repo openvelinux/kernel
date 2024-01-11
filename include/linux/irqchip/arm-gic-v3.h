@@ -657,6 +657,9 @@ struct rdists {
 	bool			has_rvpeid;
 	bool			has_direct_lpi;
 	bool			has_vpend_valid_dirty;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	bool			has_vtimer;
+#endif
 };
 
 struct irq_domain;
