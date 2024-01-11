@@ -112,6 +112,9 @@ static inline void vcpu_clear_wfx_traps(struct kvm_vcpu *vcpu)
 {
 	vcpu->arch.hcr_el2 &= ~HCR_TWE;
 	if (atomic_read(&vcpu->arch.vgic_cpu.vgic_v3.its_vpe.vlpi_count) ||
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	    vcpu->arch.vgic_cpu.vtimier_irqbypass ||
+#endif
 	    vcpu->kvm->arch.vgic.nassgireq)
 		vcpu->arch.hcr_el2 &= ~HCR_TWI;
 	else
