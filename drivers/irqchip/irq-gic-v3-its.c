@@ -39,6 +39,104 @@
 
 #include "irq-gic-common.h"
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+#include <linux/pci.h>
+
+/* a reserved bus id region */
+struct plat_rsv_buses {
+	u8	start;	/* the first reserved bus id */
+	u8	count;
+};
+
+/*
+ * Build a devid pool per reserved bus id region, where all
+ * device ids should be unused by physical PCI devices.
+ */
+struct rsv_devid_pool {
+	struct list_head	entry;
+
+	struct plat_rsv_buses	buses;
+	u32			start;
+	u32			end;
+
+	raw_spinlock_t		devid_bm_lock;
+	unsigned long		*devid_bm;
+};
+
+static LIST_HEAD(rsv_devid_pools);
+static DEFINE_RAW_SPINLOCK(rsv_devid_pools_lock);
+
+/* Do we have usable rsv_devid_pool? Initialized to be true. */
+static bool rsv_devid_pool_cap = true;
+static u8 rsv_buses_start, rsv_buses_count;
+
+static int __init rsv_buses_start_cfg(char *buf)
+{
+	return kstrtou8(buf, 0, &rsv_buses_start);
+}
+early_param("irqchip.gicv3_rsv_buses_start", rsv_buses_start_cfg);
+
+static int __init rsv_buses_count_cfg(char *buf)
+{
+	return kstrtou8(buf, 0, &rsv_buses_count);
+}
+early_param("irqchip.gicv3_rsv_buses_count", rsv_buses_count_cfg);
+
+static void get_rsv_buses_resource(struct plat_rsv_buses *buses)
+{
+	buses->start = rsv_buses_start;
+	buses->count = rsv_buses_count;
+
+	/*
+	 * FIXME: There is no architectural way to get the *correct*
+	 * reserved bus id info.
+	 *
+	 * The first thought is to increase the GITS_TYPER.Devbits for
+	 * the usage for virtualization, but this will break all
+	 * command layouts with DeviceID as an argument (e.g., INT).
+	 *
+	 * The second way is to decrease the GITS_TYPER.Devids so that
+	 * SW can pick the unused device IDs for use (these IDs should
+	 * actually be supported at HW level, though not exposed).
+	 * *Or* fetch the information with the help of firmware. They
+	 * are essentially the same way.
+	 */
+}
+
+static int probe_devid_pool_one(void)
+{
+	struct rsv_devid_pool *devid_pool;
+
+	devid_pool = kzalloc(sizeof(*devid_pool), GFP_KERNEL);
+	if (!devid_pool)
+		return -ENOMEM;
+
+	get_rsv_buses_resource(&devid_pool->buses);
+	raw_spin_lock_init(&devid_pool->devid_bm_lock);
+
+	devid_pool->start = PCI_DEVID(devid_pool->buses.start, 0);
+	devid_pool->end = PCI_DEVID(devid_pool->buses.start + devid_pool->buses.count, 0);
+
+	if (devid_pool->end == devid_pool->start) {
+		kfree(devid_pool);
+		return -EINVAL;
+	}
+
+	devid_pool->devid_bm = bitmap_zalloc(devid_pool->end - devid_pool->start,
+					     GFP_KERNEL);
+	if (!devid_pool->devid_bm) {
+		kfree(devid_pool);
+		return -ENOMEM;
+	}
+
+	raw_spin_lock(&rsv_devid_pools_lock);
+	list_add(&devid_pool->entry, &rsv_devid_pools);
+	raw_spin_unlock(&rsv_devid_pools_lock);
+
+	return 0;
+}
+#endif
+
 #define ITS_FLAGS_CMDQ_NEEDS_FLUSHING		(1ULL << 0)
 #define ITS_FLAGS_WORKAROUND_CAVIUM_22375	(1ULL << 1)
 #define ITS_FLAGS_WORKAROUND_CAVIUM_23144	(1ULL << 2)
@@ -199,6 +297,22 @@ static DEFINE_IDA(its_vpeid_ida);
 #define gic_data_rdist_cpu(cpu)		(per_cpu_ptr(gic_rdists->rdist, cpu))
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
 #define gic_data_rdist_vlpi_base()	(gic_data_rdist_rd_base() + SZ_128K)
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+/*
+ * Currently we only build *one* devid pool.
+ */
+static int build_devid_pools(void)
+{
+	struct its_node *its;
+
+	its = list_first_entry(&its_nodes, struct its_node, entry);
+	if (readl_relaxed(its->base + GITS_IIDR) != 0x00051736)
+		return -EINVAL;
+
+	return probe_devid_pool_one();
+}
+#endif
 
 /*
  * Skip ITSs that have no vLPIs mapped, unless we're on GICv4.1, as we
@@ -5731,6 +5845,14 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 			rdists->has_vlpis = false;
 			pr_err("ITS: Disabling GICv4 support\n");
 		}
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+		if (build_devid_pools())
+			rsv_devid_pool_cap = false;
+
+		if (rsv_devid_pool_cap)
+			pr_info("ITS: reserved device id pools enabled\n");
+#endif
 	}
 
 	register_syscore_ops(&its_syscore_ops);
