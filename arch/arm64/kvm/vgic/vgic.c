@@ -590,6 +590,34 @@ int kvm_vgic_get_map(struct kvm_vcpu *vcpu, unsigned int vintid)
 	return ret;
 }
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+int kvm_vgic_config_vtimer_irqbypass(struct kvm_vcpu *vcpu, u32 vintid,
+				bool (*get_as)(struct kvm_vcpu *, int),
+				void (*set_as)(struct kvm_vcpu *, int, bool))
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vtimer_info *vtimer = &vgic_cpu->vtimer;
+	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, vintid);
+	unsigned long flags;
+
+	if (WARN_ON_ONCE(!irq || !kvm_vgic_vtimer_irqbypass_support()))
+		return -EINVAL;
+
+	vgic_cpu->vtimer_irqbypass = true;
+
+	vtimer->intid = vintid;
+	vtimer->get_active_stat = get_as;
+	vtimer->set_active_stat = set_as;
+
+	raw_spin_lock_irqsave(&irq->irq_lock, flags);
+	irq->vtimer_info = vtimer;
+	raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+	vgic_put_irq(vcpu->kvm, irq);
+
+	return 0;
+}
+#endif
+
 /**
  * kvm_vgic_set_owner - Set the owner of an interrupt for a VM
  *
