@@ -86,6 +86,9 @@
 static struct irq_domain *gic_domain;
 static const struct irq_domain_ops *vpe_domain_ops;
 static const struct irq_domain_ops *sgi_domain_ops;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static bool vtimerirq_bypass;
+#endif
 
 #ifdef CONFIG_ARM64
 #include <asm/cpufeature.h>
@@ -110,6 +113,13 @@ static bool has_v4_1(void)
 	return !!sgi_domain_ops;
 }
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static bool has_v4_1_vsgi_extend(void)
+{
+	return has_v4_1() && vtimerirq_bypass;
+}
+#endif
+
 static bool has_v4_1_sgi(void)
 {
 	return has_v4_1() && gic_cpuif_has_vsgi();
@@ -119,9 +129,17 @@ static int its_alloc_vcpu_sgis(struct its_vpe *vpe, int idx)
 {
 	char *name;
 	int sgi_base;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	int nr_irqs = 16;
+#endif
 
 	if (!has_v4_1_sgi())
 		return 0;
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (has_v4_1_vsgi_extend())
+		nr_irqs = 32;
+#endif
 
 	name = kasprintf(GFP_KERNEL, "GICv4-sgi-%d", task_pid_nr(current));
 	if (!name)
@@ -134,18 +152,30 @@ static int its_alloc_vcpu_sgis(struct its_vpe *vpe, int idx)
 	kfree(name);
 	name = NULL;
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	vpe->sgi_domain = irq_domain_create_linear(vpe->fwnode, nr_irqs,
+#else
 	vpe->sgi_domain = irq_domain_create_linear(vpe->fwnode, 16,
+#endif
 						   sgi_domain_ops, vpe);
 	if (!vpe->sgi_domain)
 		goto err;
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	vpe->nr_irqs = nr_irqs;
+	sgi_base = irq_domain_alloc_irqs(vpe->sgi_domain, nr_irqs, NUMA_NO_NODE, vpe);
+#else
 	sgi_base = irq_domain_alloc_irqs(vpe->sgi_domain, 16, NUMA_NO_NODE, vpe);
+#endif
 	if (sgi_base <= 0)
 		goto err;
 
 	return 0;
 
 err:
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	vpe->nr_irqs = 0;
+#endif
 	if (vpe->sgi_domain)
 		irq_domain_remove(vpe->sgi_domain);
 	if (vpe->fwnode)
@@ -211,7 +241,11 @@ static void its_free_sgi_irqs(struct its_vm *vm)
 		if (WARN_ON(!irq))
 			continue;
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		irq_domain_free_irqs(irq, vm->vpes[i]->nr_irqs);
+#else
 		irq_domain_free_irqs(irq, 16);
+#endif
 		irq_domain_remove(vm->vpes[i]->sgi_domain);
 		irq_domain_free_fwnode(vm->vpes[i]->fwnode);
 	}
@@ -387,3 +421,16 @@ int its_init_v4(struct irq_domain *domain,
 	pr_err("ITS: No GICv4 VPE domain allocated\n");
 	return -ENODEV;
 }
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+int vtimer_irqbypass_init(struct irq_domain *domain,
+			  bool has_vtimer_irqbypass)
+{
+	if (domain) {
+		vtimerirq_bypass = has_vtimer_irqbypass;
+		return 0;
+	}
+
+	return -ENODEV;
+}
+#endif

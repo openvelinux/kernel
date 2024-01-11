@@ -4677,11 +4677,19 @@ static int its_sgi_irq_domain_alloc(struct irq_domain *domain,
 {
 	struct its_vpe *vpe = args;
 	int i;
-
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/* We may want 32 IRQs if vtimer irqbypass is supported. */
+	WARN_ON(nr_irqs != 16 && nr_irqs != 32);
+#else
 	/* Yes, we do want 16 SGIs */
 	WARN_ON(nr_irqs != 16);
+#endif
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	for (i = 0; i < nr_irqs; i++) {
+#else
 	for (i = 0; i < 16; i++) {
+#endif
 		vpe->sgi_config[i].priority = 0;
 		vpe->sgi_config[i].enabled = false;
 		vpe->sgi_config[i].group = false;
@@ -5986,6 +5994,9 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	struct its_node *its;
 	bool has_v4 = false;
 	bool has_v4_1 = false;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	bool has_vtimer_irqbypass = false;
+#endif
 	int err;
 
 	gic_rdists = rdists;
@@ -6009,11 +6020,20 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	list_for_each_entry(its, &its_nodes, entry) {
 		has_v4 |= is_v4(its);
 		has_v4_1 |= is_v4_1(its);
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		has_vtimer_irqbypass |= is_vtimer_irqbypass(its);
+#endif
 	}
 
 	/* Don't bother with inconsistent systems */
 	if (WARN_ON(!has_v4_1 && rdists->has_rvpeid))
 		rdists->has_rvpeid = false;
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/* vtimer irqbypass depends on rvpeid support */
+	if (WARN_ON(!has_v4_1 && has_vtimer_irqbypass))
+		has_vtimer_irqbypass = false;
+#endif
 
 	if (has_v4 & rdists->has_vlpis) {
 		const struct irq_domain_ops *sgi_ops;
@@ -6024,7 +6044,12 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 			sgi_ops = NULL;
 
 		if (its_init_vpe_domain() ||
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		    its_init_v4(parent_domain, &its_vpe_domain_ops, sgi_ops) ||
+		    vtimer_irqbypass_init(parent_domain, has_vtimer_irqbypass)) {
+#else
 		    its_init_v4(parent_domain, &its_vpe_domain_ops, sgi_ops)) {
+#endif
 			rdists->has_vlpis = false;
 			pr_err("ITS: Disabling GICv4 support\n");
 		}
