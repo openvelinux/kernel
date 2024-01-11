@@ -763,6 +763,9 @@ static int vtimer_mbigen_device_probe(struct platform_device *pdev)
 	struct vtimer_mbigen_device *vtimer_mgn_chip;
 	int err;
 
+	if (!vtimer_irqbypass)
+		return 0;
+
 	err = vtimer_mbigen_set_regs(pdev);
 	if (err)
 		return err;
