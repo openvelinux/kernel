@@ -1687,24 +1687,41 @@ static bool vtimer_get_active_stat(struct kvm_vcpu *vcpu, int vintid)
 		return vtimer_mbigen_get_active(vcpu->cpu);
 }
 
-int kvm_vtimer_config(struct kvm_vcpu *vcpu)
+int kvm_vtimer_config(struct kvm *kvm)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	int intid;
+	struct vgic_dist *dist = &kvm->arch.vgic;
+	struct kvm_vcpu *vcpu;
+	int ret = 0;
+	unsigned long c;
 
 	if (!vtimer_is_irqbypass())
 		return 0;
 
-	if (timer->enabled)
-		return 0;
-
-	if (!irqchip_in_kernel(vcpu->kvm))
+	if (!irqchip_in_kernel(kvm))
 		return -EINVAL;
+	mutex_lock(&kvm->lock);
+	if (dist->vtimer_irqbypass)
+		goto out;
 
-	intid = timer_irq(vcpu_vtimer(vcpu));
-	return kvm_vgic_config_vtimer_irqbypass(vcpu, intid,
-						vtimer_get_active_stat,
-						vtimer_set_active_stat);
+	kvm_for_each_vcpu(c, vcpu, kvm) {
+		struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+		int intid;
+
+		WARN_ON(timer->enabled);
+
+		intid = timer_irq(vcpu_vtimer(vcpu));
+		ret = kvm_vgic_config_vtimer_irqbypass(vcpu, intid,
+							vtimer_get_active_stat,
+							vtimer_set_active_stat);
+		if (ret)
+			goto out;
+	}
+
+	dist->vtimer_irqbypass = true;
+
+out:
+	mutex_unlock(&kvm->lock);
+	return ret;
 }
 #endif
 
