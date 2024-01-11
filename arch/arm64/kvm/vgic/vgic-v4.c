@@ -204,6 +204,54 @@ void vgic_v4_configure_vsgis(struct kvm *kvm)
 	kvm_arm_resume_guest(kvm);
 }
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static void vgic_v4_enable_vtimer(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vtimer_info *vtimer = &vgic_cpu->vtimer;
+	struct its_vpe *vpe = &vcpu->arch.vgic_cpu.vgic_v3.its_vpe;
+	struct vgic_irq *irq;
+	struct irq_desc *desc;
+	int ret;
+
+	if (!vgic_cpu->vtimer_irqbypass)
+		return;
+
+	irq = vgic_get_irq(vcpu->kvm, vcpu, vtimer->intid);
+	irq->host_irq = irq_find_mapping(vpe->sgi_domain, vtimer->intid);
+
+	/* Transfer the full irq state to the vPE */
+	vgic_v4_sync_sgi_config(vpe, irq);
+	desc = irq_to_desc(irq->host_irq);
+	ret = irq_domain_activate_irq(irq_desc_get_irq_data(desc),
+				      false);
+	if (!WARN_ON(ret)) {
+		/* Transfer pending state */
+		ret = irq_set_irqchip_state(irq->host_irq,
+					    IRQCHIP_STATE_PENDING,
+					    irq->pending_latch);
+		WARN_ON(ret);
+		irq->pending_latch = false;
+
+		/* Transfer active state */
+		vtimer->set_active_stat(vcpu, irq->intid, irq->active);
+		irq->active = false;
+	}
+
+	vgic_put_irq(vcpu->kvm, irq);
+}
+
+/* Must be called with the kvm lock held */
+void vgic_v4_configure_vtimer(struct kvm *kvm)
+{
+	struct kvm_vcpu *vcpu;
+	unsigned long i;
+
+	kvm_for_each_vcpu(i, vcpu, kvm)
+		vgic_v4_enable_vtimer(vcpu);
+}
+#endif
+
 /*
  * Must be called with GICv4.1 and the vPE unmapped, which
  * indicates the invalidation of any VPT caches associated
