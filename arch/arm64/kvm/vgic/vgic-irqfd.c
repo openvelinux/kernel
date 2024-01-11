@@ -121,6 +121,23 @@ int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 	return vgic_its_inject_msi(kvm, &msi);
 }
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+static int kvm_arch_set_irq_bypass(struct kvm_kernel_irq_routing_entry *e,
+				  struct kvm *kvm)
+{
+	struct kire_data *cache = &e->cache;
+
+	/*
+	 * FIXME: is there any race against the irqfd_update(),
+	 * where the cache data will be updated?
+	 */
+	if (!cache->valid)
+		return -EWOULDBLOCK;
+
+	return shadow_dev_virq_bypass_inject(kvm, e);
+}
+#endif
+
 /**
  * kvm_arch_set_irq_inatomic: fast-path for irqfd injection
  */
@@ -138,6 +155,10 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		if (!vgic_has_its(kvm))
 			break;
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+		if (!kvm_arch_set_irq_bypass(e, kvm))
+			return 0;
+#endif
 		kvm_populate_msi(e, &msi);
 		return vgic_its_inject_cached_translation(kvm, &msi);
 	}
