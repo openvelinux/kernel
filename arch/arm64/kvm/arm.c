@@ -675,6 +675,12 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 
 	kvm_arm_vcpu_init_debug(vcpu);
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	ret = kvm_vtimer_config(vcpu);
+	if (ret)
+		return ret;
+#endif
+
 	if (likely(irqchip_in_kernel(kvm))) {
 		/*
 		 * Map the VGIC hardware resources before running a vcpu the
