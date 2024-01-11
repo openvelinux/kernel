@@ -193,7 +193,7 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 		print_header(s, irq, vcpu);
 
 	pending = irq->pending_latch;
-	if (irq->hw && vgic_irq_is_sgi(irq->intid)) {
+	if (vgic_direct_sgi_or_ppi(irq)) {
 		int err;
 
 		err = irq_get_irqchip_state(irq->host_irq,
