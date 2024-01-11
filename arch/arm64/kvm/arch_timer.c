@@ -668,6 +668,36 @@ static inline void set_timer_irq_phys_active(struct arch_timer_context *ctx, boo
 	WARN_ON(r);
 }
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static void kvm_vtimer_mbigen_auto_clr_set(struct kvm_vcpu *vcpu, bool set)
+{
+	vtimer_mbigen_set_auto_clr(vcpu->cpu, set);
+}
+
+static void kvm_vtimer_mbigen_restore_stat(struct kvm_vcpu *vcpu)
+{
+	struct vtimer_mbigen_context *mbigen_ctx = vcpu_vtimer_mbigen(vcpu);
+	u16 vpeid = kvm_vgic_get_vcpu_vpeid(vcpu);
+	unsigned long flags;
+
+	WARN_ON(!vtimer_is_irqbypass());
+
+	local_irq_save(flags);
+
+	if (mbigen_ctx->loaded)
+		goto out;
+
+	vtimer_mbigen_set_vector(vcpu->cpu, vpeid);
+
+	if (mbigen_ctx->active)
+		vtimer_mbigen_set_active(vcpu->cpu, true);
+
+	mbigen_ctx->loaded = true;
+out:
+	local_irq_restore(flags);
+}
+#endif
+
 static void kvm_timer_vcpu_load_gic(struct arch_timer_context *ctx)
 {
 	struct kvm_vcpu *vcpu = ctx->vcpu;
@@ -849,20 +879,40 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (vtimer_is_irqbypass()) {
+		kvm_vtimer_mbigen_auto_clr_set(vcpu, false);
+		kvm_vtimer_mbigen_restore_stat(vcpu);
+
+		goto skip_load_vtimer;
+	}
+#endif
 	if (static_branch_likely(&has_gic_active_state)) {
 		if (vcpu_has_nv(vcpu))
 			kvm_timer_vcpu_load_nested_switch(vcpu, &map);
 
 		kvm_timer_vcpu_load_gic(map.direct_vtimer);
+#ifndef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 		if (map.direct_ptimer)
 			kvm_timer_vcpu_load_gic(map.direct_ptimer);
+#endif
 	} else {
 		kvm_timer_vcpu_load_nogic(vcpu);
 	}
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+skip_load_vtimer:
+	if (static_branch_likely(&has_gic_active_state) && map.direct_ptimer)
+		kvm_timer_vcpu_load_gic(map.direct_ptimer);
+#endif
 	kvm_timer_unblocking(vcpu);
 
 	timer_restore_state(map.direct_vtimer);
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (vtimer_is_irqbypass())
+		kvm_vtimer_mbigen_auto_clr_set(vcpu, true);
+#endif
 	if (map.direct_ptimer)
 		timer_restore_state(map.direct_ptimer);
 	if (map.emul_vtimer)
@@ -890,6 +940,31 @@ bool kvm_timer_should_notify_user(struct kvm_vcpu *vcpu)
 	       kvm_timer_should_fire(ptimer) != plevel;
 }
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static void kvm_vtimer_mbigen_save_stat(struct kvm_vcpu *vcpu)
+{
+	struct vtimer_mbigen_context *mbigen_ctx = vcpu_vtimer_mbigen(vcpu);
+	unsigned long flags;
+
+	WARN_ON(!vtimer_is_irqbypass());
+
+	local_irq_save(flags);
+
+	if (!mbigen_ctx->loaded)
+		goto out;
+
+	mbigen_ctx->active = vtimer_mbigen_get_active(vcpu->cpu);
+
+	/* Clear active state in MBIGEN now that we've saved everything. */
+	if (mbigen_ctx->active)
+		vtimer_mbigen_set_active(vcpu->cpu, false);
+
+	mbigen_ctx->loaded = false;
+out:
+	local_irq_restore(flags);
+}
+#endif
+
 void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
@@ -900,7 +975,18 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (vtimer_is_irqbypass())
+		kvm_vtimer_mbigen_auto_clr_set(vcpu, false);
+#endif
 	timer_save_state(map.direct_vtimer);
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (vtimer_is_irqbypass()) {
+		kvm_vtimer_mbigen_save_stat(vcpu);
+		kvm_vtimer_mbigen_auto_clr_set(vcpu, true);
+	}
+#endif
 	if (map.direct_ptimer)
 		timer_save_state(map.direct_ptimer);
 
@@ -1577,11 +1663,28 @@ static bool kvm_arch_timer_get_input_level(int vintid)
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 static void vtimer_set_active_stat(struct kvm_vcpu *vcpu, int vintid, bool set)
 {
+	struct vtimer_mbigen_context *mbigen_ctx = vcpu_vtimer_mbigen(vcpu);
+	int hwirq = timer_irq(vcpu_vtimer(vcpu));
+
+	WARN_ON(!vtimer_is_irqbypass() || hwirq != vintid);
+
+	if (!mbigen_ctx->loaded)
+		mbigen_ctx->active = set;
+	else
+		vtimer_mbigen_set_active(vcpu->cpu, set);
 }
 
 static bool vtimer_get_active_stat(struct kvm_vcpu *vcpu, int vintid)
 {
-	return false;
+	struct vtimer_mbigen_context *mbigen_ctx = vcpu_vtimer_mbigen(vcpu);
+	int hwirq = timer_irq(vcpu_vtimer(vcpu));
+
+	WARN_ON(!vtimer_is_irqbypass() || hwirq != vintid);
+
+	if (!mbigen_ctx->loaded)
+		return mbigen_ctx->active;
+	else
+		return vtimer_mbigen_get_active(vcpu->cpu);
 }
 
 int kvm_vtimer_config(struct kvm_vcpu *vcpu)
