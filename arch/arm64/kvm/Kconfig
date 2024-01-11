@@ -72,4 +72,9 @@ config PROTECTED_NVHE_STACKTRACE
 
 	  If unsure, or not using protected nVHE (pKVM), say N.
 
+config VIRT_VTIMER_IRQ_BYPASS
+	bool "MBIGEN enable vtimer irq bypass"
+	depends on KVM && ARM64 && ARCH_HISI && HISILICON_IRQ_MBIGEN
+	default n
+
 endif # VIRTUALIZATION
