@@ -84,6 +84,8 @@
 #define VTIMER_MBIGEN_REG_SET_AUTO_CLR_OFFSET  0x1100
 #define VTIMER_MBIGEN_REG_CLR_AUTO_CLR_OFFSET  0x1110
 #define VTIMER_MBIGEN_REG_ATV_STAT_OFFSET      0x1120
+#define VTIMER_GIC_REG_SET_AUTO_CLR_OFFSET     0x1150
+#define VTIMER_GIC_REG_CLR_AUTO_CLR_OFFSET     0x1160
 #define VTIMER_MBIGEN_REG_VEC_OFFSET           0x1200
 #define VTIMER_MBIGEN_REG_ATV_CLR_OFFSET       0xa008
 
@@ -214,6 +216,29 @@ void vtimer_mbigen_set_auto_clr(int cpu_id, bool set)
 		 VTIMER_MBIGEN_REG_CLR_AUTO_CLR_OFFSET;
 	addr = chip->base + offset +
 		(cpu_abs_offset / PPIS_PER_MBIGEN_NODE) * VTIMER_MBIGEN_REG_WIDTH;
+	val = 1 << (cpu_abs_offset % PPIS_PER_MBIGEN_NODE);
+
+	writel_relaxed(val, addr);
+	dsb(sy);
+}
+
+void vtimer_gic_set_auto_clr(int cpu_id, bool set)
+{
+	struct vtimer_mbigen_device *chip;
+	void __iomem *addr;
+	int cpu_abs_offset;
+	u64 offset;
+	u32 val;
+
+	chip = get_vtimer_mbigen(cpu_id);
+	if (!chip)
+		return;
+
+	cpu_abs_offset = get_abs_offset(cpu_id, chip->cpu_base);
+	offset = set ? VTIMER_GIC_REG_SET_AUTO_CLR_OFFSET :
+		 VTIMER_GIC_REG_CLR_AUTO_CLR_OFFSET;
+	addr = chip->base + offset +
+	       (cpu_abs_offset / PPIS_PER_MBIGEN_NODE) * VTIMER_MBIGEN_REG_WIDTH;
 	val = 1 << (cpu_abs_offset % PPIS_PER_MBIGEN_NODE);
 
 	writel_relaxed(val, addr);

@@ -674,6 +674,11 @@ static void kvm_vtimer_mbigen_auto_clr_set(struct kvm_vcpu *vcpu, bool set)
 	vtimer_mbigen_set_auto_clr(vcpu->cpu, set);
 }
 
+static void kvm_vtimer_gic_auto_clr_set(struct kvm_vcpu *vcpu, bool set)
+{
+	vtimer_gic_set_auto_clr(vcpu->cpu, set);
+}
+
 static void kvm_vtimer_mbigen_restore_stat(struct kvm_vcpu *vcpu)
 {
 	struct vtimer_mbigen_context *mbigen_ctx = vcpu_vtimer_mbigen(vcpu);
@@ -910,8 +915,10 @@ skip_load_vtimer:
 	timer_restore_state(map.direct_vtimer);
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
-	if (vtimer_is_irqbypass())
+	if (vtimer_is_irqbypass()) {
 		kvm_vtimer_mbigen_auto_clr_set(vcpu, true);
+		kvm_vtimer_gic_auto_clr_set(vcpu, true);
+	}
 #endif
 	if (map.direct_ptimer)
 		timer_restore_state(map.direct_ptimer);
@@ -976,9 +983,12 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 	get_timer_map(vcpu, &map);
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
-	if (vtimer_is_irqbypass())
+	if (vtimer_is_irqbypass()) {
 		kvm_vtimer_mbigen_auto_clr_set(vcpu, false);
+		kvm_vtimer_gic_auto_clr_set(vcpu, false);
+	}
 #endif
+
 	timer_save_state(map.direct_vtimer);
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
