@@ -4549,10 +4549,20 @@ static int its_sgi_set_irqchip_state(struct irq_data *d,
 		struct its_vpe *vpe = irq_data_get_irq_chip_data(d);
 		struct its_node *its = find_4_1_its();
 		u64 val;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		u64 offset = GITS_SGIR;
+
+		if (__get_intid_range(d->hwirq) == PPI_RANGE)
+			offset = GITS_PPIR;
+#endif
 
 		val  = FIELD_PREP(GITS_SGIR_VPEID, vpe->vpe_id);
 		val |= FIELD_PREP(GITS_SGIR_VINTID, d->hwirq);
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		writeq_relaxed(val, its->sgir_base + offset - SZ_128K);
+#else
 		writeq_relaxed(val, its->sgir_base + GITS_SGIR - SZ_128K);
+#endif
 	} else {
 		its_configure_sgi(d, true);
 	}
@@ -4573,6 +4583,20 @@ static int its_sgi_get_irqchip_state(struct irq_data *d,
 	if (which != IRQCHIP_STATE_PENDING)
 		return -EINVAL;
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	enum gic_intid_range type;
+
+	/*
+	 * Plug the HiSilicon implementation details in comment!
+	 *
+	 * For vPPI, we re-use the GICR_VSGIR and GICR_VSGIPENDR in the
+	 * implementation which allows reads to GICR_I{S,C}PENDR to be
+	 * emulated. And note that the pending state of the vtimer
+	 * interrupt is stored at bit[16] of GICR_VSGIPENDR.
+	 */
+	type = __get_intid_range(d->hwirq);
+	WARN_ON_ONCE(type == PPI_RANGE && !is_vtimer_irq(d->hwirq));
+#endif
 	/*
 	 * Locking galore! We can race against two different events:
 	 *
@@ -4608,7 +4632,14 @@ out:
 	if (!count)
 		return -ENXIO;
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	if (is_vtimer_irq(d->hwirq))
+		*val = !!(status & (1 << 16));
+	else
+		*val = !!(status & (1 << d->hwirq));
+#else
 	*val = !!(status & (1 << d->hwirq));
+#endif
 
 	return 0;
 }
