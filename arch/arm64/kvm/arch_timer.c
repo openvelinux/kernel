@@ -30,7 +30,7 @@ static u32 host_vtimer_irq_flags;
 static u32 host_ptimer_irq_flags;
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
-static bool vtimer_irqbypass;
+bool vtimer_irqbypass;
 
 static int __init early_vtimer_irqbypass(char *buf)
 {
