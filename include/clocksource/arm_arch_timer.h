@@ -116,6 +116,8 @@ static inline bool arch_timer_evtstrm_available(void)
 #endif
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+extern bool vtimer_irqbypass;
+
 static inline bool vtimer_irqbypass_hw_support(struct arch_timer_kvm_info *info)
 {
 	return info->irqbypass_flag & VT_EXPANDDEV_PROBED;

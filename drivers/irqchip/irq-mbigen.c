@@ -658,11 +658,114 @@ static bool vtimer_mbigen_should_probe(struct mbigen_device *mgn_chip)
 	return true;
 }
 
+#define CHIP0_TA_MBIGEN_PHY_BASE	0x4604400000
+#define CHIP0_TA_MBIGEN_ITS_BASE	0x84028
+#define CHIP0_TA_PERI_PHY_BASE		0x4614002018
+
+#define CHIP0_TB_MBIGEN_PHY_BASE	0xc604400000
+#define CHIP0_TB_PERI_PHY_BASE		0xc614002018
+#define CHIP0_TB_MBIGEN_ITS_BASE	0x4028
+
+#define CHIP1_TA_MBIGEN_PHY_BASE	0x204604400000
+#define CHIP1_TA_PERI_PHY_BASE		0x204614002018
+#define CHIP1_TA_MBIGEN_ITS_BASE	0x2084028
+
+#define CHIP1_TB_MBIGEN_PHY_BASE	0x20c604400000
+#define CHIP1_TB_MBIGEN_ITS_BASE	0x2004028
+#define CHIP1_TB_PERI_PHY_BASE		0x20c614002018
+
+static int vtimer_mbigen_set_regs(struct platform_device *pdev)
+{
+	struct mbigen_device *mgn_chip = platform_get_drvdata(pdev);
+	struct resource *res;
+	void __iomem *addr;
+	unsigned int mpidr_aff3;
+	u32 val;
+	struct vtimer_mbigen_device *chip;
+
+	if (!vtimer_irqbypass)
+		return 0;
+
+	addr = mgn_chip->base + MBIGEN_CTLR_OFFSET;
+	val = readl_relaxed(addr);
+	mpidr_aff3 = (val & MBIGEN_AFF3_MASK) >> MBIGEN_AFF3_SHIFT;
+	list_for_each_entry(chip, &vtimer_mgn_list, entry) {
+		if (chip->mpidr_aff3 == mpidr_aff3)
+			return 0;
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!mgn_chip)
+		return -ENOMEM;
+
+	if (res->start == CHIP0_TA_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP0_TA_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP0-TA-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP0_TA_MBIGEN_ITS_BASE, addr);
+	}
+
+	if (res->start == CHIP0_TB_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP0_TB_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP0-TB-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP0_TB_MBIGEN_ITS_BASE, addr);
+	}
+
+	if (res->start == CHIP1_TA_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP1_TA_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP1-TA-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP1_TA_MBIGEN_ITS_BASE, addr);
+	}
+
+	if (res->start == CHIP1_TB_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP1_TB_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP1-TB-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP1_TB_MBIGEN_ITS_BASE, addr);
+	}
+
+	return 0;
+}
+
 static int vtimer_mbigen_device_probe(struct platform_device *pdev)
 {
 	struct mbigen_device *mgn_chip = platform_get_drvdata(pdev);
 	struct vtimer_mbigen_device *vtimer_mgn_chip;
 	int err;
+
+	err = vtimer_mbigen_set_regs(pdev);
+	if (err)
+		return err;
 
 	if (!is_mbigen_vtimer_bypass_enabled(mgn_chip) ||
 	    !vtimer_mbigen_should_probe(mgn_chip))
