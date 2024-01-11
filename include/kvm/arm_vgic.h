@@ -298,6 +298,10 @@ struct vgic_dist {
 
 	/* Wants SGIs without active state */
 	bool			nassgireq;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/* Indicate whether the vtimer irqbypass mode is used */
+	bool			vtimer_irqbypass;
+#endif
 
 	struct vgic_irq		*spis;
 

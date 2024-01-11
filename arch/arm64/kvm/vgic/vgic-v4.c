@@ -214,9 +214,6 @@ static void vgic_v4_enable_vtimer(struct kvm_vcpu *vcpu)
 	struct irq_desc *desc;
 	int ret;
 
-	if (!vgic_cpu->vtimer_irqbypass)
-		return;
-
 	irq = vgic_get_irq(vcpu->kvm, vcpu, vtimer->intid);
 	irq->host_irq = irq_find_mapping(vpe->sgi_domain, vtimer->intid);
 
@@ -244,8 +241,12 @@ static void vgic_v4_enable_vtimer(struct kvm_vcpu *vcpu)
 /* Must be called with the kvm lock held */
 void vgic_v4_configure_vtimer(struct kvm *kvm)
 {
+	struct vgic_dist *dist = &kvm->arch.vgic;
 	struct kvm_vcpu *vcpu;
 	unsigned long i;
+
+	if (!dist->vtimer_irqbypass)
+		return;
 
 	kvm_for_each_vcpu(i, vcpu, kvm)
 		vgic_v4_enable_vtimer(vcpu);
