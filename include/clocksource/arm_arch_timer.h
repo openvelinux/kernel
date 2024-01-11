@@ -124,6 +124,7 @@ static inline bool vtimer_irqbypass_hw_support(struct arch_timer_kvm_info *info)
 void vtimer_mbigen_set_vector(int cpu_id, u16 vpeid);
 bool vtimer_mbigen_get_active(int cpu_id);
 void vtimer_mbigen_set_auto_clr(int cpu_id, bool set);
+void vtimer_gic_set_auto_clr(int cpu_id, bool set);
 void vtimer_mbigen_set_active(int cpu_id, bool set);
 #endif
 
