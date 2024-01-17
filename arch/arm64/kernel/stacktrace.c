@@ -177,7 +177,7 @@ int notrace walk_stackframe_reliable(struct task_struct *tsk, struct stackframe 
 
 		ret = fn(data, ptrauth_strip_insn_pac(frame->pc));
 		if (!ret)
-			return ret;
+			return -EINVAL;
 
 		ret = unwind_frame(tsk, frame);
 		if (ret < 0)
