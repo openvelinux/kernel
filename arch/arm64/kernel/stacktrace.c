@@ -18,6 +18,8 @@
 #include <asm/stack_pointer.h>
 #include <asm/stacktrace.h>
 
+extern void *kthread_return_to_user;
+
 /*
  * AArch64 PCS assigns the frame pointer to x29.
  *
@@ -151,6 +153,43 @@ void notrace walk_stackframe(struct task_struct *tsk, struct stackframe *frame,
 	}
 }
 NOKPROBE_SYMBOL(walk_stackframe);
+static inline bool unwind_state_is_reliable(struct stackframe *frame)
+{
+	return __kernel_text_address(ptrauth_strip_insn_pac(frame->pc));
+}
+
+int notrace walk_stackframe_reliable(struct task_struct *tsk, struct stackframe *frame,
+			bool (*fn)(void *, unsigned long), void *data)
+{
+	int ret = 0;
+
+	if (!tsk)
+		tsk = current;
+
+	do {
+		/* Final frame for kthread; nothing to unwind */
+		if ((frame->fp == (unsigned long)task_pt_regs(tsk)->stackframe)
+			&& ptrauth_strip_insn_pac(frame->pc) == (unsigned long)&kthread_return_to_user)
+			return 0;
+
+		if (!unwind_state_is_reliable(frame))
+			return -EINVAL;
+
+		ret = fn(data, ptrauth_strip_insn_pac(frame->pc));
+		if (!ret)
+			return ret;
+
+		ret = unwind_frame(tsk, frame);
+		if (ret < 0)
+			break;
+	} while (1);
+
+	if (ret == -ENOENT)
+		ret = 0;
+
+	return ret;
+}
+NOKPROBE_SYMBOL(walk_stackframe_reliable);
 
 static void dump_backtrace_entry(unsigned long where, const char *loglvl)
 {
@@ -236,6 +275,26 @@ noinline notrace void arch_stack_walk(stack_trace_consume_fn consume_entry,
 				thread_saved_pc(task));
 
 	walk_stackframe(task, &frame, consume_entry, cookie);
+}
+
+noinline notrace int arch_stack_walk_reliable(stack_trace_consume_fn consume_entry,
+				    void *cookie, struct task_struct *tsk)
+{
+	struct stackframe frame;
+	int ret;
+
+	if (tsk != current) {
+		start_backtrace(&frame, thread_saved_fp(tsk),
+				thread_saved_pc(tsk));
+	} else {
+		start_backtrace(&frame,
+			(unsigned long)__builtin_frame_address(0),
+			(unsigned long)__builtin_return_address(0));
+	}
+
+	ret = walk_stackframe_reliable(tsk, &frame, consume_entry, cookie);
+
+	return ret;
 }
 
 #endif

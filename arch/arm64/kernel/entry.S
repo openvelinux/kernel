@@ -860,15 +860,17 @@ SYM_FUNC_START(cpu_switch_to)
 SYM_FUNC_END(cpu_switch_to)
 NOKPROBE(cpu_switch_to)
 
+
+	.global kthread_return_to_user
 /*
  * This is how we return from a fork.
  */
 SYM_CODE_START(ret_from_fork)
 	bl	schedule_tail
-	cbz	x19, 1f				// not a kernel thread
+	cbz	x19, kthread_return_to_user				// not a kernel thread
 	mov	x0, x20
 	blr	x19
-1:	get_current_task tsk
+kthread_return_to_user:	get_current_task tsk
 	mov	x0, sp
 	bl	asm_exit_to_user_mode
 	b	ret_to_user
