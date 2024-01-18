@@ -263,6 +263,19 @@ Description: Linux kernel debugging symbols for $version
 EOF
 fi
 
+if [ -n "$BUILD_TOOLS" ] ; then
+cat <<EOF >> debian/control
+
+Package: linux-tools
+Architecture: $debarch
+Replaces: linux-base, linux-tools-common
+Depends: \${shlibs:Depends}
+Description: Performance analysis tools for Linux $version
+ This package contains the 'perf' performance analysis tools and 'bpftool' for
+ Linux kernel version $version.
+EOF
+fi
+
 cat <<EOF > debian/rules.vars
 ARCH := ${ARCH}
 KERNELRELEASE := ${KERNELRELEASE}

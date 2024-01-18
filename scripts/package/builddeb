@@ -182,6 +182,24 @@ install_libc_headers () {
 	mv $pdir/usr/include/asm $pdir/usr/include/$host_arch/
 }
 
+install_linux_tools () {
+	pdir=$1
+
+	rm -rf $pdir
+
+	# Build perf
+	$MAKE -C $srctree/tools/perf LDFLAGS= srctree=$(pwd) prefix=$(pwd)/$pdir/usr install
+
+	# Build bpftool
+	$MAKE -C $srctree/tools/bpf/bpftool srctree=$(pwd)
+	mkdir -p $pdir/usr/sbin
+	cp $srctree/tools/bpf/bpftool/bpftool $pdir/usr/sbin
+	mkdir -p $pdir/usr/share/bash-completion/completions
+	cp $srctree/tools/bpf/bpftool/bash-completion/bpftool $pdir/usr/share/bash-completion/completions
+
+	dpkg-shlibdeps $pdir/usr/sbin/bpftool $pdir/usr/bin/*
+}
+
 rm -f debian/files
 
 packages_enabled=$(dh_listpackages)
@@ -197,6 +215,8 @@ do
 		install_linux_image debian/linux-image ${package};;
 	linux-libc-dev)
 		install_libc_headers debian/linux-libc-dev;;
+	linux-tools)
+		install_linux_tools debian/linux-tools;;
 	linux-headers-*)
 		install_kernel_headers debian/linux-headers ${package#linux-headers-};;
 	esac
@@ -211,6 +231,8 @@ do
 		create_package ${package} debian/linux-image;;
 	linux-libc-dev)
 		create_package ${package} debian/linux-libc-dev;;
+	linux-tools)
+		create_package ${package} debian/linux-tools;;
 	linux-headers-*)
 		create_package ${package} debian/linux-headers;;
 	esac
