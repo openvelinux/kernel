@@ -11,3 +11,6 @@ config ACPI_GTDT
 
 config ACPI_APMT
 	bool
+
+config ACPI_MPAM
+	bool
