@@ -309,6 +309,7 @@ int mpam_resctrl_online_cpu(unsigned int cpu);
 int mpam_resctrl_offline_cpu(unsigned int cpu);
 
 int mpam_resctrl_setup(void);
+void mpam_resctrl_exit(void);
 
 /*
  * MPAM MSCs have the following register layout. See:
