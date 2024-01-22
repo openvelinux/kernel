@@ -566,6 +566,7 @@ SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 	b	ret_to_kernel
 	.endif
 SYM_CODE_END(el\el\ht\()_\regsize\()_\label)
+SYM_KENTRY_END(el\el\ht\()_\regsize\()_\label)
 	.endm
 
 /*
