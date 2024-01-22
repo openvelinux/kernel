@@ -25,6 +25,7 @@
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
+#include <asm/mpam.h>
 #include <asm/fpsimd.h>
 #include <asm/debug-monitors.h>
 #include <asm/processor.h>
@@ -77,6 +78,35 @@ static inline void __activate_traps_fpsimd32(struct kvm_vcpu *vcpu)
 	}
 }
 
+static inline void  __activate_traps_mpam(struct kvm_vcpu *vcpu)
+{
+	u64 r = MPAM_SYSREG_TRAP_MPAM0_EL1 | MPAM_SYSREG_TRAP_MPAM1_EL1;
+
+	if (!mpam_cpus_have_feature())
+		return;
+
+	/* trap guest access to MPAMIDR_EL1 */
+	if (mpam_cpus_have_mpam_hcr()) {
+		write_sysreg_s(MPAMHCR_TRAP_MPAMIDR, SYS_MPAMHCR_EL2);
+	} else {
+		/* From v1.1 TIDR can trap MPAMIDR, set it unconditionally */
+		r |= MPAM_SYSREG_TRAP_IDR;
+	}
+
+	write_sysreg_s(r, SYS_MPAM2_EL2);
+}
+
+static inline void __deactivate_traps_mpam(void)
+{
+	if (!mpam_cpus_have_feature())
+		return;
+
+	write_sysreg_s(0, SYS_MPAM2_EL2);
+
+	if (mpam_cpus_have_mpam_hcr())
+		write_sysreg_s(MPAMHCR_HOST_FLAGS, SYS_MPAMHCR_EL2);
+}
+
 static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 {
 	/* Trap on AArch32 cp15 c15 (impdef sysregs) accesses (EL1 or EL0) */
@@ -101,6 +131,8 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.mdcr_el2_host = read_sysreg(mdcr_el2);
 	write_sysreg(vcpu->arch.mdcr_el2, mdcr_el2);
+
+	__activate_traps_mpam(vcpu);
 }
 
 static inline void __deactivate_traps_common(struct kvm_vcpu *vcpu)
@@ -115,6 +147,8 @@ static inline void __deactivate_traps_common(struct kvm_vcpu *vcpu)
 		write_sysreg(ctxt_sys_reg(hctxt, PMUSERENR_EL0), pmuserenr_el0);
 		vcpu_clear_flag(vcpu, PMUSERENR_ON_CPU);
 	}
+
+	__deactivate_traps_mpam();
 }
 
 static inline void ___activate_traps(struct kvm_vcpu *vcpu)
