@@ -196,20 +196,30 @@ int notrace walk_stackframe_reliable(struct task_struct *tsk, struct stackframe 
 			bool (*fn)(void *, unsigned long), void *data)
 {
 	int ret = 0;
+	struct code_range *r;
+	unsigned long pc;
 
 	if (!tsk)
 		tsk = current;
 
 	do {
-		/* Final frame for kthread; nothing to unwind */
-		if ((frame->fp == (unsigned long)task_pt_regs(tsk)->stackframe)
-			&& ptrauth_strip_insn_pac(frame->pc) == (unsigned long)&kthread_return_to_user)
-			return 0;
+		pc = ptrauth_strip_insn_pac(frame->pc);
+		if (frame->fp == (unsigned long)task_pt_regs(tsk)->stackframe) {
+			/* Final frame for kthread; nothing to unwind */
+			if (pc == (unsigned long)&kthread_return_to_user)
+				return 0;
+
+			/* Kernel entry handler is considered a "reliable" stack trace */
+			for (r = (struct code_range *)__sym_kentry_functions_start; r < (struct code_range *)__sym_kentry_functions_end; r++) {
+				if (pc >= r->start && pc < r->end)
+					return 0;
+			}
+		}
 
 		if (!unwind_state_is_reliable(frame))
 			return -EINVAL;
 
-		ret = fn(data, ptrauth_strip_insn_pac(frame->pc));
+		ret = fn(data, pc);
 		if (!ret)
 			return -EINVAL;
 
