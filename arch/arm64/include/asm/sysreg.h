@@ -517,6 +517,127 @@
 #define SYS_LORC_EL1			sys_reg(3, 0, 10, 4, 3)
 #define SYS_LORID_EL1			sys_reg(3, 0, 10, 4, 7)
 
+#define REG_MPAMIDR_EL1                                 S3_0_C10_C4_4
+#define SYS_MPAMIDR_EL1                                 sys_reg(3, 0, 10, 4, 4)
+#define SYS_MPAMIDR_EL1_Op0                             3
+#define SYS_MPAMIDR_EL1_Op1                             0
+#define SYS_MPAMIDR_EL1_CRn                             10
+#define SYS_MPAMIDR_EL1_CRm                             4
+#define SYS_MPAMIDR_EL1_Op2                             4
+
+#define MPAMIDR_EL1_HAS_SDEFLT                          GENMASK(61, 61)
+#define MPAMIDR_EL1_HAS_SDEFLT_MASK                     GENMASK(61, 61)
+#define MPAMIDR_EL1_HAS_SDEFLT_SHIFT                    61
+#define MPAMIDR_EL1_HAS_SDEFLT_WIDTH                    1
+
+#define MPAMIDR_EL1_HAS_FORCE_NS                        GENMASK(60, 60)
+#define MPAMIDR_EL1_HAS_FORCE_NS_MASK                   GENMASK(60, 60)
+#define MPAMIDR_EL1_HAS_FORCE_NS_SHIFT                  60
+#define MPAMIDR_EL1_HAS_FORCE_NS_WIDTH                  1
+
+#define MPAMIDR_EL1_SP4                                 GENMASK(59, 59)
+#define MPAMIDR_EL1_SP4_MASK                            GENMASK(59, 59)
+#define MPAMIDR_EL1_SP4_SHIFT                           59
+#define MPAMIDR_EL1_SP4_WIDTH                           1
+
+#define MPAMIDR_EL1_HAS_TIDR                            GENMASK(58, 58)
+#define MPAMIDR_EL1_HAS_TIDR_MASK                       GENMASK(58, 58)
+#define MPAMIDR_EL1_HAS_TIDR_SHIFT                      58
+#define MPAMIDR_EL1_HAS_TIDR_WIDTH                      1
+
+#define MPAMIDR_EL1_HAS_ALTSP                           GENMASK(57, 57)
+#define MPAMIDR_EL1_HAS_ALTSP_MASK                      GENMASK(57, 57)
+#define MPAMIDR_EL1_HAS_ALTSP_SHIFT                     57
+#define MPAMIDR_EL1_HAS_ALTSP_WIDTH                     1
+
+#define MPAMIDR_EL1_PMG_MAX                             GENMASK(39, 32)
+#define MPAMIDR_EL1_PMG_MAX_MASK                        GENMASK(39, 32)
+#define MPAMIDR_EL1_PMG_MAX_SHIFT                       32
+#define MPAMIDR_EL1_PMG_MAX_WIDTH                       8
+
+#define MPAMIDR_EL1_VPMR_MAX                            GENMASK(20, 18)
+#define MPAMIDR_EL1_VPMR_MAX_MASK                       GENMASK(20, 18)
+#define MPAMIDR_EL1_VPMR_MAX_SHIFT                      18
+#define MPAMIDR_EL1_VPMR_MAX_WIDTH                      3
+
+#define MPAMIDR_EL1_HAS_HCR                             GENMASK(17, 17)
+#define MPAMIDR_EL1_HAS_HCR_MASK                        GENMASK(17, 17)
+#define MPAMIDR_EL1_HAS_HCR_SHIFT                       17
+#define MPAMIDR_EL1_HAS_HCR_WIDTH                       1
+
+#define MPAMIDR_EL1_PARTID_MAX                          GENMASK(15, 0)
+#define MPAMIDR_EL1_PARTID_MAX_MASK                     GENMASK(15, 0)
+#define MPAMIDR_EL1_PARTID_MAX_SHIFT                    0
+#define MPAMIDR_EL1_PARTID_MAX_WIDTH                    16
+
+#define MPAMIDR_EL1_RES0                                (UL(0) | GENMASK_ULL(63, 62) | GENMASK_ULL(56, 40) | GENMASK_ULL(31, 21) | GENMASK_ULL(16, 16))
+#define MPAMIDR_EL1_RES1                                (UL(0))
+#define MPAMIDR_EL1_UNKN                                (UL(0))
+
+#define REG_MPAM1_EL1                                   S3_0_C10_C5_0
+#define SYS_MPAM1_EL1                                   sys_reg(3, 0, 10, 5, 0)
+#define SYS_MPAM1_EL1_Op0                               3
+#define SYS_MPAM1_EL1_Op1                               0
+#define SYS_MPAM1_EL1_CRn                               10
+#define SYS_MPAM1_EL1_CRm                               5
+#define SYS_MPAM1_EL1_Op2                               0
+
+#define MPAM1_EL1_PMG_D                                 GENMASK(47, 40)
+#define MPAM1_EL1_PMG_D_MASK                            GENMASK(47, 40)
+#define MPAM1_EL1_PMG_D_SHIFT                           40
+#define MPAM1_EL1_PMG_D_WIDTH                           8
+
+#define MPAM1_EL1_PMG_I                                 GENMASK(39, 32)
+#define MPAM1_EL1_PMG_I_MASK                            GENMASK(39, 32)
+#define MPAM1_EL1_PMG_I_SHIFT                           32
+#define MPAM1_EL1_PMG_I_WIDTH                           8
+
+#define MPAM1_EL1_PARTID_D                              GENMASK(31, 16)
+#define MPAM1_EL1_PARTID_D_MASK                         GENMASK(31, 16)
+#define MPAM1_EL1_PARTID_D_SHIFT                        16
+#define MPAM1_EL1_PARTID_D_WIDTH                        16
+
+#define MPAM1_EL1_PARTID_I                              GENMASK(15, 0)
+#define MPAM1_EL1_PARTID_I_MASK                         GENMASK(15, 0)
+#define MPAM1_EL1_PARTID_I_SHIFT                        0
+#define MPAM1_EL1_PARTID_I_WIDTH                        16
+
+#define MPAM1_EL1_RES0                                  (UL(0) | GENMASK_ULL(63, 48))
+#define MPAM1_EL1_RES1                                  (UL(0))
+#define MPAM1_EL1_UNKN                                  (UL(0))
+
+#define REG_MPAM0_EL1                                   S3_0_C10_C5_1
+#define SYS_MPAM0_EL1                                   sys_reg(3, 0, 10, 5, 1)
+#define SYS_MPAM0_EL1_Op0                               3
+#define SYS_MPAM0_EL1_Op1                               0
+#define SYS_MPAM0_EL1_CRn                               10
+#define SYS_MPAM0_EL1_CRm                               5
+#define SYS_MPAM0_EL1_Op2                               1
+
+#define MPAM0_EL1_PMG_D                                 GENMASK(47, 40)
+#define MPAM0_EL1_PMG_D_MASK                            GENMASK(47, 40)
+#define MPAM0_EL1_PMG_D_SHIFT                           40
+#define MPAM0_EL1_PMG_D_WIDTH                           8
+
+#define MPAM0_EL1_PMG_I                                 GENMASK(39, 32)
+#define MPAM0_EL1_PMG_I_MASK                            GENMASK(39, 32)
+#define MPAM0_EL1_PMG_I_SHIFT                           32
+#define MPAM0_EL1_PMG_I_WIDTH                           8
+
+#define MPAM0_EL1_PARTID_D                              GENMASK(31, 16)
+#define MPAM0_EL1_PARTID_D_MASK                         GENMASK(31, 16)
+#define MPAM0_EL1_PARTID_D_SHIFT                        16
+#define MPAM0_EL1_PARTID_D_WIDTH                        16
+
+#define MPAM0_EL1_PARTID_I                              GENMASK(15, 0)
+#define MPAM0_EL1_PARTID_I_MASK                         GENMASK(15, 0)
+#define MPAM0_EL1_PARTID_I_SHIFT                        0
+#define MPAM0_EL1_PARTID_I_WIDTH                        16
+
+#define MPAM0_EL1_RES0                                  (UL(0) | GENMASK_ULL(63, 48))
+#define MPAM0_EL1_RES1                                  (UL(0))
+#define MPAM0_EL1_UNKN                                  (UL(0))
+
 #define SYS_VBAR_EL1			sys_reg(3, 0, 12, 0, 0)
 #define SYS_DISR_EL1			sys_reg(3, 0, 12, 1, 1)
 
@@ -1057,6 +1178,13 @@
 #define SYS_TFSR_EL2			sys_reg(3, 4, 5, 6, 0)
 #define SYS_FAR_EL2			sys_reg(3, 4, 6, 0, 0)
 
+#define SYS_MPAMHCR_EL2			sys_reg(3, 4, 10, 4, 0)
+#define SYS_MPAMVPMV_EL2		sys_reg(3, 4, 10, 4, 1)
+#define SYS_MPAM2_EL2			sys_reg(3, 4, 10, 5, 0)
+
+#define __VPMn_op2(n)			((n) & 0x7)
+#define SYS_MPAM_VPMn_EL2(n)		sys_reg(3, 4, 10, 6, __VPMn_op2(n))
+
 #define SYS_VDISR_EL2			sys_reg(3, 4, 12, 1,  1)
 #define __SYS__AP0Rx_EL2(x)		sys_reg(3, 4, 12, 8, x)
 #define SYS_ICH_AP0R0_EL2		__SYS__AP0Rx_EL2(0)
@@ -1115,6 +1243,7 @@
 #define SYS_FAR_EL12			sys_reg(3, 5, 6, 0, 0)
 #define SYS_MAIR_EL12			sys_reg(3, 5, 10, 2, 0)
 #define SYS_AMAIR_EL12			sys_reg(3, 5, 10, 3, 0)
+#define SYS_MPAM1_EL12			sys_reg(3, 5, 10, 5, 0)
 #define SYS_VBAR_EL12			sys_reg(3, 5, 12, 0, 0)
 #define SYS_CONTEXTIDR_EL12		sys_reg(3, 5, 13, 0, 1)
 #define SYS_CNTKCTL_EL12		sys_reg(3, 5, 14, 1, 0)
@@ -1338,6 +1467,14 @@
 #define ID_AA64PFR0_ASIMD_SUPPORTED	0x0
 #define ID_AA64PFR0_ELx_64BIT_ONLY	0x1
 #define ID_AA64PFR0_ELx_32BIT_64BIT	0x2
+
+#define ID_AA64PFR0_EL1_MPAM		GENMASK(43, 40)
+#define ID_AA64PFR0_EL1_MPAM_MASK	GENMASK(43, 40)
+#define ID_AA64PFR0_EL1_MPAM_SHIFT	40
+#define ID_AA64PFR0_EL1_MPAM_WIDTH	4
+#define ID_AA64PFR0_EL1_MPAM_SIGNED	false
+#define ID_AA64PFR0_EL1_MPAM_0		UL(0b0000)
+#define ID_AA64PFR0_EL1_MPAM_1		UL(0b0001)
 
 /* id_aa64pfr1 */
 #define ID_AA64PFR1_MPAMFRAC_SHIFT	16
