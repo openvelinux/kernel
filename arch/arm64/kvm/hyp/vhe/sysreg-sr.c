@@ -90,6 +90,7 @@ void kvm_vcpu_load_sysregs_vhe(struct kvm_vcpu *vcpu)
 	__sysreg32_restore_state(vcpu);
 	__sysreg_restore_user_state(guest_ctxt);
 	__sysreg_restore_el1_state(guest_ctxt);
+	__mpam_guest_load();
 
 #ifdef CONFIG_ARM64_HDBSS
 	__load_hdbss(vcpu);
