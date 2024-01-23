@@ -167,7 +167,7 @@ to ReStructured Text format, or are simply too old.
 
    staging/index
    watch_queue
-   RAS/ras
+   RAS/index
 
 
 Translations
