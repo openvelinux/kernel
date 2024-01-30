@@ -151,6 +151,7 @@ enum gic_intid_range {
 };
 
 #ifdef CONFIG_ARM64
+#include <asm/nmi.h>
 #include <asm/cpufeature.h>
 
 static inline bool has_v3_3_nmi(void)
@@ -870,6 +871,10 @@ static void __gic_handle_irq_from_irqson(struct pt_regs *regs)
 	if (gic_prio_masking_enabled()) {
 		gic_pmr_mask_irqs();
 		gic_arch_enable_irqs();
+	} else if (has_v3_3_nmi()) {
+#ifdef CONFIG_ARM64_NMI
+		_allint_clear();
+#endif
 	}
 
 	if (!is_nmi)
