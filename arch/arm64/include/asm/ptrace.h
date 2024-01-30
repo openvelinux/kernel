@@ -240,10 +240,11 @@ static inline void forget_syscall(struct pt_regs *regs)
 		true)
 
 #define interrupts_enabled(regs)			\
-	(!((regs)->pstate & PSR_I_BIT) && irqs_priority_unmasked(regs))
+	(!((regs)->pstate & PSR_ALLINT_BIT) && !((regs)->pstate & PSR_I_BIT) && \
+	 irqs_priority_unmasked(regs))
 
 #define fast_interrupts_enabled(regs) \
-	(!((regs)->pstate & PSR_F_BIT))
+	(!((regs)->pstate & PSR_ALLINT_BIT) && !(regs)->pstate & PSR_F_BIT)
 
 static inline unsigned long user_stack_pointer(struct pt_regs *regs)
 {
