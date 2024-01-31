@@ -178,7 +178,8 @@ again:
 
 	mutex_unlock(&sev_bitmap_lock);
 
-	return asid;
+	sev->asid = asid;
+	return 0;
 e_uncharge:
 	sev_misc_cg_uncharge(sev);
 	put_misc_cg(sev->misc_cg);
@@ -264,10 +265,9 @@ static int sev_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 		pr_warn_once("Enabling DebugSwap with KVM_SEV_ES_INIT. "
 			     "This will not work starting with Linux 6.10\n");
 
-	asid = sev_asid_new(sev);
-	if (asid < 0)
+	ret = sev_asid_new(sev);
+	if (ret)
 		goto e_no_asid;
-	sev->asid = asid;
 
 	init_args.probe = false;
 	ret = sev_platform_init(&init_args);
