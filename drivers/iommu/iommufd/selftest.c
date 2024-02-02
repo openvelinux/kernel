@@ -41,6 +41,7 @@ static atomic_t mock_dev_num;
 enum {
 	MOCK_DIRTY_TRACK = 1,
 	MOCK_IO_PAGE_SIZE = PAGE_SIZE / 2,
+	MOCK_HUGE_PAGE_SIZE = 512 * MOCK_IO_PAGE_SIZE,
 
 	/*
 	 * Like a real page table alignment requires the low bits of the address
@@ -53,6 +54,7 @@ enum {
 	MOCK_PFN_START_IOVA = _MOCK_PFN_START,
 	MOCK_PFN_LAST_IOVA = _MOCK_PFN_START,
 	MOCK_PFN_DIRTY_IOVA = _MOCK_PFN_START << 1,
+	MOCK_PFN_HUGE_IOVA = _MOCK_PFN_START << 2,
 };
 
 /*
@@ -257,6 +259,8 @@ static int mock_domain_read_and_clear_dirty(struct iommu_domain *domain,
 			continue;
 		}
 
+		if (xa_to_value(ent) & MOCK_PFN_HUGE_IOVA)
+			pgsize = MOCK_HUGE_PAGE_SIZE;
 		head = iova & ~(pgsize - 1);
 
 		/* Clear dirty */
@@ -275,6 +279,7 @@ const struct iommu_dirty_ops dirty_ops = {
 
 static struct iommu_domain *mock_domain_alloc_paging(struct device *dev)
 {
+	struct mock_dev *mdev = container_of(dev, struct mock_dev, dev);
 	struct mock_iommu_domain *mock;
 
 	mock = kzalloc(sizeof(*mock), GFP_KERNEL);
@@ -283,6 +288,8 @@ static struct iommu_domain *mock_domain_alloc_paging(struct device *dev)
 	mock->domain.geometry.aperture_start = MOCK_APERTURE_START;
 	mock->domain.geometry.aperture_end = MOCK_APERTURE_LAST;
 	mock->domain.pgsize_bitmap = MOCK_IO_PAGE_SIZE;
+	if (dev && mdev->flags & MOCK_FLAGS_DEVICE_HUGE_IOVA)
+		mock->domain.pgsize_bitmap |= MOCK_HUGE_PAGE_SIZE;
 	mock->domain.ops = mock_ops.default_domain_ops;
 	mock->domain.type = IOMMU_DOMAIN_UNMANAGED;
 	xa_init(&mock->pfns);
@@ -328,7 +335,7 @@ mock_domain_alloc_user(struct device *dev, u32 flags,
 			return ERR_PTR(-EOPNOTSUPP);
 		if (user_data || (has_dirty_flag && no_dirty_ops))
 			return ERR_PTR(-EOPNOTSUPP);
-		domain = mock_domain_alloc_paging(NULL);
+		domain = mock_domain_alloc_paging(dev);
 		if (!domain)
 			return ERR_PTR(-ENOMEM);
 		if (has_dirty_flag)
@@ -391,6 +398,9 @@ static int mock_domain_map_pages(struct iommu_domain *domain,
 
 			if (pgcount == 1 && cur + MOCK_IO_PAGE_SIZE == pgsize)
 				flags = MOCK_PFN_LAST_IOVA;
+			if (pgsize != MOCK_IO_PAGE_SIZE) {
+				flags |= MOCK_PFN_HUGE_IOVA;
+			}
 			old = xa_store(&mock->pfns, iova / MOCK_IO_PAGE_SIZE,
 				       xa_mk_value((paddr / MOCK_IO_PAGE_SIZE) |
 						   flags),
@@ -645,7 +655,8 @@ static struct mock_dev *mock_dev_create(unsigned long dev_flags)
 	struct mock_dev *mdev;
 	int rc;
 
-	if (dev_flags & ~(MOCK_FLAGS_DEVICE_NO_DIRTY))
+	if (dev_flags &
+	    ~(MOCK_FLAGS_DEVICE_NO_DIRTY | MOCK_FLAGS_DEVICE_HUGE_IOVA))
 		return ERR_PTR(-EINVAL);
 
 	mdev = kzalloc(sizeof(*mdev), GFP_KERNEL);
