@@ -888,6 +888,8 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 			else
 				vcpu_set_wfx_traps(vcpu);
 		}
+		if (kvm_check_request(KVM_REQ_RELOAD_TLBI_DVMBM, vcpu))
+			kvm_hisi_reload_lsudvmbm(vcpu->kvm);
 	}
 
 	return 1;
