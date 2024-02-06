@@ -173,3 +173,40 @@ bool hisi_dvmbm_supported(void)
 	on_each_cpu(hardware_enable_dvmbm, NULL, 1);
 	return true;
 }
+
+int kvm_sched_affinity_vcpu_init(struct kvm_vcpu *vcpu)
+{
+	if (!kvm_dvmbm_support)
+		return 0;
+
+	if (!zalloc_cpumask_var(&vcpu->arch.sched_cpus, GFP_ATOMIC) ||
+	    !zalloc_cpumask_var(&vcpu->arch.pre_sched_cpus, GFP_ATOMIC))
+		return -ENOMEM;
+
+	return 0;
+}
+
+void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu)
+{
+	if (!kvm_dvmbm_support)
+		return;
+
+	free_cpumask_var(vcpu->arch.sched_cpus);
+	free_cpumask_var(vcpu->arch.pre_sched_cpus);
+}
+
+void kvm_tlbi_dvmbm_vcpu_load(struct kvm_vcpu *vcpu)
+{
+	if (!kvm_dvmbm_support)
+		return;
+
+	cpumask_copy(vcpu->arch.sched_cpus, current->cpus_ptr);
+}
+
+void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu)
+{
+	if (!kvm_dvmbm_support)
+		return;
+
+	cpumask_copy(vcpu->arch.pre_sched_cpus, vcpu->arch.sched_cpus);
+}
