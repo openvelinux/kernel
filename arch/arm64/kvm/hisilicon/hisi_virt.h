@@ -10,6 +10,7 @@ enum hisi_cpu_type {
 	HI_1612,
 	HI_1616,
 	HI_1620,
+	HI_IP09,
 	UNKNOWN_HI_TYPE
 };
 
