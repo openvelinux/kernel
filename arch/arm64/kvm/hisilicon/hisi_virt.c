@@ -15,6 +15,7 @@ static const char * const hisi_cpu_type_str[] = {
 	"Hisi1612",
 	"Hisi1616",
 	"Hisi1620",
+	"HIP09",
 	"Unknown"
 };
 
@@ -22,7 +23,8 @@ static const char * const hisi_cpu_type_str[] = {
 static const char * const oem_str[] = {
 	"HIP06",	/* Hisi 1612 */
 	"HIP07",	/* Hisi 1616 */
-	"HIP08"		/* Hisi 1620 */
+	"HIP08",	/* Hisi 1620 */
+	"HIP09"		/* HIP09 */
 };
 
 /*
