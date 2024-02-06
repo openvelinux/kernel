@@ -26,6 +26,8 @@ bool hisi_dvmbm_supported(void);
 
 int kvm_sched_affinity_vcpu_init(struct kvm_vcpu *vcpu);
 void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu);
+int kvm_sched_affinity_vm_init(struct kvm *kvm);
+void kvm_sched_affinity_vm_destroy(struct kvm *kvm);
 void kvm_tlbi_dvmbm_vcpu_load(struct kvm_vcpu *vcpu);
 void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu);
 #else
@@ -44,6 +46,11 @@ static inline int kvm_sched_affinity_vcpu_init(struct kvm_vcpu *vcpu)
 	return 0;
 }
 static inline void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu) {}
+static inline int kvm_sched_affinity_vm_init(struct kvm *kvm)
+{
+	return 0;
+}
+static inline void kvm_sched_affinity_vm_destroy(struct kvm *kvm) {}
 static inline void kvm_tlbi_dvmbm_vcpu_load(struct kvm_vcpu *vcpu) {}
 static inline void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu) {}
 #endif /* CONFIG_KVM_HISI_VIRT */

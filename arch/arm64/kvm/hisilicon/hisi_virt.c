@@ -197,10 +197,42 @@ void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu)
 
 void kvm_tlbi_dvmbm_vcpu_load(struct kvm_vcpu *vcpu)
 {
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm_vcpu *tmp;
+	cpumask_t mask;
+	unsigned long i;
+
+	/* Don't bother on old hardware */
 	if (!kvm_dvmbm_support)
 		return;
 
 	cpumask_copy(vcpu->arch.sched_cpus, current->cpus_ptr);
+
+	if (likely(cpumask_equal(vcpu->arch.sched_cpus,
+				 vcpu->arch.pre_sched_cpus)))
+		return;
+
+	/* Re-calculate sched_cpus for this VM */
+	spin_lock(&kvm->arch.sched_lock);
+
+	cpumask_clear(&mask);
+	kvm_for_each_vcpu(i, tmp, kvm) {
+		/*
+		 * We may get the stale sched_cpus if another thread
+		 * is concurrently changing its affinity. It'll
+		 * eventually go through vcpu_load() and we rely on
+		 * the last sched_lock holder to make things correct.
+		 */
+		cpumask_or(&mask, &mask, tmp->arch.sched_cpus);
+	}
+
+	if (cpumask_equal(kvm->arch.sched_cpus, &mask))
+		goto out_unlock;
+
+	cpumask_copy(kvm->arch.sched_cpus, &mask);
+
+out_unlock:
+	spin_unlock(&kvm->arch.sched_lock);
 }
 
 void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu)
@@ -209,4 +241,24 @@ void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu)
 		return;
 
 	cpumask_copy(vcpu->arch.pre_sched_cpus, vcpu->arch.sched_cpus);
+}
+
+int kvm_sched_affinity_vm_init(struct kvm *kvm)
+{
+	if (!kvm_dvmbm_support)
+		return 0;
+
+	spin_lock_init(&kvm->arch.sched_lock);
+	if (!zalloc_cpumask_var(&kvm->arch.sched_cpus, GFP_ATOMIC))
+		return -ENOMEM;
+
+	return 0;
+}
+
+void kvm_sched_affinity_vm_destroy(struct kvm *kvm)
+{
+	if (!kvm_dvmbm_support)
+		return;
+
+	free_cpumask_var(kvm->arch.sched_cpus);
 }
