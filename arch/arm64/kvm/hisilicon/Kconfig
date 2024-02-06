@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config KVM_HISI_VIRT
+	bool "HiSilicon SoC specific virtualization features"
+	depends on ARCH_HISI
+	help
+	  Support for HiSilicon SoC specific virtualization features.
+	  On non-HiSilicon platforms, say N here.
