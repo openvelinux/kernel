@@ -607,6 +607,12 @@ struct kvm_vcpu_arch {
 
 	/* Per-vcpu CCSIDR override or NULL */
 	u32 *ccsidr;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	/* pCPUs this vCPU can be scheduled on. Pure copy of current->cpus_ptr */
+	cpumask_var_t sched_cpus;
+	cpumask_var_t pre_sched_cpus;
+#endif
 };
 
 /*
