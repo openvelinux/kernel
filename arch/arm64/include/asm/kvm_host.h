@@ -1203,5 +1203,6 @@ bool kvm_arm_vcpu_stopped(struct kvm_vcpu *vcpu);
 
 extern bool force_wfi_trap;
 extern bool kvm_ncsnp_support;
+extern bool kvm_dvmbm_support;
 
 #endif /* __ARM64_KVM_HOST_H__ */
