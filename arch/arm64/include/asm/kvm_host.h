@@ -51,6 +51,7 @@
 #define KVM_REQ_SUSPEND		KVM_ARCH_REQ(6)
 #define KVM_REQ_RESYNC_PMU_EL0	KVM_ARCH_REQ(7)
 #define KVM_REQ_RELOAD_WFI_TRAPS	KVM_ARCH_REQ(9)
+#define KVM_REQ_RELOAD_TLBI_DVMBM	KVM_ARCH_REQ(8)
 
 #define KVM_DIRTY_LOG_MANUAL_CAPS   (KVM_DIRTY_LOG_MANUAL_PROTECT_ENABLE | \
 				     KVM_DIRTY_LOG_INITIALLY_SET)
@@ -284,6 +285,7 @@ struct kvm_arch {
 #ifdef CONFIG_KVM_HISI_VIRT
 	spinlock_t sched_lock;
 	cpumask_var_t sched_cpus;	/* Union of all vcpu's cpus_ptr */
+	u64 tlbi_dvmbm;
 #endif
 };
 
