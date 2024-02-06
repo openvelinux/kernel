@@ -11,6 +11,8 @@
 
 static enum hisi_cpu_type cpu_type = UNKNOWN_HI_TYPE;
 
+static bool dvmbm_enabled;
+
 static const char * const hisi_cpu_type_str[] = {
 	"Hisi1612",
 	"Hisi1616",
@@ -123,4 +125,51 @@ bool hisi_ncsnp_supported(void)
 		supported = true;
 
 	return supported;
+}
+
+static int __init early_dvmbm_enable(char *buf)
+{
+	return strtobool(buf, &dvmbm_enabled);
+}
+early_param("kvm-arm.dvmbm_enabled", early_dvmbm_enable);
+
+static void hardware_enable_dvmbm(void *data)
+{
+	u64 val;
+
+	val  = read_sysreg_s(SYS_LSUDVM_CTRL_EL2);
+	val |= LSUDVM_CTLR_EL2_MASK;
+	write_sysreg_s(val, SYS_LSUDVM_CTRL_EL2);
+}
+
+static void hardware_disable_dvmbm(void *data)
+{
+	u64 val;
+
+	val  = read_sysreg_s(SYS_LSUDVM_CTRL_EL2);
+	val &= ~LSUDVM_CTLR_EL2_MASK;
+	write_sysreg_s(val, SYS_LSUDVM_CTRL_EL2);
+}
+
+bool hisi_dvmbm_supported(void)
+{
+	if (cpu_type != HI_IP09)
+		return false;
+
+	/* Determine whether DVMBM is supported by the hardware */
+	if (!(read_sysreg(aidr_el1) & AIDR_EL1_DVMBM_MASK))
+		return false;
+
+	/* User provided kernel command-line parameter */
+	if (!dvmbm_enabled || !is_kernel_in_hyp_mode()) {
+		on_each_cpu(hardware_disable_dvmbm, NULL, 1);
+		return false;
+	}
+
+	/*
+	 * Enable TLBI Broadcast optimization by setting
+	 * LSUDVM_CTRL_EL2's bit[0].
+	 */
+	on_each_cpu(hardware_enable_dvmbm, NULL, 1);
+	return true;
 }
