@@ -58,6 +58,7 @@ static bool vgic_present, kvm_arm_initialised;
 
 /* Hisi cpu type enum */
 enum hisi_cpu_type hi_cpu_type = UNKNOWN_HI_TYPE;
+bool kvm_ncsnp_support;
 
 static DEFINE_PER_CPU(unsigned char, kvm_hyp_initialized);
 DEFINE_STATIC_KEY_FALSE(userspace_irqchip_in_use);
@@ -2470,6 +2471,7 @@ static __init int kvm_arm_init(void)
 
 	/* Probe the Hisi CPU type */
 	probe_hisi_cpu_type();
+	probe_hisi_ncsnp_support();
 
 	in_hyp_mode = is_kernel_in_hyp_mode();
 

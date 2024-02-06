@@ -14,6 +14,8 @@ enum hisi_cpu_type {
 };
 
 extern enum hisi_cpu_type hi_cpu_type;
+extern bool kvm_ncsnp_support;
 
 void probe_hisi_cpu_type(void);
+void probe_hisi_ncsnp_support(void);
 #endif /* __HISI_CPU_MODEL_H__ */
