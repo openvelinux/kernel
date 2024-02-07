@@ -285,9 +285,9 @@ bool osc_sb_native_usb4_support_confirmed;
 EXPORT_SYMBOL_GPL(osc_sb_native_usb4_support_confirmed);
 
 static u8 sb_uuid_str[] = "0811B06E-4A27-44F9-8D60-3CBBC22E7B48";
-static void acpi_bus_osc_negotiate_platform_control(void)
+static void acpi_bus_osc_support(void)
 {
-	u32 capbuf[2], *capbuf_ret;
+	u32 capbuf[2];
 	struct acpi_osc_context context = {
 		.uuid_str = sb_uuid_str,
 		.rev = 1,
@@ -329,38 +329,17 @@ static void acpi_bus_osc_negotiate_platform_control(void)
 		capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_APEI_SUPPORT;
 	if (ACPI_FAILURE(acpi_get_handle(NULL, "\\_SB", &handle)))
 		return;
-
-	if (ACPI_FAILURE(acpi_run_osc(handle, &context)))
-		return;
-
-	capbuf_ret = context.ret.pointer;
-	if (context.ret.length <= OSC_SUPPORT_DWORD) {
+	if (ACPI_SUCCESS(acpi_run_osc(handle, &context))) {
+		u32 *capbuf_ret = context.ret.pointer;
+		if (context.ret.length > OSC_SUPPORT_DWORD) {
+			osc_sb_apei_support_acked =
+				capbuf_ret[OSC_SUPPORT_DWORD] & OSC_SB_APEI_SUPPORT;
+			osc_pc_lpi_support_confirmed =
+				capbuf_ret[OSC_SUPPORT_DWORD] & OSC_SB_PCLPI_SUPPORT;
+		}
 		kfree(context.ret.pointer);
-		return;
 	}
-
-	/*
-	 * Now run _OSC again with query flag clear and with the caps
-	 * supported by both the OS and the platform.
-	 */
-	capbuf[OSC_QUERY_DWORD] = 0;
-	capbuf[OSC_SUPPORT_DWORD] = capbuf_ret[OSC_SUPPORT_DWORD];
-	kfree(context.ret.pointer);
-
-	if (ACPI_FAILURE(acpi_run_osc(handle, &context)))
-		return;
-
-	capbuf_ret = context.ret.pointer;
-	if (context.ret.length > OSC_SUPPORT_DWORD) {
-		osc_sb_apei_support_acked =
-			capbuf_ret[OSC_SUPPORT_DWORD] & OSC_SB_APEI_SUPPORT;
-		osc_pc_lpi_support_confirmed =
-			capbuf_ret[OSC_SUPPORT_DWORD] & OSC_SB_PCLPI_SUPPORT;
-		osc_sb_native_usb4_support_confirmed =
-			capbuf_ret[OSC_SUPPORT_DWORD] & OSC_SB_NATIVE_USB4_SUPPORT;
-	}
-
-	kfree(context.ret.pointer);
+	/* do we need to check other returned cap? Sounds no */
 }
 
 /*
@@ -1258,7 +1237,7 @@ static int __init acpi_bus_init(void)
 	 * _OSC method may exist in module level code,
 	 * so it must be run after ACPI_FULL_INITIALIZATION
 	 */
-	acpi_bus_osc_negotiate_platform_control();
+	acpi_bus_osc_support();
 	acpi_bus_osc_negotiate_usb_control();
 
 	/*
