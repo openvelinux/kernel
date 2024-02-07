@@ -2881,6 +2881,15 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.cpu_enable = nmi_enable,
 	},
 #endif
+#ifdef CONFIG_ARM64_TWED
+	{
+		.desc = "Delayed Trapping of WFE",
+		.capability = ARM64_HAS_TWED,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_cpuid_feature,
+		ARM64_CPUID_FIELDS(ID_AA64MMFR1_EL1, TWED, IMP)
+	},
+#endif
 	{},
 };
 
