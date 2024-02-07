@@ -1211,6 +1211,11 @@ void __init kvm_hyp_reserve(void);
 static inline void kvm_hyp_reserve(void) { }
 #endif
 
+#ifdef CONFIG_ARM64_TWED
+extern bool twed_enable;
+extern unsigned int twedel;
+#endif
+
 void kvm_arm_vcpu_power_off(struct kvm_vcpu *vcpu);
 bool kvm_arm_vcpu_stopped(struct kvm_vcpu *vcpu);
 

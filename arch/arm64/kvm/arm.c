@@ -114,6 +114,13 @@ static int vcpu_req_reload_wfi_traps(const char *val, const struct kernel_param 
 	mutex_unlock(&kvm_lock);
 	return err;
 }
+#ifdef CONFIG_ARM64_TWED
+bool twed_enable;
+module_param(twed_enable, bool, 0644);
+
+unsigned int twedel;
+module_param(twedel, uint, 0644);
+#endif
 
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 {
@@ -1071,6 +1078,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		kvm_arm_setup_debug(vcpu);
 		kvm_arch_vcpu_ctxflush_fp(vcpu);
+
+		vcpu_set_twed(vcpu);
 
 		/**************************************************************
 		 * Enter the guest
