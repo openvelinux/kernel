@@ -306,7 +306,7 @@ static void __init x86_flattree_get_config(void)
 static inline void x86_flattree_get_config(void) { }
 #endif
 
-void __init x86_dtb_init(void)
+void __init x86_dtb_parse_smp_config(void)
 {
 	x86_flattree_get_config();
 
