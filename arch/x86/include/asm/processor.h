@@ -89,6 +89,9 @@ struct cpuinfo_topology {
 
 	// Physical die ID on AMD, Relative on Intel
 	u32			die_id;
+	// AMD Node ID and Nodes per Package info
+	u32			amd_node_id;
+
 };
 
 struct cpuinfo_x86 {
