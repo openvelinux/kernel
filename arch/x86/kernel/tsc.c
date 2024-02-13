@@ -1492,7 +1492,7 @@ static int __init init_tsc_clocksource(void)
 	 * handling etc. This kind of achieved upstream commit b4bac279319d("
 	 * x86/tsc: Use topology_max_packages() to get package number").
 	 */
-	if (nr_online_nodes > 4 && logical_packages <= 4) {
+	if (nr_online_nodes > 4 && topology_max_packages() <= 4) {
 		if (boot_cpu_has(X86_FEATURE_CONSTANT_TSC) &&
 		    boot_cpu_has(X86_FEATURE_NONSTOP_TSC) &&
 		    boot_cpu_has(X86_FEATURE_TSC_ADJUST))
