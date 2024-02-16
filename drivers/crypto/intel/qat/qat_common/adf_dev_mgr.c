@@ -47,10 +47,10 @@ static struct vf_id_map *adf_find_vf(u32 bdf)
 
 /**
  * adf_clean_vf_map() - Cleans VF id mapings
- *
- * Function cleans internal ids for virtual functions.
  * @vf: flag indicating whether mappings is cleaned
  *	for vfs only or for vfs and pfs
+ *
+ * Function cleans internal ids for virtual functions.
  */
 void adf_clean_vf_map(bool vf)
 {
