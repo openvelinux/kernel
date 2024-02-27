@@ -2711,10 +2711,6 @@ static int __init init_dmars(void)
 		iommu_set_root_entry(iommu);
 	}
 
-#ifdef CONFIG_INTEL_IOMMU_BROKEN_GFX_WA
-	dmar_map_gfx = 0;
-#endif
-
 	if (!dmar_map_gfx)
 		iommu_identity_mapping |= IDENTMAP_GFX;
 
