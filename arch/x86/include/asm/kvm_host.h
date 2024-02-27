@@ -268,13 +268,19 @@ enum x86_intercept_stage;
 #define PFERR_SGX_MASK		BIT(PFERR_SGX_BIT)
 #define PFERR_GUEST_FINAL_MASK	BIT_ULL(PFERR_GUEST_FINAL_BIT)
 #define PFERR_GUEST_PAGE_MASK	BIT_ULL(PFERR_GUEST_PAGE_BIT)
-#define PFERR_IMPLICIT_ACCESS	BIT_ULL(PFERR_IMPLICIT_ACCESS_BIT)
+
 
 /*
  * IMPLICIT_ACCESS is a KVM-defined flag used to correctly perform SMAP checks
  * when emulating instructions that triggers implicit access.
  */
-#define PFERR_SYNTHETIC_MASK	(PFERR_IMPLICIT_ACCESS)
+#define PFERR_IMPLICIT_ACCESS	BIT_ULL(PFERR_IMPLICIT_ACCESS_BIT)
+/*
+ * PRIVATE_ACCESS is a KVM-defined flag us to indicate that a fault occurred
+ * when the guest was accessing private memory.
+ */
+#define PFERR_PRIVATE_ACCESS   BIT_ULL(49)
+#define PFERR_SYNTHETIC_MASK   (PFERR_IMPLICIT_ACCESS | PFERR_PRIVATE_ACCESS)
 
 #define PFERR_NESTED_GUEST_PAGE (PFERR_GUEST_PAGE_MASK |	\
 				 PFERR_WRITE_MASK |		\
