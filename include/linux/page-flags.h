@@ -597,13 +597,13 @@ PAGEFLAG_FALSE(HighMem, highmem)
 #endif
 
 #ifdef CONFIG_SWAP
-static __always_inline bool folio_test_swapcache(struct folio *folio)
+static __always_inline bool folio_test_swapcache(const struct folio *folio)
 {
 	return folio_test_swapbacked(folio) &&
-			test_bit(PG_swapcache, folio_flags(folio, 0));
+			test_bit(PG_swapcache, const_folio_flags(folio, 0));
 }
 
-static __always_inline bool PageSwapCache(struct page *page)
+static __always_inline bool PageSwapCache(const struct page *page)
 {
 	return folio_test_swapcache(page_folio(page));
 }
@@ -702,22 +702,22 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
  */
 #define PAGE_MAPPING_DAX_SHARED	((void *)0x1)
 
-static __always_inline bool folio_mapping_flags(struct folio *folio)
+static __always_inline bool folio_mapping_flags(const struct folio *folio)
 {
 	return ((unsigned long)folio->mapping & PAGE_MAPPING_FLAGS) != 0;
 }
 
-static __always_inline int PageMappingFlags(struct page *page)
+static __always_inline int PageMappingFlags(const struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) != 0;
 }
 
-static __always_inline bool folio_test_anon(struct folio *folio)
+static __always_inline bool folio_test_anon(const struct folio *folio)
 {
 	return ((unsigned long)folio->mapping & PAGE_MAPPING_ANON) != 0;
 }
 
-static __always_inline bool PageAnon(struct page *page)
+static __always_inline bool PageAnon(const struct page *page)
 {
 	return folio_test_anon(page_folio(page));
 }
@@ -728,7 +728,7 @@ static __always_inline bool __folio_test_movable(const struct folio *folio)
 			PAGE_MAPPING_MOVABLE;
 }
 
-static __always_inline int __PageMovable(struct page *page)
+static __always_inline int __PageMovable(const struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==
 				PAGE_MAPPING_MOVABLE;
@@ -741,13 +741,13 @@ static __always_inline int __PageMovable(struct page *page)
  * is found in VM_MERGEABLE vmas.  It's a PageAnon page, pointing not to any
  * anon_vma, but to that page's node of the stable tree.
  */
-static __always_inline bool folio_test_ksm(struct folio *folio)
+static __always_inline bool folio_test_ksm(const struct folio *folio)
 {
 	return ((unsigned long)folio->mapping & PAGE_MAPPING_FLAGS) ==
 				PAGE_MAPPING_KSM;
 }
 
-static __always_inline bool PageKsm(struct page *page)
+static __always_inline bool PageKsm(const struct page *page)
 {
 	return folio_test_ksm(page_folio(page));
 }
@@ -767,9 +767,9 @@ u64 stable_page_flags(struct page *page);
  * some of the bytes in it may be; see the is_partially_uptodate()
  * address_space operation.
  */
-static inline bool folio_test_uptodate(struct folio *folio)
+static inline bool folio_test_uptodate(const struct folio *folio)
 {
-	bool ret = test_bit(PG_uptodate, folio_flags(folio, 0));
+	bool ret = test_bit(PG_uptodate, const_folio_flags(folio, 0));
 	/*
 	 * Must ensure that the data we read out of the folio is loaded
 	 * _after_ we've loaded folio->flags to check the uptodate bit.
@@ -784,7 +784,7 @@ static inline bool folio_test_uptodate(struct folio *folio)
 	return ret;
 }
 
-static inline int PageUptodate(struct page *page)
+static inline int PageUptodate(const struct page *page)
 {
 	return folio_test_uptodate(page_folio(page));
 }
@@ -831,9 +831,9 @@ static inline bool test_set_page_writeback(struct page *page)
 	return set_page_writeback(page);
 }
 
-static __always_inline bool folio_test_head(struct folio *folio)
+static __always_inline bool folio_test_head(const struct folio *folio)
 {
-	return test_bit(PG_head, folio_flags(folio, FOLIO_PF_ANY));
+	return test_bit(PG_head, const_folio_flags(folio, FOLIO_PF_ANY));
 }
 
 static __always_inline int PageHead(const struct page *page)
@@ -852,7 +852,7 @@ CLEARPAGEFLAG(Head, head, PF_ANY)
  *
  * Return: True if the folio is larger than one page.
  */
-static inline bool folio_test_large(struct folio *folio)
+static inline bool folio_test_large(const struct folio *folio)
 {
 	return folio_test_head(folio);
 }
@@ -889,7 +889,7 @@ TESTPAGEFLAG_FALSE(LargeRmappable, large_rmappable)
  * hugetlbfs pages, but not normal pages. PageTransHuge() can only be
  * called only in the core VM paths where hugetlbfs pages can't exist.
  */
-static inline int PageTransHuge(struct page *page)
+static inline int PageTransHuge(const struct page *page)
 {
 	VM_BUG_ON_PAGE(PageTail(page), page);
 	return PageHead(page);
@@ -900,7 +900,7 @@ static inline int PageTransHuge(struct page *page)
  * and hugetlbfs pages, so it should only be called when it's known
  * that hugetlbfs pages aren't involved.
  */
-static inline int PageTransCompound(struct page *page)
+static inline int PageTransCompound(const struct page *page)
 {
 	return PageCompound(page);
 }
@@ -910,7 +910,7 @@ static inline int PageTransCompound(struct page *page)
  * and hugetlbfs pages, so it should only be called when it's known
  * that hugetlbfs pages aren't involved.
  */
-static inline int PageTransTail(struct page *page)
+static inline int PageTransTail(const struct page *page)
 {
 	return PageTail(page);
 }
@@ -963,7 +963,7 @@ static inline int page_type_has_type(unsigned int page_type)
 	return (int)page_type < PAGE_MAPCOUNT_RESERVE;
 }
 
-static inline int page_has_type(struct page *page)
+static inline int page_has_type(const struct page *page)
 {
 	return page_type_has_type(page->page_type);
 }
@@ -1081,7 +1081,7 @@ extern bool is_free_buddy_page(struct page *page);
 
 PAGEFLAG(Isolated, isolated, PF_ANY);
 
-static __always_inline int PageAnonExclusive(struct page *page)
+static __always_inline int PageAnonExclusive(const struct page *page)
 {
 	VM_BUG_ON_PGFLAGS(!PageAnon(page), page);
 	VM_BUG_ON_PGFLAGS(PageHuge(page) && !PageHead(page), page);
@@ -1154,12 +1154,12 @@ static __always_inline void __ClearPageAnonExclusive(struct page *page)
  * Determine if a page has private stuff, indicating that release routines
  * should be invoked upon it.
  */
-static inline int page_has_private(struct page *page)
+static inline int page_has_private(const struct page *page)
 {
 	return !!(page->flags & PAGE_FLAGS_PRIVATE);
 }
 
-static inline bool folio_has_private(struct folio *folio)
+static inline bool folio_has_private(const struct folio *folio)
 {
 	return page_has_private(&folio->page);
 }
