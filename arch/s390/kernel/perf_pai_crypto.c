@@ -53,7 +53,6 @@ static void paicrypt_event_destroy(struct perf_event *event)
 {
 	struct paicrypt_map *cpump = per_cpu_ptr(&paicrypt_map, event->cpu);
 
-	cpump->event = NULL;
 	static_branch_dec(&pai_key);
 	mutex_lock(&pai_reserve_mutex);
 	if (event->attr.sample_period)
@@ -278,10 +277,15 @@ static int paicrypt_add(struct perf_event *event, int flags)
 
 static void paicrypt_stop(struct perf_event *event, int flags)
 {
-	if (!event->attr.sample_period)	/* Counting */
+	struct paicrypt_mapptr *mp = this_cpu_ptr(paicrypt_root.mapptr);
+	struct paicrypt_map *cpump = mp->mapptr;
+
+	if (!event->attr.sample_period) {	/* Counting */
 		paicrypt_read(event);
-	else				/* Sampling */
+	} else {				/* Sampling */
 		perf_sched_cb_dec(event->pmu);
+		cpump->event = NULL;
+	}
 	event->hw.state = PERF_HES_STOPPED;
 }
 
