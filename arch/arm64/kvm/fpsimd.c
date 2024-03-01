@@ -114,6 +114,11 @@ void kvm_arch_vcpu_load_fp(struct kvm_vcpu *vcpu)
 			fpsimd_save_and_flush_cpu_state();
 		}
 	}
+
+	fpsimd_save_and_flush_cpu_state();
+	*host_data_ptr(fp_owner) = FP_STATE_FREE;
+	*host_data_ptr(fpsimd_state) = NULL;
+
 }
 
 /*
