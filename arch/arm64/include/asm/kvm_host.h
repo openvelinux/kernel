@@ -444,6 +444,7 @@ struct kvm_cpu_context {
  */
 struct kvm_host_data {
 	struct kvm_cpu_context host_ctxt;
+	struct user_fpsimd_state *fpsimd_state;	/* hyp VA */
 
 	/*
 	 * host_debug_state contains the host registers which are
