@@ -183,6 +183,7 @@ SYS_CALL_HOOK_DEFINE(3, bind, int, fd, struct sockaddr __user *, uaddr, int, len
 end:
 	module_put(THIS_MODULE);
 out:
+	smp_rmb();
 	return original_sys_bind(regs);
 }
 
@@ -289,7 +290,9 @@ static int __init sys_bind_replace(const void *addr, sys_bind_func func,
 		return -EPERM;
 
 	sys_bind_ptr = (void *)(vaddr + ((unsigned long)addr & ~PAGE_MASK));
-	*old = xchg(sys_bind_ptr, func);
+	*old = READ_ONCE(*sys_bind_ptr);
+	smp_wmb();
+	WRITE_ONCE(*sys_bind_ptr, func);
 	flush_kernel_vmap_range((void *)vaddr, sizeof(vaddr));
 	invalidate_kernel_vmap_range((void *)addr, sizeof(addr));
 
