@@ -106,10 +106,8 @@ KVM_NVHE_ALIAS(__hyp_rodata_end);
 /* pKVM static key */
 KVM_NVHE_ALIAS(kvm_protected_mode_initialized);
 
-#ifdef CONFIG_KVM_HISI_VIRT
 /* Capability of non-cacheable snooping */
 KVM_NVHE_ALIAS(kvm_ncsnp_support);
-#endif
 
 #endif /* CONFIG_KVM */
 
