@@ -5396,6 +5396,29 @@ static void probe_intel_uncore_frequency(void)
 
 static void probe_graphics(void)
 {
+	/* New i915 graphics sysfs knobs */
+	if (!access("/sys/class/drm/card0/gt/gt0/rc6_residency_ms", R_OK)) {
+		gfx_info[GFX_rc6].path = "/sys/class/drm/card0/gt/gt0/rc6_residency_ms";
+
+		if (!access("/sys/class/drm/card0/gt/gt0/rps_cur_freq_mhz", R_OK))
+			gfx_info[GFX_MHz].path = "/sys/class/drm/card0/gt/gt0/rps_cur_freq_mhz";
+
+		if (!access("/sys/class/drm/card0/gt/gt0/rps_act_freq_mhz", R_OK))
+			gfx_info[GFX_ACTMHz].path = "/sys/class/drm/card0/gt/gt0/rps_act_freq_mhz";
+
+		if (!access("/sys/class/drm/card0/gt/gt1/rc6_residency_ms", R_OK))
+			gfx_info[SAM_mc6].path = "/sys/class/drm/card0/gt/gt1/rc6_residency_ms";
+
+		if (!access("/sys/class/drm/card0/gt/gt1/rps_cur_freq_mhz", R_OK))
+			gfx_info[SAM_MHz].path = "/sys/class/drm/card0/gt/gt1/rps_cur_freq_mhz";
+
+		if (!access("/sys/class/drm/card0/gt/gt1/rps_act_freq_mhz", R_OK))
+			gfx_info[SAM_ACTMHz].path = "/sys/class/drm/card0/gt/gt1/rps_act_freq_mhz";
+
+		goto end;
+	}
+
+	/* Fall back to traditional i915 graphics sysfs knobs */
 	if (!access("/sys/class/drm/card0/power/rc6_residency_ms", R_OK))
 		gfx_info[GFX_rc6].path = "/sys/class/drm/card0/power/rc6_residency_ms";
 
@@ -5410,6 +5433,7 @@ static void probe_graphics(void)
 	else if (!access("/sys/class/graphics/fb0/device/drm/card0/gt_act_freq_mhz", R_OK))
 		gfx_info[GFX_ACTMHz].path = "/sys/class/graphics/fb0/device/drm/card0/gt_act_freq_mhz";
 
+end:
 	if (gfx_info[GFX_rc6].path)
 		BIC_PRESENT(BIC_GFX_rc6);
 	if (gfx_info[GFX_MHz].path)
