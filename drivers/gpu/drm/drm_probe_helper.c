@@ -876,3 +876,32 @@ bool drm_helper_hpd_irq_event(struct drm_device *dev)
 	return changed;
 }
 EXPORT_SYMBOL(drm_helper_hpd_irq_event);
+
+/**
+ * drm_connector_helper_detect_from_ddc - Read EDID and detect connector status.
+ * @connector: The connector
+ * @ctx: Acquire context
+ * @force: Perform screen-destructive operations, if necessary
+ *
+ * Detects the connector status by reading the EDID using drm_probe_ddc(),
+ * which requires connector->ddc to be set. Returns connector_status_connected
+ * on success or connector_status_disconnected on failure.
+ *
+ * Returns:
+ * The connector status as defined by enum drm_connector_status.
+ */
+int drm_connector_helper_detect_from_ddc(struct drm_connector *connector,
+					 struct drm_modeset_acquire_ctx *ctx,
+					 bool force)
+{
+	struct i2c_adapter *ddc = connector->ddc;
+
+	if (!ddc)
+		return connector_status_unknown;
+
+	if (drm_probe_ddc(ddc))
+		return connector_status_connected;
+
+	return connector_status_disconnected;
+}
+EXPORT_SYMBOL(drm_connector_helper_detect_from_ddc);
