@@ -1382,6 +1382,7 @@ err_drm_connector_update_edid_property:
 
 static const struct drm_connector_helper_funcs ast_vga_connector_helper_funcs = {
 	.get_modes = ast_vga_connector_helper_get_modes,
+	.detect_ctx = drm_connector_helper_detect_from_ddc,
 };
 
 static const struct drm_connector_funcs ast_vga_connector_funcs = {
@@ -1417,7 +1418,7 @@ static int ast_vga_connector_init(struct drm_device *dev,
 	connector->interlace_allowed = 0;
 	connector->doublescan_allowed = 0;
 
-	connector->polled = DRM_CONNECTOR_POLL_CONNECT;
+	connector->polled = DRM_CONNECTOR_POLL_CONNECT | DRM_CONNECTOR_POLL_DISCONNECT;
 
 	return 0;
 }
@@ -1488,6 +1489,7 @@ err_drm_connector_update_edid_property:
 
 static const struct drm_connector_helper_funcs ast_sil164_connector_helper_funcs = {
 	.get_modes = ast_sil164_connector_helper_get_modes,
+	.detect_ctx = drm_connector_helper_detect_from_ddc,
 };
 
 static const struct drm_connector_funcs ast_sil164_connector_funcs = {
@@ -1523,7 +1525,7 @@ static int ast_sil164_connector_init(struct drm_device *dev,
 	connector->interlace_allowed = 0;
 	connector->doublescan_allowed = 0;
 
-	connector->polled = DRM_CONNECTOR_POLL_CONNECT;
+	connector->polled = DRM_CONNECTOR_POLL_CONNECT | DRM_CONNECTOR_POLL_DISCONNECT;
 
 	return 0;
 }
