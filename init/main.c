@@ -1013,7 +1013,9 @@ void start_kernel(void)
 		      panic_param);
 
 	lockdep_init();
-
+#if defined(CONFIG_NUMA_AWARE_SPINLOCKS)
+	cna_configure_spin_lock_slowpath();
+#endif
 	/*
 	 * Need to run this when irqs are enabled, because it wants
 	 * to self-test [hard/soft]-irqs on/off lock inversion bugs

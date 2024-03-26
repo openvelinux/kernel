@@ -376,6 +376,14 @@ static inline void cna_lock_handoff(struct mcs_spinlock *node,
 	arch_mcs_lock_handoff(&next->locked, val);
 }
 
+#ifdef CONFIG_PARAVIRT_SPINLOCKS
+#define cna_queued_spin_lock_slowpath	pv_ops.lock.queued_spin_lock_slowpath
+#else
+void (*cna_queued_spin_lock_slowpath)(struct qspinlock *lock, u32 val) =
+		native_queued_spin_lock_slowpath;
+EXPORT_SYMBOL(cna_queued_spin_lock_slowpath);
+#endif
+
 /*
  * Constant (boot-param configurable) flag selecting the NUMA-aware variant
  * of spinlock.  Possible values: -1 (off, default) / 0 (auto) / 1 (on).
@@ -413,13 +421,13 @@ void __init cna_configure_spin_lock_slowpath(void)
 		return;
 
 	if (numa_spinlock_flag == 0 && (nr_node_ids < 2 ||
-		    pv_ops.lock.queued_spin_lock_slowpath !=
+		    cna_queued_spin_lock_slowpath !=
 			native_queued_spin_lock_slowpath))
 		return;
 
 	cna_init_nodes();
 
-	pv_ops.lock.queued_spin_lock_slowpath = __cna_queued_spin_lock_slowpath;
+	cna_queued_spin_lock_slowpath = __cna_queued_spin_lock_slowpath;
 
 	pr_info("Enabling CNA spinlock\n");
 }

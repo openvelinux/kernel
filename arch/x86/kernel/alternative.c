@@ -1614,9 +1614,6 @@ void __init alternative_instructions(void)
 
 	/* Keep CET-IBT disabled until caller/callee are patched */
 	ibt = ibt_save(/*disable*/ true);
-#if defined(CONFIG_NUMA_AWARE_SPINLOCKS)
-	cna_configure_spin_lock_slowpath();
-#endif
 
 	/*
 	 * First patch paravirt functions, such that we overwrite the indirect
