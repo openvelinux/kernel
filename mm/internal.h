@@ -71,12 +71,12 @@ void page_writeback_init(void);
  * How many individual pages have an elevated _mapcount.  Excludes
  * the folio's entire_mapcount.
  */
-static inline int folio_nr_pages_mapped(struct folio *folio)
+static inline int folio_nr_pages_mapped(const struct folio *folio)
 {
 	return atomic_read(&folio->_nr_pages_mapped) & FOLIO_PAGES_MAPPED;
 }
 
-static inline void *folio_raw_mapping(struct folio *folio)
+static inline void *folio_raw_mapping(const struct folio *folio)
 {
 	unsigned long mapping = (unsigned long)folio->mapping;
 
