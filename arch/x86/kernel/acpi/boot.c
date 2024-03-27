@@ -757,7 +757,7 @@ static void __init acpi_set_irq_model_ioapic(void)
 /*
  *  ACPI based hotplug support for CPU
  */
-#ifdef CONFIG_ACPI_HOTPLUG_CPU
+#ifdef CONFIG_ACPI_HOTPLUG_PRESENT_CPU
 #include <acpi/processor.h>
 
 static int acpi_map_cpu2node(acpi_handle handle, int cpu, int physid)
@@ -806,7 +806,7 @@ int acpi_unmap_cpu(int cpu)
 	return (0);
 }
 EXPORT_SYMBOL(acpi_unmap_cpu);
-#endif				/* CONFIG_ACPI_HOTPLUG_CPU */
+#endif				/* CONFIG_ACPI_HOTPLUG_PRESENT_CPU */
 
 int acpi_register_ioapic(acpi_handle handle, u64 phys_addr, u32 gsi_base)
 {
