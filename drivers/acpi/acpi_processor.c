@@ -459,14 +459,11 @@ static int acpi_processor_add(struct acpi_device *device,
 }
 
 /* Removal */
-static void acpi_processor_post_eject(struct acpi_device *device)
+static void acpi_processor_make_not_present(struct acpi_device *device)
 {
 	struct acpi_processor *pr;
 
 	if (!IS_ENABLED(CONFIG_ACPI_HOTPLUG_PRESENT_CPU))
-		return;
-
-	if (!device || !acpi_driver_data(device))
 		return;
 
 	pr = acpi_driver_data(device);
@@ -503,6 +500,29 @@ static void acpi_processor_post_eject(struct acpi_device *device)
  out:
 	free_cpumask_var(pr->throttling.shared_cpu_map);
 	kfree(pr);
+}
+
+static void acpi_processor_post_eject(struct acpi_device *device)
+{
+	struct acpi_processor *pr;
+	unsigned long long sta;
+	acpi_status status;
+
+	if (!device)
+		return;
+
+	pr = acpi_driver_data(device);
+	if (!pr || pr->id >= nr_cpu_ids || invalid_phys_cpuid(pr->phys_id))
+		return;
+
+	status = acpi_evaluate_integer(pr->handle, "_STA", NULL, &sta);
+	if (ACPI_FAILURE(status))
+		return;
+
+	if (cpu_present(pr->id) && !(sta & ACPI_STA_DEVICE_PRESENT)) {
+		acpi_processor_make_not_present(device);
+		return;
+	}
 }
 
 #ifdef CONFIG_ARCH_MIGHT_HAVE_ACPI_PDC
