@@ -484,6 +484,25 @@ static void i2c_hisi_soft_reset(struct device *dev)
 }
 
 /**
+ * i2c_hisi_soft_reset - Do I2C master soft reset method through ACPI
+ * @dev: device need to be reset
+ *
+ * The function invokes the specific ACPI method "SRST" for trigger a soft
+ * reset of I2C controller in order to help on I2C controller recover from
+ * the abnormal state after bus recovery process.
+ */
+static void i2c_hisi_soft_reset(struct device *dev)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	acpi_status status;
+	unsigned long long data;
+
+	status = acpi_evaluate_integer(handle, HISI_I2C_SOFT_RESET_METHOD, NULL, &data);
+	dev_info(dev, "I2C controller reset %s", ACPI_FAILURE(status) ? "failed" :
+		 "succeed");
+}
+
+/**
  * i2c_hisi_pin_mux_change - Change the I2C controller's pin mux through ACPI
  * @dev: device owns the SCL/SDA pin
  * @to_gpio: true to switch to GPIO, false to switch to SCL/SDA
