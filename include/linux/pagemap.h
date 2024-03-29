@@ -207,6 +207,7 @@ enum mapping_flags {
 	AS_UNMOVABLE	= 8,	/* The mapping cannot be moved, ever */
 	AS_STABLE_WRITES,	/* must wait for writeback before modifying
 				   folio contents */
+	AS_INACCESSIBLE,	/* Do not attempt direct R/W access to the mapping */
 };
 
 /**
