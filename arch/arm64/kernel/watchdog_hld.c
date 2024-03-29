@@ -28,9 +28,10 @@ u64 hw_nmi_get_sample_period(int watchdog_thresh)
 bool __init arch_perf_nmi_is_available(void)
 {
 	/*
-	 * hardlockup_detector_perf_init() will success even if Pseudo-NMI turns off,
-	 * however, the pmu interrupts will act like a normal interrupt instead of
-	 * NMI and the hardlockup detector would be broken.
+	 * hardlockup_detector_perf_init() will success even if Pseudo-NMI or
+	 * Hardware NMI turns off. However, the pmu interrupts will act like
+	 * a normal interrupt instead of NMI and the hardlockup detector would
+	 * be broken.
 	 */
 	return arm_pmu_irq_is_nmi();
 }
