@@ -234,12 +234,97 @@ static int kvm_dvmbm_get_dies_info(struct kvm *kvm, u64 *vm_aff3s, int size)
 	return num;
 }
 
+static u32 socket_num, die_num;
+
+static u32 kvm_get_socket_num(void)
+{
+	int socket_id[MAX_PG_CFG_SOCKETS], cpu;
+	u32 num = 0;
+
+	for_each_cpu(cpu, cpu_possible_mask) {
+		bool found = false;
+		u64 aff3, socket;
+		int i;
+
+		aff3 = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 3);
+		/* aff3[7:3]: socket ID */
+		socket = (aff3 & SOCKET_ID_MASK) >> SOCKET_ID_SHIFT;
+		for (i = 0; i < num; i++) {
+			if (socket_id[i] == socket) {
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			socket_id[num++] = socket;
+	}
+	return num;
+}
+
+static u32 kvm_get_die_num(void)
+{
+	int die_id[MAX_DIES_PER_SOCKET], cpu;
+	u32 num = 0;
+
+	for_each_cpu(cpu, cpu_possible_mask) {
+		bool found = false;
+		u64 aff3, die;
+		int i;
+
+		aff3 = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 3);
+		/* aff3[2:0]: die ID */
+		die = aff3 & DIE_ID_MASK;
+		for (i = 0; i < num; i++) {
+			if (die_id[i] == die) {
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			die_id[num++] = die;
+	}
+	return num;
+}
+
+static u32 g_die_pg[MAX_PG_CFG_SOCKETS * MAX_DIES_PER_SOCKET][MAX_CLUSTERS_PER_DIE];
+
+static void kvm_get_die_pg(unsigned long pg_cfg, int socket_id, int die_id)
+{
+	u32 pg_num = 0, i, j;
+	u32 pg_flag[MAX_CLUSTERS_PER_DIE];
+	u32 die_tmp = socket_id * die_num + die_id;
+
+	for (i = 0; i < MAX_CLUSTERS_PER_DIE; i++) {
+		if (test_bit(i, &pg_cfg))
+			pg_num++;
+		g_die_pg[die_tmp][i] = i;
+		pg_flag[i] = 0;
+	}
+
+	for (i = 0; i < MAX_CLUSTERS_PER_DIE - pg_num; i++) {
+		if (test_bit(i, &pg_cfg)) {
+			for (j = 0; j < pg_num; j++) {
+				u32 cluster_bak = MAX_CLUSTERS_PER_DIE - pg_num + j;
+
+				if (!test_bit(cluster_bak, &pg_cfg) &&
+				    !pg_flag[cluster_bak]) {
+					pg_flag[cluster_bak] = 1;
+					g_die_pg[die_tmp][i] = cluster_bak;
+					g_die_pg[die_tmp][cluster_bak] = i;
+					break;
+				}
+			}
+		}
+	}
+}
+
 static void kvm_update_vm_lsudvmbm(struct kvm *kvm)
 {
-	u64 mpidr, aff3, aff2, aff1;
+	u64 mpidr, aff3, aff2, aff1, phy_aff2;
 	u64 vm_aff3s[DVMBM_MAX_DIES];
 	u64 val;
 	int cpu, nr_dies;
+	u32 socket_id, die_id;
 
 	nr_dies = kvm_dvmbm_get_dies_info(kvm, vm_aff3s, DVMBM_MAX_DIES);
 	if (nr_dies > 2) {
@@ -254,10 +339,18 @@ static void kvm_update_vm_lsudvmbm(struct kvm *kvm)
 		/* fulfill bits [52:0] */
 		for_each_cpu(cpu, kvm->arch.sched_cpus) {
 			mpidr = cpu_logical_map(cpu);
+			aff3 = MPIDR_AFFINITY_LEVEL(mpidr, 3);
 			aff2 = MPIDR_AFFINITY_LEVEL(mpidr, 2);
 			aff1 = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+			socket_id = (aff3 & SOCKET_ID_MASK) >> SOCKET_ID_SHIFT;
+			die_id = (aff3 & DIE_ID_MASK) >> DIE_ID_SHIFT;
+			if (die_id == TOTEM_B_ID)
+				die_id = 0;
+			else
+				die_id = 1;
 
-			val |= 1ULL << (aff2 * 4 + aff1);
+			phy_aff2 = g_die_pg[socket_id * die_num + die_id][aff2];
+			val |= 1ULL << (phy_aff2 * 4 + aff1);
 		}
 
 		goto out_update;
@@ -274,11 +367,20 @@ static void kvm_update_vm_lsudvmbm(struct kvm *kvm)
 		mpidr = cpu_logical_map(cpu);
 		aff3 = MPIDR_AFFINITY_LEVEL(mpidr, 3);
 		aff2 = MPIDR_AFFINITY_LEVEL(mpidr, 2);
-
-		if (aff3 == vm_aff3s[0])
-			val |= 1ULL << (aff2 + DVMBM_DIE1_CLUSTER_SHIFT);
+		socket_id = (aff3 & SOCKET_ID_MASK) >> SOCKET_ID_SHIFT;
+		die_id = (aff3 & DIE_ID_MASK) >> DIE_ID_SHIFT;
+		if (die_id == TOTEM_B_ID)
+			die_id = 0;
 		else
-			val |= 1ULL << (aff2 + DVMBM_DIE2_CLUSTER_SHIFT);
+			die_id = 1;
+
+		if (aff3 == vm_aff3s[0]) {
+			phy_aff2 = g_die_pg[socket_id * die_num + die_id][aff2];
+			val |= 1ULL << (phy_aff2 + DVMBM_DIE1_CLUSTER_SHIFT);
+		} else {
+			phy_aff2 = g_die_pg[socket_id * die_num + die_id][aff2];
+			val |= 1ULL << (phy_aff2 + DVMBM_DIE2_CLUSTER_SHIFT);
+		}
 	}
 
 out_update:
@@ -343,6 +445,41 @@ void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu)
 		return;
 
 	cpumask_copy(vcpu->arch.pre_sched_cpus, vcpu->arch.sched_cpus);
+}
+
+void kvm_get_pg_cfg(void)
+{
+	void __iomem *mn_base;
+	u32 i, j;
+	u32 pg_cfgs[MAX_PG_CFG_SOCKETS * MAX_DIES_PER_SOCKET];
+	u64 mn_phy_base;
+	u32 val;
+
+	socket_num = kvm_get_socket_num();
+	die_num = kvm_get_die_num();
+
+	for (i = 0; i < socket_num; i++) {
+		for (j = 0; j < die_num; j++) {
+
+			/*
+			 * totem B means the first CPU DIE within a SOCKET,
+			 * totem A means the second one.
+			 */
+			mn_phy_base = (j == 0) ? TB_MN_BASE : TA_MN_BASE;
+			mn_phy_base += CHIP_ADDR_OFFSET(i);
+			mn_phy_base += MN_ECO0_OFFSET;
+
+			mn_base = ioremap(mn_phy_base, 4);
+			if (!mn_base) {
+				kvm_info("MN base addr ioremap failed\n");
+				return;
+			}
+			val = readl_relaxed(mn_base);
+			pg_cfgs[j + i * die_num] = val & 0xff;
+			kvm_get_die_pg(pg_cfgs[j + i * die_num], i, j);
+			iounmap(mn_base);
+		}
+	}
 }
 
 int kvm_sched_affinity_vm_init(struct kvm *kvm)
