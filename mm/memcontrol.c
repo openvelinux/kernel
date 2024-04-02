@@ -90,7 +90,7 @@ static bool cgroup_memory_nosocket __ro_after_init;
 static bool cgroup_memory_nokmem __ro_after_init;
 
 /* BPF memory accounting disabled? */
-static bool cgroup_memory_nobpf __ro_after_init;
+static bool cgroup_memory_nobpf __ro_after_init = true;
 
 #ifdef CONFIG_CGROUP_WRITEBACK
 static DECLARE_WAIT_QUEUE_HEAD(memcg_cgwb_frn_waitq);
@@ -7411,6 +7411,8 @@ static int __init cgroup_memory(char *s)
 			cgroup_memory_nokmem = true;
 		if (!strcmp(token, "nobpf"))
 			cgroup_memory_nobpf = true;
+		if (!strcmp(token, "bpf"))
+			cgroup_memory_nobpf = false;
 	}
 	return 1;
 }
