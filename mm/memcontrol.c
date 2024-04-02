@@ -87,7 +87,7 @@ static bool cgroup_memory_nosocket __ro_after_init;
 bool cgroup_memory_nokmem __ro_after_init;
 
 /* BPF memory accounting disabled? */
-static bool cgroup_memory_nobpf __ro_after_init;
+static bool cgroup_memory_nobpf __ro_after_init = true;
 
 /* Whether the swap controller is active */
 #ifdef CONFIG_MEMCG_SWAP
@@ -7197,6 +7197,8 @@ static int __init cgroup_memory(char *s)
 			cgroup_memory_nokmem = true;
 		if (!strcmp(token, "nobpf"))
 			cgroup_memory_nobpf = true;
+		if (!strcmp(token, "bpf"))
+			cgroup_memory_nobpf = false;
 	}
 	return 1;
 }
