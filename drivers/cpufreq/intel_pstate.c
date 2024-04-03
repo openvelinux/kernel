@@ -2393,6 +2393,7 @@ static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_pstate_cpu_ids);
 
+#ifdef CONFIG_ACPI
 static const struct x86_cpu_id intel_pstate_cpu_oob_ids[] __initconst = {
 	X86_MATCH(BROADWELL_D,		core_funcs),
 	X86_MATCH(BROADWELL_X,		core_funcs),
@@ -2401,6 +2402,7 @@ static const struct x86_cpu_id intel_pstate_cpu_oob_ids[] __initconst = {
 	X86_MATCH(SAPPHIRERAPIDS_X,	core_funcs),
 	{}
 };
+#endif
 
 static const struct x86_cpu_id intel_pstate_cpu_ee_disable_ids[] = {
 	X86_MATCH(KABYLAKE,		core_funcs),
