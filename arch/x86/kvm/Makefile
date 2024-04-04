@@ -31,7 +31,9 @@ kvm-intel-y		+= vmx/vmx_onhyperv.o
 endif
 
 kvm-amd-y		+= svm/svm.o svm/vmenter.o svm/pmu.o svm/nested.o svm/avic.o \
-			   svm/sev.o svm/hyperv.o
+			svm/hyperv.o
+
+kvm-amd-$(CONFIG_KVM_AMD_SEV)	+= svm/sev.o
 
 ifdef CONFIG_HYPERV
 kvm-amd-y		+= svm/svm_onhyperv.o
