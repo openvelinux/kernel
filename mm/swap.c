@@ -91,12 +91,6 @@ static void __page_cache_release(struct folio *folio)
 	}
 }
 
-static void __folio_put_small(struct folio *folio)
-{
-	__page_cache_release(folio);
-	mem_cgroup_uncharge(folio);
-	free_unref_page(&folio->page, 0);
-}
 
 static void __folio_put_large(struct folio *folio)
 {
@@ -113,12 +107,20 @@ static void __folio_put_large(struct folio *folio)
 
 void __folio_put(struct folio *folio)
 {
-	if (unlikely(folio_is_zone_device(folio)))
+	if (unlikely(folio_is_zone_device(folio))) {
 		free_zone_device_page(&folio->page);
-	else if (unlikely(folio_test_large(folio)))
-		__folio_put_large(folio);
-	else
-		__folio_put_small(folio);
+		return;
+	}
+
+	if (folio_test_hugetlb(folio)) {
+		free_huge_folio(folio);
+		return;
+	}
+
+	__page_cache_release(folio);
+	folio_unqueue_deferred_split(folio);
+	mem_cgroup_uncharge(folio);
+	free_unref_page(&folio->page, folio_order(folio));
 }
 EXPORT_SYMBOL(__folio_put);
 
