@@ -303,7 +303,7 @@ resctrl_get_domain_from_cpu(int cpu, struct rdt_resource *r)
 	 * about locks this thread holds will lead to false positives. Check
 	 * someone is holding the CPUs lock.
 	 */
-	if (IS_ENABLED(CONFIG_LOCKDEP))
+	if (IS_ENABLED(CONFIG_HOTPLUG_CPU) && IS_ENABLED(CONFIG_LOCKDEP))
 		lockdep_is_cpus_held();
 
 	list_for_each_entry_rcu(d, &r->domains, list) {
