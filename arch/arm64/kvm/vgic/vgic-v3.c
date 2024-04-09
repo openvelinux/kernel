@@ -724,6 +724,12 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 		static_branch_enable(&vgic_v3_cpuif_trap);
 	}
 
+	if (info->has_nmi) {
+		kvm_vgic_global_state.has_nmi = !static_branch_unlikely(&vgic_v3_cpuif_trap);
+		kvm_info("GICv3 NMI support %s\n",
+			 kvm_vgic_global_state.has_nmi ? "enabled" : "disabled due to trapping");
+	}
+
 	kvm_vgic_global_state.vctrl_base = NULL;
 	kvm_vgic_global_state.type = VGIC_V3;
 	kvm_vgic_global_state.max_gic_vcpus = VGIC_V3_MAX_CPUS;
