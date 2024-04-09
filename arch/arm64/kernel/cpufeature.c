@@ -2217,20 +2217,24 @@ static bool has_gic_prio_relaxed_sync(const struct arm64_cpu_capabilities *entry
 }
 #endif
 
-#ifdef CONFIG_ARM64_NMI
 static bool use_nmi(const struct arm64_cpu_capabilities *entry, int scope)
 {
 	if (!has_cpuid_feature(entry, scope))
 		return false;
 
 	/*
+	 * NMI support was not enabled in the kernel, but can still be
+	 * used by guests. Let the world know.
+	 *
 	 * Having both real and pseudo NMIs enabled simultaneously is
 	 * likely to cause confusion.  Since pseudo NMIs must be
 	 * enabled with an explicit command line option, if the user
 	 * has set that option on a system with real NMIs for some
 	 * reason assume they know what they're doing.
 	 */
-	if (IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) && enable_pseudo_nmi) {
+	if (!IS_ENABLED(CONFIG_ARM64_NMI))
+		pr_info("CONFIG_ARM64_NMI disabled, using NMIs for guests only\n");
+	else if (IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) && enable_pseudo_nmi) {
 		pr_info("Pseudo NMI enabled, not using architected NMI\n");
 		return false;
 	}
@@ -2238,6 +2242,7 @@ static bool use_nmi(const struct arm64_cpu_capabilities *entry, int scope)
 	return true;
 }
 
+#ifdef CONFIG_ARM64_NMI
 static void nmi_enable(const struct arm64_cpu_capabilities *__unused)
 {
 	/*
@@ -2856,7 +2861,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_lpa2,
 	},
-#ifdef CONFIG_ARM64_NMI
 	{
 		.desc = "Non-maskable Interrupts present",
 		.capability = ARM64_HAS_NMI,
@@ -2878,9 +2882,10 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.field_width = 4,
 		.min_field_value = ID_AA64PFR1_EL1_NMI_IMP,
 		.matches = use_nmi,
+#ifdef CONFIG_ARM64_NMI
 		.cpu_enable = nmi_enable,
-	},
 #endif
+	};
 #ifdef CONFIG_ARM64_TWED
 	{
 		.desc = "Delayed Trapping of WFE",
