@@ -110,6 +110,7 @@ static void vgic_v4_sync_sgi_config(struct its_vpe *vpe, struct vgic_irq *irq)
 	vpe->sgi_config[irq->intid].enabled	= irq->enabled;
 	vpe->sgi_config[irq->intid].group 	= irq->group;
 	vpe->sgi_config[irq->intid].priority	= irq->priority;
+	vpe->sgi_config[irq->intid].nmi		= irq->nmi;
 }
 
 static void vgic_v4_enable_vsgis(struct kvm_vcpu *vcpu)

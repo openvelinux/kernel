@@ -625,6 +625,7 @@ struct its_cmd_desc {
 			u8 sgi;
 			u8 priority;
 			bool enable;
+			bool nmi;
 			bool group;
 			bool clear;
 		} its_vsgi_cmd;
@@ -796,6 +797,11 @@ static void its_encode_sgi_intid_extension(struct its_cmd_block *cmd, u8 sgi)
 static void its_encode_sgi_priority(struct its_cmd_block *cmd, u8 prio)
 {
 	its_mask_encode(&cmd->raw_cmd[0], prio >> 4, 23, 20);
+}
+
+static void its_encode_sgi_nmi(struct its_cmd_block *cmd, bool nmi)
+{
+	its_mask_encode(&cmd->raw_cmd[0], nmi, 11, 11);
 }
 
 static void its_encode_sgi_group(struct its_cmd_block *cmd, bool grp)
@@ -1207,6 +1213,7 @@ static struct its_vpe *its_build_vsgi_cmd(struct its_node *its,
 	its_encode_sgi_intid(cmd, desc->its_vsgi_cmd.sgi);
 #endif
 	its_encode_sgi_priority(cmd, desc->its_vsgi_cmd.priority);
+	its_encode_sgi_nmi(cmd, desc->its_vsgi_cmd.nmi);
 	its_encode_sgi_group(cmd, desc->its_vsgi_cmd.group);
 	its_encode_sgi_clear(cmd, desc->its_vsgi_cmd.clear);
 	its_encode_sgi_enable(cmd, desc->its_vsgi_cmd.enable);
@@ -4565,6 +4572,7 @@ static void its_configure_sgi(struct irq_data *d, bool clear)
 	desc.its_vsgi_cmd.priority = vpe->sgi_config[d->hwirq].priority;
 	desc.its_vsgi_cmd.enable = vpe->sgi_config[d->hwirq].enabled;
 	desc.its_vsgi_cmd.group = vpe->sgi_config[d->hwirq].group;
+	desc.its_vsgi_cmd.nmi = vpe->sgi_config[d->hwirq].nmi;
 	desc.its_vsgi_cmd.clear = clear;
 
 	/*
@@ -4723,6 +4731,7 @@ static int its_sgi_set_vcpu_affinity(struct irq_data *d, void *vcpu_info)
 	case PROP_UPDATE_VSGI:
 		vpe->sgi_config[d->hwirq].priority = info->priority;
 		vpe->sgi_config[d->hwirq].group = info->group;
+		vpe->sgi_config[d->hwirq].nmi = info->nmi;
 		its_configure_sgi(d, false);
 		return 0;
 
