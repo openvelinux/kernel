@@ -78,6 +78,8 @@ static unsigned long vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
 	case GICD_TYPER:
 		value = vgic->nr_spis + VGIC_NR_PRIVATE_IRQS;
 		value = (value >> 5) - 1;
+		if (vgic->has_nmi)
+			value |= GICD_TYPER_NMI;
 		if (vgic_has_its(vcpu->kvm)) {
 			value |= (INTERRUPT_ID_BITS_ITS - 1) << 19;
 			value |= GICD_TYPER_LPIS;
@@ -159,6 +161,13 @@ static int vgic_mmio_uaccess_write_v3_misc(struct kvm_vcpu *vcpu,
 	u32 reg;
 
 	switch (addr & 0x0c) {
+	case GICD_TYPER:
+		if (dist->implementation_rev >= KVM_VGIC_IMP_REV_4 &&
+		    kvm_vgic_global_state.has_nmi)
+			dist->has_nmi = val & GICD_TYPER_NMI;
+		else if (val & GICD_TYPER_NMI)
+			return -EINVAL;
+		return 0;
 	case GICD_TYPER2:
 		if (val != vgic_mmio_read_v3_misc(vcpu, addr, len))
 			return -EINVAL;
@@ -172,6 +181,10 @@ static int vgic_mmio_uaccess_write_v3_misc(struct kvm_vcpu *vcpu,
 		switch (reg) {
 		case KVM_VGIC_IMP_REV_2:
 		case KVM_VGIC_IMP_REV_3:
+			/* Disable NMI on selecting an older revision */
+			dist->has_nmi = false;
+			fallthrough;
+		case KVM_VGIC_IMP_REV_4:
 			dist->implementation_rev = reg;
 			return 0;
 		default:
@@ -187,7 +200,7 @@ static int vgic_mmio_uaccess_write_v3_misc(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
-	vgic_mmio_write_v3_misc(vcpu, addr, len, val);
+	/* Not reachable... */
 	return 0;
 }
 
