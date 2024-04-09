@@ -61,9 +61,11 @@ unsigned long vgic_mmio_read_group(struct kvm_vcpu *vcpu,
 	return value;
 }
 
-static void vgic_update_vsgi(struct vgic_irq *irq)
+void vgic_update_vsgi(struct vgic_irq *irq)
 {
-	WARN_ON(its_prop_update_vsgi(irq->host_irq, irq->priority, irq->group));
+	WARN_ON(its_prop_update_vsgi(irq->host_irq,
+				     irq->nmi ? 0 : irq->priority,
+				     irq->group, irq->nmi));
 }
 
 void vgic_mmio_write_group(struct kvm_vcpu *vcpu, gpa_t addr,
