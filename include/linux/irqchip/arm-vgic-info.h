@@ -32,6 +32,8 @@ struct gic_kvm_info {
 	bool		has_v4;
 	/* rvpeid support */
 	bool		has_v4_1;
+	/* NMI support */
+	bool            has_nmi;
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 	/* vtimer irqbypass support */
 	bool            has_vtimer;
