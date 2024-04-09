@@ -210,6 +210,8 @@ struct kvm_arch {
 	/* VTCR_EL2 value for this VM */
 	u64    vtcr;
 
+	u8 pfr1_nmi;
+
 	/* Interrupt controller */
 	struct vgic_dist	vgic;
 
