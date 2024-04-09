@@ -155,7 +155,7 @@ static void print_dist_state(struct seq_file *s, struct vgic_dist *dist)
 
 	seq_printf(s, "P=pending_latch, L=line_level, A=active\n");
 	seq_printf(s, "E=enabled, H=hw, C=config (level=1, edge=0)\n");
-	seq_printf(s, "G=group\n");
+	seq_printf(s, "G=group, N=NMI\n");
 }
 
 static void print_header(struct seq_file *s, struct vgic_irq *irq,
@@ -170,8 +170,8 @@ static void print_header(struct seq_file *s, struct vgic_irq *irq,
 	}
 
 	seq_printf(s, "\n");
-	seq_printf(s, "%s%2d TYP   ID TGT_ID PLAEHCG     HWID   TARGET SRC PRI VCPU_ID\n", hdr, id);
-	seq_printf(s, "----------------------------------------------------------------\n");
+	seq_printf(s, "%s%2d TYP   ID TGT_ID PLAEHCGN     HWID   TARGET SRC PRI VCPU_ID\n", hdr, id);
+	seq_printf(s, "-----------------------------------------------------------------\n");
 }
 
 static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
@@ -204,7 +204,7 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 
 	seq_printf(s, "       %s %4d "
 		      "    %2d "
-		      "%d%d%d%d%d%d%d "
+		      "%d%d%d%d%d%d%d%d "
 		      "%8d "
 		      "%8x "
 		      " %2x "
@@ -220,6 +220,7 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 			irq->hw,
 			irq->config == VGIC_CONFIG_LEVEL,
 			irq->group,
+			irq->nmi,
 			irq->hwintid,
 			irq->mpidr,
 			irq->source,
