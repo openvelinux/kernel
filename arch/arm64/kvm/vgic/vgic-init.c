@@ -342,8 +342,16 @@ int vgic_init(struct kvm *kvm)
 	 * If userspace didn't set the GIC implementation revision,
 	 * default to the latest and greatest. You know want it.
 	 */
-	if (!dist->implementation_rev)
+	if (!dist->implementation_rev) {
 		dist->implementation_rev = KVM_VGIC_IMP_REV_LATEST;
+		/*
+		 * Advertise NMI if available. Userspace that explicitly
+		 * doesn't want NMI will have written to GICD_{IIDR,TYPER}
+		 * to set the implementation and the NMI support status.
+		 */
+		dist->has_nmi = kvm_vgic_global_state.has_nmi;
+	}
+
 	dist->initialized = true;
 
 out:
