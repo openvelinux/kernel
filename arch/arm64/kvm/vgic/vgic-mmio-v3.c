@@ -606,6 +606,55 @@ static void vgic_mmio_write_invall(struct kvm_vcpu *vcpu,
 	vgic_set_rdist_busy(vcpu, false);
 }
 
+static unsigned long vgic_mmio_read_nmi(struct kvm_vcpu *vcpu,
+					gpa_t addr, unsigned int len)
+{
+	u32 intid = VGIC_ADDR_TO_INTID(addr, 1);
+	u32 value = 0;
+	int i;
+
+	/* Loop over all IRQs affected by this read */
+	for (i = 0; i < len * 8; i++) {
+		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
+
+		if (irq->nmi)
+			value |= (1U << i);
+
+		vgic_put_irq(vcpu->kvm, irq);
+	}
+
+	return value;
+}
+
+static void vgic_mmio_write_nmi(struct kvm_vcpu *vcpu, gpa_t addr,
+				unsigned int len, unsigned long val)
+{
+	u32 intid = VGIC_ADDR_TO_INTID(addr, 1);
+	unsigned long flags;
+	int i;
+
+	if (!vcpu->kvm->arch.vgic.has_nmi)
+		return;
+
+	for (i = 0; i < len * 8; i++) {
+		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
+		bool was_nmi;
+
+		raw_spin_lock_irqsave(&irq->irq_lock, flags);
+
+		was_nmi = irq->nmi;
+		irq->nmi = (val & BIT(i));
+
+		if (irq->hw && vgic_irq_is_sgi(irq->intid) &&
+		    was_nmi != irq->nmi)
+			vgic_update_vsgi(irq);
+
+		raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+
+		vgic_put_irq(vcpu->kvm, irq);
+	}
+}
+
 /*
  * The GICv3 per-IRQ registers are split to control PPIs and SGIs in the
  * redistributors, while SPIs are covered by registers in the distributor
@@ -678,6 +727,9 @@ static const struct vgic_register_region vgic_v3_dist_registers[] = {
 		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_IGRPMODR,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, NULL, NULL, 1,
+		VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_INMIR,
+		vgic_mmio_read_nmi, vgic_mmio_write_nmi, NULL, NULL, 1,
 		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_IROUTER,
 		vgic_mmio_read_irouter, vgic_mmio_write_irouter, NULL, NULL, 64,
@@ -762,6 +814,9 @@ static const struct vgic_register_region vgic_v3_rd_registers[] = {
 		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_NSACR,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, 4,
+		VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_INMIR0,
+		vgic_mmio_read_nmi, vgic_mmio_write_nmi, 4,
 		VGIC_ACCESS_32bit),
 };
 
