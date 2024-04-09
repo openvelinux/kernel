@@ -252,6 +252,7 @@ static struct kvm_vcpu *vgic_target_oracle(struct vgic_irq *irq)
  *
  * Otherwise things should be sorted by the priority field and the GIC
  * hardware support will take care of preemption of priority groups etc.
+ * NMI acts as a super-priority.
  *
  * Return negative if "a" sorts before "b", 0 to preserve order, and positive
  * to sort "b" before "a".
@@ -287,7 +288,12 @@ static int vgic_irq_cmp(void *priv, const struct list_head *a,
 		goto out;
 	}
 
-	/* Both pending and enabled, sort by priority */
+	/* Both pending and enabled, sort by NMI and then priority */
+	if (irqa->nmi != irqb->nmi) {
+		ret = (int)irqb->nmi - (int)irqa->nmi;
+		goto out;
+	}
+
 	ret = irqa->priority - irqb->priority;
 out:
 	raw_spin_unlock(&irqb->irq_lock);
