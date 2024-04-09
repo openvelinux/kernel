@@ -699,13 +699,17 @@ unsigned long vgic_mmio_read_priority(struct kvm_vcpu *vcpu,
 				      gpa_t addr, unsigned int len)
 {
 	u32 intid = VGIC_ADDR_TO_INTID(addr, 8);
+	unsigned long flags;
 	int i;
 	u64 val = 0;
 
 	for (i = 0; i < len; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
-		val |= (u64)irq->priority << (i * 8);
+		raw_spin_lock_irqsave(&irq->irq_lock, flags);
+		if (!irq->nmi)
+			val |= (u64)irq->priority << (i * 8);
+		raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
 
 		vgic_put_irq(vcpu->kvm, irq);
 	}
@@ -732,10 +736,15 @@ void vgic_mmio_write_priority(struct kvm_vcpu *vcpu,
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		raw_spin_lock_irqsave(&irq->irq_lock, flags);
-		/* Narrow the priority range to what we actually support */
-		irq->priority = (val >> (i * 8)) & GENMASK(7, 8 - VGIC_PRI_BITS);
-		if (vgic_direct_sgi_or_ppi(irq))
-			vgic_update_vsgi(irq);
+		if (!irq->nmi) {
+			/*
+			 * Narrow the priority range to what we
+			 * actually support
+			 */
+			irq->priority = (val >> (i * 8)) & GENMASK(7, 8 - VGIC_PRI_BITS);
+			if (vgic_direct_sgi_or_ppi(irq))
+				vgic_update_vsgi(irq);
+		}
 		raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
 
 		vgic_put_irq(vcpu->kvm, irq);
