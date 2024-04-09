@@ -194,7 +194,8 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 		vcpu_set_flag(vcpu, PMUSERENR_ON_CPU);
 	}
 
-	if (cpus_have_final_cap(ARM64_HAS_NMI))
+	if (cpus_have_final_cap(ARM64_HAS_NMI) &&
+	    !kern_hyp_va(vcpu->kvm)->arch.pfr1_nmi)
 		sysreg_clear_set_s(SYS_HCRX_EL2, 0, HCRX_EL2_TALLINT);
 
 	*host_data_ptr(host_debug_state.mdcr_el2) = read_sysreg(mdcr_el2);
@@ -221,7 +222,8 @@ static inline void __deactivate_traps_common(struct kvm_vcpu *vcpu)
 {
 	write_sysreg(*host_data_ptr(host_debug_state.mdcr_el2), mdcr_el2);
 
-	if (cpus_have_final_cap(ARM64_HAS_NMI))
+	if (cpus_have_final_cap(ARM64_HAS_NMI) &&
+	    !kern_hyp_va(vcpu->kvm)->arch.pfr1_nmi)
 		sysreg_clear_set_s(SYS_HCRX_EL2, HCRX_EL2_TALLINT, 0);
 
 	write_sysreg(0, hstr_el2);
