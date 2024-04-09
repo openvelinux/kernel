@@ -181,7 +181,8 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 	if (irq->group)
 		val |= ICH_LR_GROUP;
 
-	if (irq->nmi)
+	if (vcpu->kvm->arch.pfr1_nmi == ID_AA64PFR1_EL1_NMI_IMP &&
+	    irq->nmi)
 		val |= ICH_LR_NMI;
 	else
 		val |= (u64)irq->priority << ICH_LR_PRIORITY_SHIFT;
