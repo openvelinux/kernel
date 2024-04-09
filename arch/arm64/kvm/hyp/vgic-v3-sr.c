@@ -1048,6 +1048,9 @@ int __vgic_v3_perform_cpuif_access(struct kvm_vcpu *vcpu)
 			return 0;
 		fn = __vgic_v3_read_iar;
 		break;
+	case SYS_ICC_NMIAR1_EL1:
+		/* Here's an UNDEF for you */
+		return 0;
 	case SYS_ICC_EOIR0_EL1:
 	case SYS_ICC_EOIR1_EL1:
 		if (unlikely(is_read))
