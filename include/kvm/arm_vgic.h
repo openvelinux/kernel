@@ -357,7 +357,7 @@ struct vgic_v3_cpu_if {
 	u32		vgic_vmcr;
 	u32		vgic_sre;	/* Restored only, change ignored */
 	u32		vgic_ap0r[4];
-	u32		vgic_ap1r[4];
+	u64		vgic_ap1r[4];
 	u64		vgic_lr[VGIC_V3_MAX_LRS];
 
 	/*
