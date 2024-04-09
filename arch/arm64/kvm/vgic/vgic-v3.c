@@ -181,7 +181,10 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 	if (irq->group)
 		val |= ICH_LR_GROUP;
 
-	val |= (u64)irq->priority << ICH_LR_PRIORITY_SHIFT;
+	if (irq->nmi)
+		val |= ICH_LR_NMI;
+	else
+		val |= (u64)irq->priority << ICH_LR_PRIORITY_SHIFT;
 
 	vcpu->arch.vgic_cpu.vgic_v3.vgic_lr[lr] = val;
 }
