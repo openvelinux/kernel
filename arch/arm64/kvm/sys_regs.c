@@ -1593,7 +1593,8 @@ static int set_id_aa64pfr1_el1(struct kvm_vcpu *vcpu,
 
 	nmi = cpuid_feature_extract_unsigned_field(val, ID_AA64PFR1_EL1_NMI_SHIFT);
 	if (nmi > ID_AA64PFR1_EL1_NMI_IMP ||
-	    (nmi && (!system_uses_nmi() || static_branch_unlikely(&vgic_v3_cpuif_trap))))
+	    (nmi && (!cpus_have_final_cap(ARM64_HAS_NMI) ||
+		     static_branch_unlikely(&vgic_v3_cpuif_trap))))
 		return -EINVAL;
 
 	/* We can only differ with NMI, and anything else is an error */

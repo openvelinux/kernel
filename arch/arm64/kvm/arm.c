@@ -307,7 +307,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	/* The maximum number of VCPUs is limited by the host's GIC model */
 	kvm->max_vcpus = kvm_arm_default_max_vcpus();
 
-	if (system_uses_nmi() && !static_branch_unlikely(&vgic_v3_cpuif_trap))
+	if (cpus_have_final_cap(ARM64_HAS_NMI) && !static_branch_unlikely(&vgic_v3_cpuif_trap))
 		kvm->arch.pfr1_nmi = ID_AA64PFR1_EL1_NMI_IMP;
 
 	kvm_arm_init_hypercalls(kvm);
