@@ -2070,6 +2070,17 @@ config PROFILING
 config TRACEPOINTS
 	bool
 
+config HAVE_ASYNC_FORK
+	bool
+
+config BYTEDANCE_ASYNC_FORK
+	bool "Async-fork support"
+	default n
+	depends on HAVE_ASYNC_FORK
+	help
+	  Provide the function of asynchronous fork, greatly reducing the delay
+	  caused by fork system calls.
+
 endmenu		# General setup
 
 source "arch/Kconfig"
