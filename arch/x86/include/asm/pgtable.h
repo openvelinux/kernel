@@ -815,10 +815,18 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
  */
 #define mk_pte(page, pgprot)   pfn_pte(page_to_pfn(page), (pgprot))
 
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+static inline int pmd_bad(pmd_t pmd)
+{
+	return (pmd_flags(pmd) & ~(_PAGE_USER | _PAGE_RW)) !=
+	       (_KERNPG_TABLE & ~_PAGE_RW);
+}
+#else
 static inline int pmd_bad(pmd_t pmd)
 {
 	return (pmd_flags(pmd) & ~_PAGE_USER) != _KERNPG_TABLE;
 }
+#endif /* CONFIG_BYTEDANCE_ASYNC_FORK */
 
 static inline unsigned long pages_to_mb(unsigned long npg)
 {
