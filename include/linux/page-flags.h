@@ -141,6 +141,9 @@ enum pageflags {
 #ifdef CONFIG_KASAN_HW_TAGS
 	PG_skip_kasan_poison,
 #endif
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	PG_async_copy,		/* PTE will be copied asynchronously */
+#endif
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
@@ -540,6 +543,10 @@ __PAGEFLAG(Reported, reported, PF_NO_COMPOUND)
 PAGEFLAG(VmemmapSelfHosted, vmemmap_self_hosted, PF_ANY)
 #else
 PAGEFLAG_FALSE(VmemmapSelfHosted)
+#endif
+
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+PAGEFLAG(AsyncCopy, async_copy, PF_ANY)
 #endif
 
 /*
