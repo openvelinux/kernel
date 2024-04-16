@@ -391,6 +391,9 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	struct vm_area_struct *child_vma;
+#endif
 } __randomize_layout;
 
 struct core_thread {
@@ -585,6 +588,20 @@ struct mm_struct {
 
 #ifdef CONFIG_IOMMU_SVA
 		u32 pasid;
+#endif
+
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+		union {
+			struct mm_struct *async_copy_child_mm;
+			/*
+			 * The async_copy_child_mm field of child process is
+			 * always NULL, and it is never used for child process,
+			 * so it is reused as an error code.
+			 */
+			int async_copy_err;
+		};
+		struct mm_struct *async_copy_parent_mm;
+		struct callback_head async_copy_work;
 #endif
 	} __randomize_layout;
 

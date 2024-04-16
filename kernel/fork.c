@@ -97,6 +97,7 @@
 #include <linux/io_uring.h>
 #include <linux/bpf.h>
 #include <linux/sched/mm.h>
+#include <linux/async_fork.h>
 
 #include <asm/pgalloc.h>
 #include <linux/uaccess.h>
@@ -1073,6 +1074,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 #endif
 	mm_init_uprobes_state(mm);
 	hugetlb_count_init(mm);
+	mm_init_async_copy(mm);
 
 	if (current->mm) {
 		mm->flags = current->mm->flags & MMF_INIT_MASK;
