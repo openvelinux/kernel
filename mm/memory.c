@@ -489,22 +489,6 @@ int __pte_alloc_kernel(pmd_t *pmd)
 	return 0;
 }
 
-static inline void init_rss_vec(int *rss)
-{
-	memset(rss, 0, sizeof(int) * NR_MM_COUNTERS);
-}
-
-static inline void add_mm_rss_vec(struct mm_struct *mm, int *rss)
-{
-	int i;
-
-	if (current->mm == mm)
-		sync_mm_rss(mm);
-	for (i = 0; i < NR_MM_COUNTERS; i++)
-		if (rss[i])
-			add_mm_counter(mm, i, rss[i]);
-}
-
 /*
  * This function is called to print an error when a bad pte
  * is found. For example, we might have a PFN-mapped pte in
