@@ -505,6 +505,7 @@ CONFIG_AS_HAS_LDAPR=y
 # ARMv8.4 architectural features
 #
 CONFIG_ARM64_AMU_EXTN=y
+CONFIG_ARM64_MPAM=y
 CONFIG_AS_HAS_ARMV8_4=y
 CONFIG_ARM64_TLB_RANGE=y
 # end of ARMv8.4 architectural features
