@@ -400,12 +400,15 @@ static inline void pdev_disable_cap_ats(struct pci_dev *pdev)
 	}
 }
 
-int amd_iommu_pdev_enable_cap_pri(struct pci_dev *pdev)
+static inline int pdev_enable_cap_pri(struct pci_dev *pdev)
 {
 	struct iommu_dev_data *dev_data = dev_iommu_priv_get(&pdev->dev);
 	int ret = -EINVAL;
 
 	if (dev_data->pri_enabled)
+		return 0;
+
+	if (!dev_data->ats_enabled)
 		return 0;
 
 	if (dev_data->flags & AMD_IOMMU_DEVICE_FLAG_PRI_SUP) {
@@ -424,7 +427,7 @@ int amd_iommu_pdev_enable_cap_pri(struct pci_dev *pdev)
 	return ret;
 }
 
-void amd_iommu_pdev_disable_cap_pri(struct pci_dev *pdev)
+static inline void pdev_disable_cap_pri(struct pci_dev *pdev)
 {
 	struct iommu_dev_data *dev_data = dev_iommu_priv_get(&pdev->dev);
 
@@ -466,15 +469,14 @@ static void pdev_enable_caps(struct pci_dev *pdev)
 {
 	pdev_enable_cap_ats(pdev);
 	pdev_enable_cap_pasid(pdev);
-	amd_iommu_pdev_enable_cap_pri(pdev);
-
+	pdev_enable_cap_pri(pdev);
 }
 
 static void pdev_disable_caps(struct pci_dev *pdev)
 {
 	pdev_disable_cap_ats(pdev);
 	pdev_disable_cap_pasid(pdev);
-	amd_iommu_pdev_disable_cap_pri(pdev);
+	pdev_disable_cap_pri(pdev);
 }
 
 /*
@@ -2033,6 +2035,7 @@ static int do_attach(struct iommu_dev_data *dev_data,
 		     struct protection_domain *domain)
 {
 	struct amd_iommu *iommu = get_amd_iommu_from_dev_data(dev_data);
+	struct pci_dev *pdev;
 	int ret = 0;
 
 	/* Update data structures */
@@ -2047,10 +2050,16 @@ static int do_attach(struct iommu_dev_data *dev_data,
 	domain->dev_iommu[iommu->index] += 1;
 	domain->dev_cnt                 += 1;
 
+	pdev = dev_is_pci(dev_data->dev) ? to_pci_dev(dev_data->dev) : NULL;
 	if (pdom_is_sva_capable(domain)) {
 		ret = init_gcr3_table(dev_data, domain);
 		if (ret)
 			return ret;
+
+		if (pdev)
+			pdev_enable_caps(pdev);
+	} else if (pdev) {
+		pdev_enable_cap_ats(pdev);
 	}
 
 	/* Update device table */
@@ -2104,9 +2113,6 @@ static int attach_device(struct device *dev,
 		ret = -EBUSY;
 		goto out;
 	}
-
-	if (dev_is_pci(dev))
-		pdev_enable_caps(to_pci_dev(dev));
 
 	ret = do_attach(dev_data, domain);
 
