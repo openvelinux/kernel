@@ -4378,11 +4378,9 @@ static int io_openat2(struct io_kiocb *req, unsigned int issue_flags)
 	if (issue_flags & IO_URING_F_NONBLOCK) {
 		/*
 		 * Don't bother trying for O_TRUNC, O_CREAT, or O_TMPFILE open,
-		 * it'll always -EAGAIN. Note that we test for __O_TMPFILE
-		 * because O_TMPFILE includes O_DIRECTORY, which isn't a flag
-		 * we need to force async for.
+		 * it'll always -EAGAIN
 		 */
-		if (req->open.how.flags & (O_TRUNC | O_CREAT | __O_TMPFILE))
+		if (req->open.how.flags & (O_TRUNC | O_CREAT | O_TMPFILE))
 			return -EAGAIN;
 		op.lookup_flags |= LOOKUP_CACHED;
 		op.open_flag |= O_NONBLOCK;
