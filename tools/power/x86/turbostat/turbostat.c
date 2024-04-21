@@ -5309,13 +5309,10 @@ static void dump_sysfs_file(char *path)
 	fprintf(outf, "%s: %s", strrchr(path, '/') + 1, cpuidle_buf);
 }
 
-static void probe_intel_uncore_frequency(void)
+static void probe_intel_uncore_frequency_legacy(void)
 {
 	int i, j;
 	char path[256];
-
-	if (!genuine_intel)
-		return;
 
 	for (i = 0; i < topo.num_packages; ++i) {
 		for (j = 0; j <= topo.max_die_id; ++j) {
@@ -5351,8 +5348,12 @@ static void probe_intel_uncore_frequency(void)
 			fprintf(outf, " %d MHz\n", k / 1000);
 		}
 	}
-	if (DO_BIC_READ(BIC_UNCORE_MHZ))
-		return;
+}
+
+static void probe_intel_uncore_frequency_cluster(void)
+{
+	int i;
+	char path[256];
 
 	if (access("/sys/devices/system/cpu/intel_uncore_frequency/uncore00/current_freq_khz", R_OK))
 		return;
@@ -5367,6 +5368,7 @@ static void probe_intel_uncore_frequency(void)
 
 		sprintf(path_base, "/sys/devices/system/cpu/intel_uncore_frequency/uncore%02d", i);
 
+		/* uncore## start at 00 and skip no numbers, so stop upon first missing */
 		if (access(path_base, R_OK))
 			break;
 
@@ -5396,6 +5398,17 @@ static void probe_intel_uncore_frequency(void)
 		k = read_sysfs_int(path);
 		fprintf(outf, " %d MHz\n", k / 1000);
 	}
+}
+
+static void probe_intel_uncore_frequency(void)
+{
+	if (!genuine_intel)
+		return;
+
+	if (access("/sys/devices/system/cpu/intel_uncore_frequency/uncore00", R_OK) == 0)
+		probe_intel_uncore_frequency_cluster();
+	else
+		probe_intel_uncore_frequency_legacy();
 }
 
 static void probe_graphics(void)
