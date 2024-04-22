@@ -85,6 +85,35 @@ static inline bool try_async_copy_pte(struct vm_area_struct *src_vma,
 	return true;
 }
 
+void __try_copy_pte_entire_async(struct vm_area_struct *vma,
+				 pmd_t *src_pmd, unsigned long addr);
+
+static inline void try_copy_pte_entire_async(struct vm_area_struct *vma,
+			pmd_t *src_pmd, unsigned long addr)
+{
+	if (likely(!pmd_test_async_copy_flag(*src_pmd)))
+		return;
+
+	__try_copy_pte_entire_async(vma, src_pmd, addr);
+}
+
+void copy_page_range_async(struct vm_area_struct *dst_vma,
+		struct vm_area_struct *src_vma, unsigned long addr,
+		unsigned long end);
+
+static inline void try_copy_page_range_async(struct vm_area_struct *vma,
+			unsigned long start, unsigned long end)
+{
+	struct vm_area_struct *child_vma;
+
+	/* vma->child_vma may be cleard concurrently */
+	child_vma = READ_ONCE(vma->child_vma);
+	if (likely(!child_vma))
+		return;
+
+	copy_page_range_async(child_vma, vma, start, end);
+}
+
 #else
 static inline void mm_init_async_copy(struct mm_struct *mm) {}
 static inline bool is_parent_mm_in_async_copy(struct mm_struct *parent_mm)
@@ -103,6 +132,12 @@ static inline bool try_async_copy_pte(struct vm_area_struct *src_vma,
 {
 	return false;
 }
+
+static inline void try_copy_pte_entire_async(struct vm_area_struct *vma,
+			pmd_t *src_pmd, unsigned long addr) {}
+
+static inline void try_copy_page_range_async(struct vm_area_struct *vma,
+			unsigned long start, unsigned long end) {}
 
 #endif /* CONFIG_BYTEDANCE_ASYNC_FORK */
 #endif /* _ASYNC_FORK_H */
