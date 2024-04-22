@@ -363,3 +363,31 @@ void async_copy_fn(struct callback_head *work)
 	if (current->set_child_tid)
 		put_user(task_pid_vnr(current), current->set_child_tid);
 }
+
+static inline pmd_t *get_pmd(struct mm_struct *mm, unsigned long addr)
+{
+	pgd_t *pgd = pgd_offset(mm, addr);
+	p4d_t *p4d = p4d_offset(pgd, addr);
+	pud_t *pud = pud_offset(p4d, addr);
+	pmd_t *pmd = pmd_offset(pud, addr);
+
+	return pmd;
+}
+
+/* called with src_mm's mmap_sem held in read mode */
+void __try_copy_pte_entire_async(struct vm_area_struct *vma,
+				 pmd_t *src_pmd, unsigned long addr)
+{
+	struct mm_struct *dst_mm;
+	pmd_t *dst_pmd;
+	struct vm_area_struct *child_vma;
+
+	/* vma->child_vma may be cleard concurrently */
+	child_vma = READ_ONCE(vma->child_vma);
+	if (!child_vma)
+		return;
+
+	dst_mm = child_vma->vm_mm;
+	dst_pmd = get_pmd(dst_mm, addr);
+	copy_pte_entire_async(child_vma, vma, dst_pmd, src_pmd, addr);
+}
