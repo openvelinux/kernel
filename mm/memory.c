@@ -1481,6 +1481,9 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 		 */
 		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
 			goto next;
+
+		try_copy_pte_entire_async(vma, pmd, addr);
+
 		next = zap_pte_range(tlb, vma, pmd, addr, next, details);
 next:
 		cond_resched();
@@ -4570,6 +4573,9 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		 */
 		if (pmd_devmap_trans_unstable(vmf->pmd))
 			return 0;
+
+		try_copy_pte_entire_async(vmf->vma, vmf->pmd, vmf->address);
+
 		/*
 		 * A regular pmd is established and it can't morph into a huge
 		 * pmd from under us anymore at this point because we hold the
