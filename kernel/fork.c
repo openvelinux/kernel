@@ -2567,6 +2567,9 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 	struct task_struct *p;
 	int trace = 0;
 	pid_t nr;
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	bool in_async_copy = false;
+#endif
 
 	/*
 	 * For legacy clone() calls, CLONE_PIDFD uses the parent_tid argument
@@ -2615,8 +2618,14 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 	pid = get_task_pid(p, PIDTYPE_PID);
 	nr = pid_vnr(pid);
 
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	in_async_copy = p->mm && is_child_mm_in_async_copy(p->mm);
+	if (clone_flags & CLONE_PARENT_SETTID && !in_async_copy)
+		put_user(nr, args->parent_tid);
+#else
 	if (clone_flags & CLONE_PARENT_SETTID)
 		put_user(nr, args->parent_tid);
+#endif
 
 	if (clone_flags & CLONE_VFORK) {
 		p->vfork_done = &vfork;
@@ -2625,11 +2634,16 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 	}
 
 #ifdef CONFIG_BYTEDANCE_ASYNC_FORK
-	if (p->mm && is_child_mm_in_async_copy(p->mm))
+	if (in_async_copy)
 		task_work_add(p, &p->mm->async_copy_work, TWA_RESUME);
 #endif
 
 	wake_up_new_task(p);
+
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	if (in_async_copy)
+		put_user(nr, args->parent_tid);
+#endif
 
 	/* forking complete and child started to run, tell ptracer */
 	if (unlikely(trace))
