@@ -2400,7 +2400,7 @@ static void pkt_make_request_write(struct request_queue *q, struct bio *bio)
 	}
 }
 
-static blk_qc_t pkt_submit_bio(struct bio *bio)
+static void pkt_submit_bio(struct bio *bio)
 {
 	struct pktcdvd_device *pd;
 	char b[BDEVNAME_SIZE];
@@ -2408,7 +2408,7 @@ static blk_qc_t pkt_submit_bio(struct bio *bio)
 
 	blk_queue_split(&bio);
 	if (!bio)
-		return BLK_QC_T_NONE;
+		return;
 
 	pd = bio->bi_bdev->bd_disk->queue->queuedata;
 	if (!pd) {
@@ -2425,7 +2425,7 @@ static blk_qc_t pkt_submit_bio(struct bio *bio)
 	 */
 	if (bio_data_dir(bio) == READ) {
 		pkt_make_request_read(pd, bio);
-		return BLK_QC_T_NONE;
+		return;
 	}
 
 	if (!test_bit(PACKET_WRITABLE, &pd->flags)) {
@@ -2457,10 +2457,9 @@ static blk_qc_t pkt_submit_bio(struct bio *bio)
 		pkt_make_request_write(bio->bi_bdev->bd_disk->queue, split);
 	} while (split != bio);
 
-	return BLK_QC_T_NONE;
+	return;
 end_io:
 	bio_io_error(bio);
-	return BLK_QC_T_NONE;
 }
 
 static void pkt_init_queue(struct pktcdvd_device *pd)
