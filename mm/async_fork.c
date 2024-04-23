@@ -355,4 +355,11 @@ void async_copy_fn(struct callback_head *work)
 		 */
 		do_exit(SIGKILL);
 	}
+	/*
+	 * Defer the put_user() in schedule_tail() to this point. The copying
+	 * of page table has been completed at this time, so it is allowed to
+	 * trigger page fault.
+	 */
+	if (current->set_child_tid)
+		put_user(task_pid_vnr(current), current->set_child_tid);
 }
