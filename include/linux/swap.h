@@ -496,6 +496,7 @@ static inline long get_nr_swap_pages(void)
 	return atomic_long_read(&nr_swap_pages);
 }
 
+extern long get_total_swap_pages(void);
 extern void si_swapinfo(struct sysinfo *);
 extern swp_entry_t get_swap_page(struct page *page);
 extern void put_swap_page(struct page *page, swp_entry_t entry);
@@ -561,6 +562,7 @@ static inline struct address_space *swap_address_space(swp_entry_t entry)
 #define total_swap_pages			0L
 #define total_swapcache_pages()			0UL
 #define vm_swap_full()				0
+#define get_total_swap_pages()			0L
 
 #define si_swapinfo(val) \
 	do { (val)->freeswap = (val)->totalswap = 0; } while (0)
