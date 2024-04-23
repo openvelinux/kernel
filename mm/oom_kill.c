@@ -230,8 +230,9 @@ long oom_badness(struct task_struct *p, unsigned long totalpages)
 	 * The baseline for the badness score is the proportion of RAM that each
 	 * task's rss, pagetable and swap space use.
 	 */
-	points = get_mm_rss(p->mm) + get_mm_counter(p->mm, MM_SWAPENTS) +
-		mm_pgtables_bytes(p->mm) / PAGE_SIZE;
+	points = get_mm_rss(p->mm) + mm_pgtables_bytes(p->mm) / PAGE_SIZE;
+	if (get_total_swap_pages())
+		points += get_mm_counter(p->mm, MM_SWAPENTS);
 	task_unlock(p);
 
 	/* Normalize to oom_score_adj units */
@@ -265,7 +266,7 @@ static enum oom_constraint constrained_alloc(struct oom_control *oc)
 	}
 
 	/* Default to all available memory */
-	oc->totalpages = totalram_pages() + total_swap_pages;
+	oc->totalpages = totalram_pages() + get_total_swap_pages();
 
 	if (!IS_ENABLED(CONFIG_NUMA))
 		return CONSTRAINT_NONE;
@@ -287,7 +288,7 @@ static enum oom_constraint constrained_alloc(struct oom_control *oc)
 	 */
 	if (oc->nodemask &&
 	    !nodes_subset(node_states[N_MEMORY], *oc->nodemask)) {
-		oc->totalpages = total_swap_pages;
+		oc->totalpages = get_total_swap_pages();
 		for_each_node_mask(nid, *oc->nodemask)
 			oc->totalpages += node_present_pages(nid);
 		return CONSTRAINT_MEMORY_POLICY;
@@ -300,7 +301,7 @@ static enum oom_constraint constrained_alloc(struct oom_control *oc)
 			cpuset_limited = true;
 
 	if (cpuset_limited) {
-		oc->totalpages = total_swap_pages;
+		oc->totalpages = get_total_swap_pages();
 		for_each_node_mask(nid, cpuset_current_mems_allowed)
 			oc->totalpages += node_present_pages(nid);
 		return CONSTRAINT_CPUSET;
