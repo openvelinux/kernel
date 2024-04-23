@@ -2624,6 +2624,11 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 		get_task_struct(p);
 	}
 
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	if (p->mm && is_child_mm_in_async_copy(p->mm))
+		task_work_add(p, &p->mm->async_copy_work, TWA_RESUME);
+#endif
+
 	wake_up_new_task(p);
 
 	/* forking complete and child started to run, tell ptracer */
