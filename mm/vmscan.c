@@ -178,6 +178,34 @@ struct scan_control {
  */
 int vm_swappiness = 60;
 
+/*
+ * Swappy just work in proactive reclaim mode from memory.reclaim.
+ */
+static int proactive_swappiness_enabled __read_mostly;
+
+inline long get_total_swap_pages(void)
+{
+	return proactive_swappiness_enabled ? 0 : total_swap_pages;
+}
+
+static struct ctl_table proactive_swappiness_table[] = {
+	{
+		.procname       = "swappiness_proactive",
+		.data           = &proactive_swappiness_enabled,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_dobool,
+	},
+	{}
+};
+
+static __init int kernel_proactive_swappiness_sysctls_init(void)
+{
+	register_sysctl_init("vm", proactive_swappiness_table);
+	return 0;
+}
+module_init(kernel_proactive_swappiness_sysctls_init);
+
 static void set_task_reclaim_state(struct task_struct *task,
 				   struct reclaim_state *rs)
 {
@@ -231,6 +259,18 @@ static bool writeback_throttling_sane(struct scan_control *sc)
 }
 #endif
 
+/* The swap is available in the reclaim path:
+ * 1) proactive_swappiness_enabled disabled.
+ * 2) or the reclaim triggered from memory.reclaim
+ */
+static bool can_use_swap(struct scan_control *sc)
+{
+	if (!proactive_swappiness_enabled)
+		return true;
+
+	return sc && sc->proactive;
+}
+
 static bool can_demote(int nid, struct scan_control *sc)
 {
 	if (!numa_demotion_enabled)
@@ -257,11 +297,11 @@ static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
 		 * For non-memcg reclaim, is there
 		 * space in any swap device?
 		 */
-		if (get_nr_swap_pages() > 0)
+		if (get_nr_swap_pages() > 0 && can_use_swap(sc))
 			return true;
 	} else {
 		/* Is the memcg below its swap limit? */
-		if (mem_cgroup_get_nr_swap_pages(memcg) > 0)
+		if (mem_cgroup_get_nr_swap_pages(memcg) > 0 && can_use_swap(sc))
 			return true;
 	}
 
@@ -2092,7 +2132,7 @@ static bool can_age_anon_pages(struct pglist_data *pgdat,
 			       struct scan_control *sc)
 {
 	/* Aging the anon LRU is valuable if swap is present: */
-	if (total_swap_pages > 0)
+	if ((total_swap_pages > 0) && can_use_swap(sc))
 		return true;
 
 	/* Also valuable if anon pages can be demoted: */
