@@ -73,6 +73,7 @@
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
 #include <linux/vmalloc.h>
+#include <linux/async_fork.h>
 
 #include <trace/events/kmem.h>
 
@@ -1139,6 +1140,8 @@ copy_pmd_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 			/* fall through */
 		}
 		if (pmd_none_or_clear_bad(src_pmd))
+			continue;
+		if (try_async_copy_pte(src_vma, dst_vma, src_pmd, addr, next))
 			continue;
 		if (copy_pte_range(dst_vma, src_vma, dst_pmd, src_pmd,
 				   addr, next))
