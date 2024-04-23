@@ -6869,7 +6869,7 @@ static void io_wq_submit_work(struct io_wq_work *work)
 			 * forcing a sync submission from here, since we can't
 			 * wait for request slots on the block side.
 			 */
-			if (ret != -EAGAIN || !(req->ctx->flags & IORING_SETUP_IOPOLL))
+			if (ret != -EAGAIN)
 				break;
 			cond_resched();
 		} while (1);
