@@ -27,6 +27,8 @@
 #include "pelt.h"
 #include "smp.h"
 
+#include <linux/async_fork.h>
+
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
  * associated with them) to allow external modules to probe them.
@@ -4982,7 +4984,7 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 	finish_task_switch(prev);
 	preempt_enable();
 
-	if (current->set_child_tid)
+	if (current->set_child_tid && !is_child_mm_in_async_copy(current->mm))
 		put_user(task_pid_vnr(current), current->set_child_tid);
 
 	calculate_sigpending();
