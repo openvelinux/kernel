@@ -730,7 +730,6 @@ typedef unsigned char *sk_buff_data_t;
  *	@csum_level: indicates the number of consecutive checksums found in
  *		the packet minus one that have been verified as
  *		CHECKSUM_UNNECESSARY (max 3)
- *	@scm_io_uring: SKB holds io_uring registered files
  *	@devmem: indicates that all the fragments in this skb is backed by
  *		device memory.
  *	@dst_pending_confirm: need to confirm neighbour
@@ -918,7 +917,6 @@ struct sk_buff {
 	__u8			decrypted:1;
 #endif
 	__u8			slow_gro:1;
-	__u8			scm_io_uring:1;
 	__u8			devmem:1;
 #if defined(CONFIG_NET_SCHED) || defined(CONFIG_NET_XGRESS)
 	__u16			tc_index;	/* traffic control index */
