@@ -18,6 +18,7 @@
 #include <linux/migrate.h>
 #include <linux/mm_inline.h>
 #include <linux/sched/mm.h>
+#include <linux/async_fork.h>
 
 #include <asm/mmu_context.h>
 #include <asm/tlbflush.h>
@@ -524,6 +525,8 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 retry:
 	if (unlikely(pmd_bad(*pmd)))
 		return no_page_table(vma, flags);
+
+	try_copy_pte_entire_async(vma, pmd, address);
 
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
 	pte = *ptep;
