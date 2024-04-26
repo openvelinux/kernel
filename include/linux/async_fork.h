@@ -114,6 +114,16 @@ static inline void try_copy_page_range_async(struct vm_area_struct *vma,
 	copy_page_range_async(child_vma, vma, start, end);
 }
 
+void clean_async_copy(struct mm_struct *child_mm);
+
+static inline void try_clean_async_copy(struct mm_struct *mm)
+{
+	if (likely(!is_child_mm_in_async_copy(mm)))
+		return;
+
+	clean_async_copy(mm);
+}
+
 #else
 static inline void mm_init_async_copy(struct mm_struct *mm) {}
 static inline bool is_parent_mm_in_async_copy(struct mm_struct *parent_mm)
@@ -138,6 +148,8 @@ static inline void try_copy_pte_entire_async(struct vm_area_struct *vma,
 
 static inline void try_copy_page_range_async(struct vm_area_struct *vma,
 			unsigned long start, unsigned long end) {}
+
+static inline void try_clean_async_copy(struct mm_struct *mm) {}
 
 #endif /* CONFIG_BYTEDANCE_ASYNC_FORK */
 #endif /* _ASYNC_FORK_H */

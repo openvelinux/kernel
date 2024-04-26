@@ -1119,6 +1119,7 @@ static inline void __mmput(struct mm_struct *mm)
 {
 	VM_BUG_ON(atomic_read(&mm->mm_users));
 
+	try_clean_async_copy(mm);
 	uprobe_clear_state(mm);
 	exit_aio(mm);
 	ksm_exit(mm);

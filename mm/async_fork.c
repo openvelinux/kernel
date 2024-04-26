@@ -391,3 +391,118 @@ void __try_copy_pte_entire_async(struct vm_area_struct *vma,
 	dst_pmd = get_pmd(dst_mm, addr);
 	copy_pte_entire_async(child_vma, vma, dst_pmd, src_pmd, addr);
 }
+
+static inline void clean_pmd_range(struct mm_struct *mm, pud_t *pud,
+		struct vm_area_struct *vma, unsigned long addr,
+		unsigned long end)
+{
+	pmd_t *pmd;
+	unsigned long next;
+	pte_t *pte;
+	spinlock_t *ptl;
+
+	pmd = pmd_offset(pud, addr);
+	do {
+		next = pmd_addr_end(addr, end);
+		if (is_swap_pmd(*pmd) || pmd_devmap(*pmd))
+			continue;
+
+		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
+			continue;
+
+		if (!pmd_test_async_copy_flag(*pmd))
+			continue;
+
+		/*
+		 * In theory, there is no race here, so there is no need to
+		 * acquire the PTE lock to recheck this flag. But according to
+		 * the principle of modifying this flag, let's acquire the lock
+		 * to protect it.
+		 */
+		pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+		/* check async copy flag again */
+		if (pmd_test_async_copy_flag(*pmd)) {
+			set_pmd_at(mm, addr, pmd, pmd_mkwrite(*pmd));
+			pmd_clear_async_copy_flag(*pmd);
+		}
+		pte_unmap_unlock(pte, ptl);
+	} while (pmd++, addr = next, addr != end);
+}
+
+static inline void clean_pud_range(struct mm_struct *mm, p4d_t *p4d,
+		struct vm_area_struct *vma, unsigned long addr,
+		unsigned long end)
+{
+	pud_t *pud;
+	unsigned long next;
+
+	pud = pud_offset(p4d, addr);
+	do {
+		next = pud_addr_end(addr, end);
+		if (pud_trans_huge(*pud) || pud_devmap(*pud))
+			continue;
+
+		if (pud_none_or_clear_bad(pud))
+			continue;
+		clean_pmd_range(mm, pud, vma, addr, next);
+	} while (pud++, addr = next, addr != end);
+}
+
+static inline void clean_p4d_range(struct mm_struct *mm,
+		struct vm_area_struct *vma, pgd_t *pgd, unsigned long addr,
+		unsigned long end)
+{
+	p4d_t *p4d;
+	unsigned long next;
+
+	p4d = p4d_offset(pgd, addr);
+	do {
+		next = p4d_addr_end(addr, end);
+		if (p4d_none_or_clear_bad(p4d))
+			continue;
+		clean_pud_range(mm, p4d, vma, addr, next);
+	} while (p4d++, addr = next, addr != end);
+}
+
+static inline void clean_page_range(struct mm_struct *mm,
+		struct vm_area_struct *vma, unsigned long addr,
+		unsigned long end)
+{
+	pgd_t *pgd;
+	unsigned long next;
+
+	BUG_ON(mm_has_notifiers(mm));
+
+	pgd = pgd_offset(mm, addr);
+	do {
+		next = pgd_addr_end(addr, end);
+		if (pgd_none_or_clear_bad(pgd))
+			continue;
+		clean_p4d_range(mm, vma, pgd, addr, next);
+	} while (pgd++, addr = next, addr != end);
+
+	vma->child_vma = NULL;
+}
+
+void clean_async_copy(struct mm_struct *child_mm)
+{
+	struct vm_area_struct *vma;
+	struct mm_struct *parent_mm;
+
+	/*
+	 * This is in the context of the parent process. Only when fork() fails
+	 * and the child process has never run, the parent process may invoke
+	 * this cleanup function to roll back fork(). Hold mmap_sem of parent
+	 * in read mode and mmap_sem of child in write mode at this point.
+	 */
+	parent_mm = child_mm->async_copy_parent_mm;
+
+	for (vma = parent_mm->mmap; vma; vma = vma->vm_next) {
+		/* No concurrent modification, no need for READ_ONCE(). */
+		if (vma->child_vma) {
+			clean_page_range(parent_mm, vma, vma->vm_start,
+					 vma->vm_end);
+		}
+	}
+	async_copy_finish(parent_mm, child_mm);
+}
