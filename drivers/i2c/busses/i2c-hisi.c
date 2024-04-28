@@ -484,7 +484,7 @@ static void i2c_hisi_soft_reset(struct device *dev)
 }
 
 /**
- * i2c_dw_acpi_pin_mux_change - Change the I2C controller's pin mux through ACPI
+ * i2c_hisi_pin_mux_change - Change the I2C controller's pin mux through ACPI
  * @dev: device owns the SCL/SDA pin
  * @to_gpio: true to switch to GPIO, false to switch to SCL/SDA
  *
