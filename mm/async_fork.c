@@ -4,7 +4,39 @@
 #include <linux/sched/mm.h>
 #include <linux/swap.h>
 #include <linux/swapops.h>
+#include <linux/sysctl.h>
 #include "internal.h"
+
+/*
+ * May be 0, 1, or 2, can be modified by sysctl.
+ * 0: async-fork is disabled globaly
+ * 1: async-fork is controlled by mm->async_copy_enabled which can be modified
+      by prctl()
+ * 2: async-fork is enabled globaly
+ */
+int __read_mostly async_fork_enabled = 1;
+
+#ifdef CONFIG_PROC_SYSCTL
+static int two = 2;
+static struct ctl_table async_fork_table[] = {
+	{
+		.procname	= "async_fork_enabled",
+		.data		= &async_fork_enabled,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= &two,
+	},
+	{ }
+};
+static __init int async_fork_sysctls_init(void)
+{
+	register_sysctl_init("kernel", async_fork_table);
+	return 0;
+}
+late_initcall(async_fork_sysctls_init);
+#endif /* CONFIG_PROC_SYSCTL */
 
 static void copy_pte_entire_async(struct vm_area_struct *dst_vma,
 		struct vm_area_struct *src_vma, pmd_t *dst_pmd, pmd_t *src_pmd,
