@@ -8,6 +8,9 @@
 #include <linux/mmu_notifier.h>
 
 #ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+
+extern int async_fork_enabled;
+
 static inline bool pmd_test_async_copy_flag(pmd_t pmd)
 {
 	struct page *page = pmd_page(pmd);
@@ -144,7 +147,17 @@ static inline bool mm_has_userfaultfd(struct mm_struct *mm)
 static inline void try_enable_async_copy(struct mm_struct *parent_mm,
 					 struct mm_struct *child_mm)
 {
-	if (!READ_ONCE(parent_mm->async_copy_enabled))
+	int enabled = READ_ONCE(async_fork_enabled);
+
+	/*
+	 * Global variable async_fork_enabled may be 0, 1 or 2. It's default
+	 * value is 1. sysctl can control it.
+	 *
+	 * case 0: disable async-fork
+	 * case 1: depend on mm->async_copy_enabled, prctl() can control it.
+	 * case 2: enable async-fork
+	 */
+	if (enabled != 2 && !(enabled && READ_ONCE(parent_mm->async_copy_enabled)))
 		return;
 
 	/* Never enable async-fork if this mm has notifiers */
