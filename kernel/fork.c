@@ -623,9 +623,13 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 	/* a new mm has just been created */
 	retval = arch_dup_mmap(oldmm, mm);
 out:
-	mmap_write_unlock(mm);
 	flush_tlb_mm(oldmm);
-	mmap_write_unlock(oldmm);
+	if (is_parent_mm_in_async_copy(oldmm)) {
+		mmap_write_downgrade(oldmm);
+	} else {
+		mmap_write_unlock(mm);
+		mmap_write_unlock(oldmm);
+	}
 	dup_userfaultfd_complete(&uf);
 fail_uprobe_end:
 	uprobe_end_dup_mmap();
