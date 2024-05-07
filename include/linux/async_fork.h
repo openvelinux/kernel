@@ -4,6 +4,8 @@
 
 #include <linux/mm.h>
 #include <linux/task_work.h>
+#include <linux/sched/mm.h>
+#include <linux/mmu_notifier.h>
 
 #ifdef CONFIG_BYTEDANCE_ASYNC_FORK
 static inline bool pmd_test_async_copy_flag(pmd_t pmd)
@@ -34,6 +36,7 @@ static inline void mm_init_async_copy(struct mm_struct *mm)
 	mm->async_copy_child_mm = NULL;
 	mm->async_copy_parent_mm = NULL;
 	init_task_work(&mm->async_copy_work, async_copy_fn);
+	mm->async_copy_enabled = false;
 }
 
 static inline bool is_parent_mm_in_async_copy(struct mm_struct *parent_mm)
@@ -124,6 +127,42 @@ static inline void try_clean_async_copy(struct mm_struct *mm)
 	clean_async_copy(mm);
 }
 
+static inline bool mm_has_userfaultfd(struct mm_struct *mm)
+{
+	struct vm_area_struct *vma;
+
+	for (vma = mm->mmap; vma; vma = vma->vm_next)
+		if (unlikely(vma->vm_userfaultfd_ctx.ctx))
+			return true;
+	return false;
+}
+
+/*
+ * Called with parent_mm's mmap_sem held in write mode to prevent concurrent
+ * usage of async-fork.
+ */
+static inline void try_enable_async_copy(struct mm_struct *parent_mm,
+					 struct mm_struct *child_mm)
+{
+	if (!READ_ONCE(parent_mm->async_copy_enabled))
+		return;
+
+	/* Never enable async-fork if this mm has notifiers */
+	if (mm_has_notifiers(parent_mm))
+		return;
+
+	/*
+	 * dup_userfaultfd_complete() may take mmap_sem so disable async-fork
+	 * if this mm has userfaultfd.
+	 */
+	if (mm_has_userfaultfd(parent_mm))
+		return;
+
+	parent_mm->async_copy_child_mm = child_mm;
+	child_mm->async_copy_parent_mm = parent_mm;
+	mmget(parent_mm);
+}
+
 #else
 static inline void mm_init_async_copy(struct mm_struct *mm) {}
 static inline bool is_parent_mm_in_async_copy(struct mm_struct *parent_mm)
@@ -150,6 +189,9 @@ static inline void try_copy_page_range_async(struct vm_area_struct *vma,
 			unsigned long start, unsigned long end) {}
 
 static inline void try_clean_async_copy(struct mm_struct *mm) {}
+
+static inline void try_enable_async_copy(struct mm_struct *parent_mm,
+					 struct mm_struct *child_mm) {}
 
 #endif /* CONFIG_BYTEDANCE_ASYNC_FORK */
 #endif /* _ASYNC_FORK_H */
