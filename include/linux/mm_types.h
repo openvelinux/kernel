@@ -602,6 +602,7 @@ struct mm_struct {
 		};
 		struct mm_struct *async_copy_parent_mm;
 		struct callback_head async_copy_work;
+		bool async_copy_enabled;
 #endif
 	} __randomize_layout;
 

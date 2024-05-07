@@ -2564,6 +2564,12 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		error = sched_core_share_pid(arg2, arg3, arg4, arg5);
 		break;
 #endif
+
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	case PR_SET_ASYNC_FORK_ENABLE:
+		WRITE_ONCE(me->mm->async_copy_enabled, !!arg2);
+		break;
+#endif
 	default:
 		error = -EINVAL;
 		break;
