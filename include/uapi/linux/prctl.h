@@ -269,4 +269,6 @@ struct prctl_mm_map {
 # define PR_SCHED_CORE_SHARE_FROM	3 /* pull core_sched cookie to pid */
 # define PR_SCHED_CORE_MAX		4
 
+#define PR_SET_ASYNC_FORK_ENABLE	0x4000 /* 16384, async-fork option */
+
 #endif /* _LINUX_PRCTL_H */
