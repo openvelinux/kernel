@@ -332,10 +332,7 @@ static int netkit_new_link(struct net *src_net, struct net_device *dev,
 		if (data[IFLA_NETKIT_PEER_INFO]) {
 			attr = data[IFLA_NETKIT_PEER_INFO];
 			ifmp = nla_data(attr);
-			err = rtnl_nla_parse_ifla(peer_tb,
-					  nla_data(attr) + sizeof(struct ifinfomsg),
-					  nla_len(attr) - sizeof(struct ifinfomsg),
-					  extack);
+			err = rtnl_nla_parse_ifinfomsg(peer_tb, attr, extack);
 			if (err < 0)
 				return err;
 			err = netkit_validate(peer_tb, NULL, extack);
