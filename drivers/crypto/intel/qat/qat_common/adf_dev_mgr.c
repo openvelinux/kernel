@@ -46,7 +46,7 @@ static struct vf_id_map *adf_find_vf(u32 bdf)
 }
 
 /**
- * adf_clean_vf_map() - Cleans VF id mapings
+ * adf_clean_vf_map() - Cleans VF id mappings
  * @vf: flag indicating whether mappings is cleaned
  *	for vfs only or for vfs and pfs
  *
