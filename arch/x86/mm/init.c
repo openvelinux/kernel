@@ -38,6 +38,7 @@
 
 #include "mm_internal.h"
 
+extern struct mm_struct *mm_alloc(void);
 /*
  * Tables translating between page_cache_type_t and pte encoding.
  *
