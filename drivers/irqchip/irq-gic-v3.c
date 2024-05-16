@@ -858,6 +858,28 @@ static void __gic_handle_irq_from_irqson(struct pt_regs *regs)
 	bool is_nmi;
 	u32 irqnr;
 
+	/*
+	 * We should enter here with interrupts disabled, otherwise we may met
+	 * a race here with FEAT_NMI/FEAT_GICv3_NMI:
+	 *
+	 * [interrupt disabled]
+	 *                   <- normal interrupt pending, for example timer interrupt
+	 *                   <- NMI occurs, ISR_EL1.nmi = 1
+	 * do_el1_interrupt()
+	 *                   <- NMI withdraw, ISR_EL1.nmi = 0
+	 *   ISR_EL1.nmi = 0, not an NMI interrupt
+	 *   gic_handle_irq()
+	 *     __gic_handle_irq_from_irqson()
+	 *       irqnr = gic_read_iar() <- Oops, ack and handle an normal interrupt
+	 *                                 in interrupt disabled context!
+	 *
+	 * So if we met this case here, just return from the interrupt context.
+	 * Since the interrupt is still pending, we can handle it once the
+	 * interrupt re-enabled and it'll not be missing.
+	 */
+	if (!interrupts_enabled(regs))
+		return;
+
 	irqnr = gic_read_iar();
 
 	is_nmi = gic_rpr_is_nmi_prio();
