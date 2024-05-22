@@ -621,5 +621,14 @@ void i2c_dw_disable_int(struct dw_i2c_dev *dev)
 	regmap_write(dev->map, DW_IC_INTR_MASK, 0);
 }
 
+void i2c_dw_disable_smbus_timeout_int(struct dw_i2c_dev *dev)
+{
+	u32 mask;
+
+	regmap_read(dev->map, DW_IC_SMBUS_INTR_MASK, &mask);
+	mask &= ~DW_IC_SMBUS_INTR_CLOCK_EXTND_TIMEOUT_MASK;
+	regmap_write(dev->map, DW_IC_SMBUS_INTR_MASK, mask);
+}
+
 MODULE_DESCRIPTION("Synopsys DesignWare I2C bus adapter core");
 MODULE_LICENSE("GPL");

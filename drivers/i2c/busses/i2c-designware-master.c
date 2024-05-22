@@ -941,6 +941,7 @@ int i2c_dw_probe_master(struct dw_i2c_dev *dev)
 	}
 
 	i2c_dw_disable_int(dev);
+	i2c_dw_disable_smbus_timeout_int(dev);
 	ret = devm_request_irq(dev->dev, dev->irq, i2c_dw_isr, irq_flags,
 			       dev_name(dev->dev), dev);
 	if (ret) {
