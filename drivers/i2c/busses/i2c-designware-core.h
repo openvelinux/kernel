@@ -77,6 +77,7 @@
 #define DW_IC_TX_ABRT_SOURCE	0x80
 #define DW_IC_ENABLE_STATUS	0x9c
 #define DW_IC_CLR_RESTART_DET	0xa8
+#define DW_IC_SMBUS_INTR_MASK	0xcc
 #define DW_IC_COMP_PARAM_1	0xf4
 #define DW_IC_COMP_VERSION	0xf8
 #define DW_IC_SDA_HOLD_MIN_VERS	0x3131312A
@@ -97,6 +98,9 @@
 #define DW_IC_INTR_GEN_CALL	BIT(11)
 #define DW_IC_INTR_RESTART_DET	BIT(12)
 
+#define DW_IC_SMBUS_INTR_SLV_CLOCK_EXTND_TIMEOUT	BIT(0)
+#define DW_IC_SMBUS_INTR_MST_CLOCK_EXTND_TIMEOUT	BIT(1)
+
 #define DW_IC_INTR_DEFAULT_MASK		(DW_IC_INTR_RX_FULL | \
 					 DW_IC_INTR_TX_ABRT | \
 					 DW_IC_INTR_STOP_DET)
@@ -106,6 +110,10 @@
 					 DW_IC_INTR_RX_DONE | \
 					 DW_IC_INTR_RX_UNDER | \
 					 DW_IC_INTR_RD_REQ)
+
+#define DW_IC_SMBUS_INTR_CLOCK_EXTND_TIMEOUT_MASK \
+					(DW_IC_SMBUS_INTR_SLV_CLOCK_EXTND_TIMEOUT | \
+					 DW_IC_SMBUS_INTR_MST_CLOCK_EXTND_TIMEOUT)
 
 #define DW_IC_STATUS_ACTIVITY		BIT(0)
 #define DW_IC_STATUS_TFE		BIT(2)
@@ -320,6 +328,7 @@ int i2c_dw_set_fifo_size(struct dw_i2c_dev *dev);
 u32 i2c_dw_func(struct i2c_adapter *adap);
 void i2c_dw_disable(struct dw_i2c_dev *dev);
 void i2c_dw_disable_int(struct dw_i2c_dev *dev);
+void i2c_dw_disable_smbus_timeout_int(struct dw_i2c_dev *dev);
 
 static inline void __i2c_dw_enable(struct dw_i2c_dev *dev)
 {
