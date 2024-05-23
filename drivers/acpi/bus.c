@@ -355,7 +355,7 @@ static void acpi_bus_osc_negotiate_platform_control(void)
 		capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_APEI_SUPPORT;
 
 	capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_HOTPLUG_ENABLED_SUPPORT;
-	if (IS_ENABLED(CONFIG_ACPI_HOTPLUG_PRESENT_CPU))
+	if (IS_ENABLED(CONFIG_ACPI_HOTPLUG_CPU))
 		capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_HOTPLUG_PRESENT_SUPPORT;
 
 	if (ACPI_FAILURE(acpi_get_handle(NULL, "\\_SB", &handle)))

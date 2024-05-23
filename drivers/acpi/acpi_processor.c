@@ -184,7 +184,7 @@ static void __init acpi_pcc_cpufreq_init(void) {}
 
 static bool acpi_processor_hotplug_present_supported(void)
 {
-	if (!IS_ENABLED(CONFIG_ACPI_HOTPLUG_PRESENT_CPU))
+	if (!IS_ENABLED(CONFIG_ACPI_HOTPLUG_CPU))
 		return false;
 
 	/* x86 systems pre-date the _OSC bit */
@@ -503,7 +503,7 @@ static void acpi_processor_make_not_present(struct acpi_device *device)
 {
 	struct acpi_processor *pr;
 
-	if (!IS_ENABLED(CONFIG_ACPI_HOTPLUG_PRESENT_CPU)) {
+	if (!IS_ENABLED(CONFIG_ACPI_HOTPLUG_CPU)) {
 		pr_err_once("Changing CPU present bit is not supported");
 		return;
 	}

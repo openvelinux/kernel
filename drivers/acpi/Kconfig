@@ -305,14 +305,14 @@ config ACPI_IPMI
 	  To compile this driver as a module, choose M here:
 	  the module will be called as acpi_ipmi.
 
-config ACPI_HOTPLUG_PRESENT_CPU
+config ACPI_HOTPLUG_CPU
 	bool
 	depends on ACPI_PROCESSOR && HOTPLUG_CPU
 	select ACPI_CONTAINER
 
 config ACPI_HOTPLUG_IGNORE_OSC
 	bool
-	depends on ACPI_HOTPLUG_PRESENT_CPU
+	depends on ACPI_HOTPLUG_CPU
 	help
 	  Ignore whether firmware acknowledged support for toggling the CPU
 	  present bit in _STA. Some architectures predate the _OSC bits, so
@@ -408,7 +408,7 @@ config ACPI_PCI_SLOT
 
 config ACPI_CONTAINER
 	bool "Container and Module Devices"
-	default (ACPI_HOTPLUG_MEMORY || ACPI_HOTPLUG_PRESENT_CPU)
+	default (ACPI_HOTPLUG_MEMORY || ACPI_HOTPLUG_CPU)
 	help
 	  This driver supports ACPI Container and Module devices (IDs
 	  ACPI0004, PNP0A05, and PNP0A06).
