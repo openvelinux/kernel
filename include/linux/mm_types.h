@@ -154,6 +154,11 @@ struct page {
 		/*
 		 * If the page can be mapped to userspace, encodes the number
 		 * of times this page is referenced by a page table.
+		 *
+		 * Owners of typed folios may reuse the lower 16 bit of the
+		 * head page page_type field after setting the page type,
+		 * but must reset these 16 bit to -1 before clearing the
+		 * page type.
 		 */
 		atomic_t _mapcount;
 
