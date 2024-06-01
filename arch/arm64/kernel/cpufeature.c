@@ -1086,7 +1086,8 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 		cpacr_restore(cpacr);
 	}
 
-	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0))
+	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
+	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1))
 		init_cpu_ftr_reg(SYS_MPAMIDR_EL1, info->reg_mpamidr);
 
 	if (id_aa64pfr1_mte(info->reg_id_aa64pfr1))
@@ -1356,7 +1357,8 @@ void update_cpu_features(int cpu,
 		cpacr_restore(cpacr);
 	}
 
-	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0)) {
+	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
+	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1)) {
 		taint |= check_update_ftr_reg(SYS_MPAMIDR_EL1, cpu,
 					info->reg_mpamidr, boot->reg_mpamidr);
 	}
@@ -2423,7 +2425,11 @@ cpucap_panic_on_conflict(const struct arm64_cpu_capabilities *cap)
 static bool __maybe_unused
 test_has_mpam(const struct arm64_cpu_capabilities *entry, int scope)
 {
-	if (!has_cpuid_feature(entry, scope))
+	u64 pfr0 = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
+	u64 pfr1 = read_sanitised_ftr_reg(SYS_ID_AA64PFR1_EL1);
+
+	if (!id_aa64pfr0_mpam(pfr0) &&
+	    !id_aa64pfr1_mpamfrac(pfr1))
 		return false;
 
 	/* Check firmware actually enabled MPAM on this cpu. */
@@ -3013,7 +3019,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.capability = ARM64_MPAM,
 		.matches = test_has_mpam,
 		.cpu_enable = cpu_enable_mpam,
-		ARM64_CPUID_FIELDS(ID_AA64PFR0_EL1, MPAM, 1)
 	},
 #endif
 	{},
