@@ -573,8 +573,10 @@ static int __kvm_gmem_get_pfn(struct file *file, struct kvm_memory_slot *slot,
 		return PTR_ERR(folio);
 
 	if (folio_test_hwpoison(folio)) {
+		folio_unlock(folio);
+		folio_put(folio);
 		r = -EHWPOISON;
-		goto out_unlock;
+		goto out_fput;
 	}
 
 	page = folio_file_page(folio, index);
@@ -585,9 +587,9 @@ static int __kvm_gmem_get_pfn(struct file *file, struct kvm_memory_slot *slot,
 
 	r = 0;
 
-out_unlock:
 	folio_unlock(folio);
 
+out_fput:
 	return r;
 }
 
