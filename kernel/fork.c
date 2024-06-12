@@ -627,6 +627,15 @@ out:
 	flush_tlb_mm(oldmm);
 	if (is_parent_mm_in_async_copy(oldmm)) {
 		mmap_write_downgrade(oldmm);
+		/*
+		 * Now we hold the mmap read lock of parent process and the
+		 * mmap wirte lock of child process. They will be realeasd in
+		 * the child process but it makes lockdep unhappy. It's a
+		 * workaround way we invoke rwsem_release directly to trick
+		 * lockdep into thinking that the two locks have been realeased.
+		 */
+		rwsem_release(&oldmm->mmap_sem.dep_map, _RET_IP_);
+		rwsem_release(&mm->mmap_sem.dep_map, _RET_IP_);
 	} else {
 		mmap_write_unlock(mm);
 		mmap_write_unlock(oldmm);
