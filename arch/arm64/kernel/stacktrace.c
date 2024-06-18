@@ -31,6 +31,7 @@ struct code_range {
  *
  * @common:      Common unwind state.
  * @task:        The task being unwound.
+ * @graph_idx:   Used by ftrace_graph_ret_addr() for optimized stack unwinding.
  * @kr_cur:      When KRETPROBES is selected, holds the kretprobe instance
  *               associated with the most recently encountered replacement lr
  *               value.
@@ -38,6 +39,7 @@ struct code_range {
 struct kunwind_state {
 	struct unwind_state common;
 	struct task_struct *task;
+	int graph_idx;
 #ifdef CONFIG_KRETPROBES
 	struct llist_node *kr_cur;
 #endif
@@ -112,7 +114,7 @@ kunwind_recover_return_address(struct kunwind_state *state)
 	if (state->task->ret_stack &&
 	    (state->common.pc == (unsigned long)return_to_handler)) {
 		unsigned long orig_pc;
-		orig_pc = ftrace_graph_ret_addr(state->task, NULL,
+		orig_pc = ftrace_graph_ret_addr(state->task, &state->graph_idx,
 						state->common.pc,
 						(void *)state->common.fp);
 		if (WARN_ON_ONCE(state->common.pc == orig_pc))
