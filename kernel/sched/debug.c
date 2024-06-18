@@ -1092,6 +1092,9 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	} else if (fair_policy(p->policy)) {
 		P(se.slice);
 	}
+#ifdef CONFIG_SCHED_CLASS_EXT
+	__PS("ext.enabled", task_on_scx(p));
+#endif
 #undef PN_SCHEDSTAT
 #undef P_SCHEDSTAT
 
