@@ -3557,4 +3557,6 @@ extern int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se);
 extern void check_class_changing(struct rq *rq, struct task_struct *p,
 				 const struct sched_class *prev_class);
 
+#include "ext.h"
+
 #endif /* _KERNEL_SCHED_SCHED_H */
