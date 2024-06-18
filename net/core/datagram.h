@@ -9,7 +9,5 @@ struct sock;
 struct sk_buff;
 struct iov_iter;
 
-int __zerocopy_sg_from_iter(struct msghdr *msg, struct sock *sk, struct sk_buff *skb,
-			    struct iov_iter *from, size_t length);
 
 #endif /* _NET_CORE_DATAGRAM_H_ */
