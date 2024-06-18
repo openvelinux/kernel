@@ -5964,7 +5964,7 @@ static vm_fault_t hugetlb_no_page(struct mm_struct *mm,
 				ret = 0;
 			goto out;
 		}
-		clear_huge_page(&folio->page, address, pages_per_huge_page(h));
+		folio_zero_user(folio, address);
 		__folio_mark_uptodate(folio);
 		new_folio = true;
 
