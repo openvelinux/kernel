@@ -1793,7 +1793,8 @@ int dso__load(struct dso *dso, struct map *map)
 	char newmapname[PATH_MAX];
 	const char *map_path = dso->long_name;
 
-	perfmap = strncmp(dso->name, "/tmp/perf-", 10) == 0;
+	perfmap = is_perf_pid_map_name(map_path);
+
 	if (perfmap) {
 		if (dso->nsinfo && (dso__find_perf_map(newmapname,
 		    sizeof(newmapname), &dso->nsinfo) == 0)) {
