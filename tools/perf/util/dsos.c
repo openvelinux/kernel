@@ -227,7 +227,7 @@ static void dso__set_basename(struct dso *dso)
 	char *base, *lname;
 	int tid;
 
-	if (sscanf(dso->long_name, "/tmp/perf-%d.map", &tid) == 1) {
+	if (perf_pid_map_tid(dso->long_name, &tid)) {
 		if (asprintf(&base, "[JIT] tid %d", tid) < 0)
 			return;
 	} else {
