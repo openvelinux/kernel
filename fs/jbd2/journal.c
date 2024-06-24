@@ -1523,6 +1523,11 @@ journal_t *jbd2_journal_init_inode(struct inode *inode)
 	return journal;
 }
 
+static int jbd2_journal_get_max_txn_bufs(journal_t *journal)
+{
+	return (journal->j_total_len - journal->j_fc_wbufsize) / 4;
+}
+
 /*
  * If the journal init or create aborts, we need to mark the journal
  * superblock as being NULL to prevent the journal destroy from writing
