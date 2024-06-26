@@ -511,6 +511,12 @@
 #define MSR_RELOAD_PMC0			0x000014c1
 #define MSR_RELOAD_FIXED_CTR0		0x00001309
 
+/* V6 PMON MSR range */
+#define MSR_IA32_PMC_V6_GP0_CTR		0x1900
+#define MSR_IA32_PMC_V6_GP0_CFG_A	0x1901
+#define MSR_IA32_PMC_V6_FX0_CTR		0x1980
+#define MSR_IA32_PMC_V6_STEP		4
+
 /*
  * AMD64 MSRs. Not complete. See the architecture manual for a more
  * complete list.
