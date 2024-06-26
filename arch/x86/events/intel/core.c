@@ -6819,6 +6819,7 @@ __init int intel_pmu_init(void)
 	case INTEL_ARROWLAKE:
 		intel_pmu_init_hybrid(hybrid_big_small);
 
+		x86_pmu.pebs_latency_data = lnl_latency_data;
 		x86_pmu.get_event_constraints = mtl_get_event_constraints;
 		x86_pmu.hw_config = adl_hw_config;
 
@@ -6836,6 +6837,7 @@ __init int intel_pmu_init(void)
 		pmu = &x86_pmu.hybrid_pmu[X86_HYBRID_PMU_ATOM_IDX];
 		intel_pmu_init_skt(&pmu->pmu);
 
+		intel_pmu_pebs_data_source_lnl();
 		pr_cont("Lunarlake Hybrid events, ");
 		name = "lunarlake_hybrid";
 		break;
