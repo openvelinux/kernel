@@ -86,7 +86,7 @@ struct io_pgtable_cfg {
 	 * IO_PGTABLE_QUIRK_ARM_OUTER_WBWA: Override the outer-cacheability
 	 *	attributes set in the TCR for a non-coherent page-table walker.
 	 *
-	 * IO_PGTABLE_QUIRK_ARM_HD: Support hardware management of dirty status.
+	 * IO_PGTABLE_QUIRK_ARM_HD: Enables dirty tracking in stage 1 pagetable.
 	 *
 	 * IO_PGTABLE_QUIRK_ARM_BBML1: ARM SMMU supports BBM Level 1 behavior
 	 *	when changing block size.
