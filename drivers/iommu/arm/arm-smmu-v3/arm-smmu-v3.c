@@ -4318,23 +4318,23 @@ static void hisi_smmu_check_errata(struct arm_smmu_device *smmu)
 static void arm_smmu_get_httu(struct arm_smmu_device *smmu, u32 reg)
 {
 	u32 fw_features = smmu->features & (ARM_SMMU_FEAT_HA | ARM_SMMU_FEAT_HD);
-	u32 features = 0;
+	u32 hw_features = 0;
 
 	switch (FIELD_GET(IDR0_HTTU, reg)) {
 	case IDR0_HTTU_ACCESS_DIRTY:
-		features |= ARM_SMMU_FEAT_HD;
+		hw_features |= ARM_SMMU_FEAT_HD;
 		fallthrough;
 	case IDR0_HTTU_ACCESS:
-		features |= ARM_SMMU_FEAT_HA;
+		hw_features |= ARM_SMMU_FEAT_HA;
 	}
 
 	if (smmu->dev->of_node)
-		smmu->features |= features;
-	else if (features != fw_features)
+		smmu->features |= hw_features;
+	else if (hw_features != fw_features)
 		/* ACPI IORT sets the HTTU bits */
 		dev_warn(smmu->dev,
-			 "IDR0.HTTU overridden by FW configuration (0x%x)\n",
-			 fw_features);
+			 "IDR0.HTTU features(0x%x) overridden by FW configuration (0x%x)\n",
+			  hw_features, fw_features);
 }
 
 static int arm_smmu_device_hw_probe(struct arm_smmu_device *smmu)
