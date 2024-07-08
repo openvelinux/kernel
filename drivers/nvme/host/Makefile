@@ -4,6 +4,7 @@ ccflags-y				+= -I$(src)
 
 obj-$(CONFIG_NVME_CORE)			+= nvme-core.o
 obj-$(CONFIG_BLK_DEV_NVME)		+= nvme.o
+obj-$(CONFIG_BLK_DEV_NVME)		+= nvme-qmap.o
 obj-$(CONFIG_NVME_FABRICS)		+= nvme-fabrics.o
 obj-$(CONFIG_NVME_RDMA)			+= nvme-rdma.o
 obj-$(CONFIG_NVME_FC)			+= nvme-fc.o
@@ -17,6 +18,8 @@ nvme-core-$(CONFIG_FAULT_INJECTION_DEBUG_FS)	+= fault_inject.o
 nvme-core-$(CONFIG_NVME_HWMON)		+= hwmon.o
 
 nvme-y					+= pci.o
+
+nvme-qmap-y				+= qmap.o
 
 nvme-fabrics-y				+= fabrics.o
 
