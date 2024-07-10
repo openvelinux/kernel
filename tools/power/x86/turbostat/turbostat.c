@@ -1984,6 +1984,7 @@ void help(void)
 		"  -c, --cpu	cpu-set	limit output to summary plus cpu-set:\n"
 		"		  {core | package | j,k,l..m,n-p }\n"
 		"  -d, --debug	displays usec, Time_Of_Day_Seconds and more debugging\n"
+		"		debug messages are printed to stderr\n"
 		"  -D, --Dump	displays the raw counter values\n"
 		"  -e, --enable	[all | column]\n"
 		"		shows all or the specified disabled column\n"
@@ -8264,7 +8265,7 @@ int added_perf_counters_init_(struct perf_counter_info *pinfo)
 			pinfo->scale = perf_scale;
 
 			if (debug)
-				printf("Add perf/%s/%s cpu%d: %d\n",
+				fprintf(stderr, "Add perf/%s/%s cpu%d: %d\n",
 				       pinfo->device, pinfo->event, cpu, pinfo->fd_perf_per_domain[next_domain]);
 		}
 
@@ -8424,7 +8425,7 @@ struct msr_counter *find_msrp_by_name(struct msr_counter *head, char *name)
 
 	for (mp = head; mp; mp = mp->next) {
 		if (debug)
-			printf("%s: %s %s\n", __func__, name, mp->name);
+			fprintf(stderr, "%s: %s %s\n", __func__, name, mp->name);
 		if (!strncmp(name, mp->name, strlen(mp->name)))
 			return mp;
 	}
@@ -8441,8 +8442,8 @@ int add_counter(unsigned int msr_num, char *path, char *name,
 		errx(1, "Requested MSR counter 0x%x, but in --no-msr mode", msr_num);
 
 	if (debug)
-		printf("%s(msr%d, %s, %s, width%d, scope%d, type%d, format%d, flags%x, id%d)\n", __func__, msr_num,
-		       path, name, width, scope, type, format, flags, id);
+		fprintf(stderr, "%s(msr%d, %s, %s, width%d, scope%d, type%d, format%d, flags%x, id%d)\n",
+			__func__, msr_num, path, name, width, scope, type, format, flags, id);
 
 	switch (scope) {
 
@@ -8450,7 +8451,7 @@ int add_counter(unsigned int msr_num, char *path, char *name,
 		msrp = find_msrp_by_name(sys.tp, name);
 		if (msrp) {
 			if (debug)
-				printf("%s: %s FOUND\n", __func__, name);
+				fprintf(stderr, "%s: %s FOUND\n", __func__, name);
 			break;
 		}
 		if (sys.added_thread_counters++ >= MAX_ADDED_THREAD_COUNTERS) {
@@ -8462,7 +8463,7 @@ int add_counter(unsigned int msr_num, char *path, char *name,
 		msrp = find_msrp_by_name(sys.cp, name);
 		if (msrp) {
 			if (debug)
-				printf("%s: %s FOUND\n", __func__, name);
+				fprintf(stderr, "%s: %s FOUND\n", __func__, name);
 			break;
 		}
 		if (sys.added_core_counters++ >= MAX_ADDED_CORE_COUNTERS) {
@@ -8474,7 +8475,7 @@ int add_counter(unsigned int msr_num, char *path, char *name,
 		msrp = find_msrp_by_name(sys.pp, name);
 		if (msrp) {
 			if (debug)
-				printf("%s: %s FOUND\n", __func__, name);
+				fprintf(stderr, "%s: %s FOUND\n", __func__, name);
 			break;
 		}
 		if (sys.added_package_counters++ >= MAX_ADDED_PACKAGE_COUNTERS) {
@@ -8619,7 +8620,7 @@ int add_perf_counter(const char *perf_device, const char *perf_event, const char
 
 	// FIXME: we might not have debug here yet
 	if (debug)
-		printf("%s: %s/%s, name: %s, scope%d\n",
+		fprintf(stderr, "%s: %s/%s, name: %s, scope%d\n",
 		       __func__, pinfo->device, pinfo->event, pinfo->name, pinfo->scope);
 
 	return 0;
