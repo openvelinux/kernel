@@ -69,12 +69,11 @@ do {\
 static int nvme_qmap_init_qmap_mgr(void)
 {
 #ifdef CONFIG_DEBUG_FS
+	/* continue if it fails. at least the device can work correctly */
 	qmap_mgr.debug_nvme_qmap = debugfs_create_dir(QMAP_DEBUG_FS_DIR, NULL);
-	if (!qmap_mgr.debug_nvme_qmap) {
+	if (IS_ERR(qmap_mgr.debug_nvme_qmap))
 		pr_err("failed to create nvme_qmap debug dir.\n");
-		return -1;
-	}
-#endif
+#endif /* CONFIG_DEBUG_FS */
 	INIT_LIST_HEAD(&qmap_mgr.qmap_head);
 
 	return 0;
@@ -84,7 +83,7 @@ static inline void nvme_qmap_uninit_qmap_mgr(void)
 {
 #ifdef CONFIG_DEBUG_FS
 	debugfs_remove_recursive(qmap_mgr.debug_nvme_qmap);
-#endif
+#endif /* CONFIG_DEBUG_FS */
 }
 
 static inline void nvme_qmap_mgr_set_attr(int instance, const struct attribute *attr)
@@ -1188,17 +1187,19 @@ static int nvme_qmap_add_files(struct nvme_qmap *qmap)
 	qmap->dbg_file = debugfs_create_file(dev_name(ctrl->device),
 					     0644, qmap_mgr.debug_nvme_qmap,
 					     (void *)qmap->ctrl, &nvme_qmap_fops);
-	if (!qmap->dbg_file) {
+	if (IS_ERR(qmap->dbg_file)) {
 		qmap_err(qmap, "failed to add debugfs for queue_map.");
 		sysfs_remove_file_from_group(&ctrl->device->kobj,
 					     &dev_attr_qmap.attr,
 					     NULL);
-		sysfs_remove_file_from_group(&ctrl->device->kobj,
-					     &dev_attr_queue_map.attr,
-					     NULL);
+		if (show_comptible_interface)
+			sysfs_remove_file_from_group(&ctrl->device->kobj,
+						     &dev_attr_queue_map.attr,
+						     NULL);
 		return -ENODEV;
 	}
-#endif
+#endif /* CONFIG_DEBUG_FS */
+
 	qmap->sysfs_added = true;
 
 	return 0;
@@ -1450,13 +1451,9 @@ void nvme_qmap_reset(struct nvme_ctrl *ctrl)
 	/* maybe no tagset, such as no io queues */
 	set = nvme_qmap_get_tagset(qmap);
 	if (!set) {
-		nvme_qmap_remove_files(qmap);
 		nvme_qmap_zero_sets(qmap);
 		return;
 	}
-
-	/* ok. state not live */
-	nvme_qmap_add_files(qmap);
 
 	if (!nvme_qmap_sets_same(qmap, &qmap->last_sets)) {
 		qmap_warn(qmap, "sets changed. back to default.");
