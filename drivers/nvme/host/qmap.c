@@ -18,7 +18,7 @@ MODULE_PARM_DESC(enable_at_startup, "enable qmap for all nvme ctrl at probe.");
 
 static bool show_comptible_interface;
 module_param(show_comptible_interface, bool, 0444);
-MODULE_PARM_DESC(enable_at_startup, "show queue_map interface.");
+MODULE_PARM_DESC(show_comptible_interface, "show queue_map interface.");
 
 #define MAX_QMAP	4096
 struct qmap_manager {
