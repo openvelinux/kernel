@@ -69,7 +69,7 @@ do {\
 static int nvme_qmap_init_qmap_mgr(void)
 {
 #ifdef CONFIG_DEBUG_FS
-	/* continue if it fails. at least the device can work correctly */
+	/* don't care if it fails */
 	qmap_mgr.debug_nvme_qmap = debugfs_create_dir(QMAP_DEBUG_FS_DIR, NULL);
 	if (IS_ERR(qmap_mgr.debug_nvme_qmap))
 		pr_err("failed to create nvme_qmap debug dir.\n");
@@ -328,66 +328,6 @@ static int nvme_qmap_cease_io(struct nvme_ctrl *ctrl)
 	return ret;
 }
 
-#define precise_alloc(fmt, args...) kasprintf(GFP_KERNEL, fmt, ##args)
-
-#define MAP_TYPE_DEFAULT	"Default"
-#define MAP_TYPE_READ		"Read"
-#define MAP_TYPE_POLL		"Poll"
-#define MAP_TYPE_UNKNOWN	"Unknown"
-
-static const char *nvme_qmap_get_mmap_type(struct nvme_qmap *qmap, int mqid)
-{
-	struct nvme_qmap_set *set = &qmap->sets;
-	u32 default_boundary = set->nr_ques[HCTX_TYPE_DEFAULT];
-	u32 read_boundary = default_boundary + set->nr_ques[HCTX_TYPE_READ];
-	u32 poll_boundary = read_boundary + set->nr_ques[HCTX_TYPE_POLL];
-
-	if (mqid < default_boundary)
-		return MAP_TYPE_DEFAULT;
-	if (mqid < read_boundary)
-		return MAP_TYPE_READ;
-	if (mqid < poll_boundary)
-		return MAP_TYPE_POLL;
-
-	return MAP_TYPE_UNKNOWN;
-}
-
-static char *nvme_qmap_topo_mq_view(struct nvme_qmap *qmap)
-{
-	struct nvme_qmap_mmap *mmap;
-	int nr_queues, qid;
-	char *str, *tmp_buf;
-	char *affinity;
-	const char *type;
-
-	nr_queues = qmap->sets.nr_blk_mq;
-	/* the header */
-	str = precise_alloc("%12s\t%12s\t%12s\n",
-			    "index", "cpu_affinity", "dst_nvme_qid");
-	if (!str) {
-		qmap_err(qmap, "not enough mem for blk mq veiw head.");
-		return NULL;
-	}
-
-	for (qid = 0; qid < nr_queues; qid++) {
-		mmap = &qmap->blk_mq_map[qid];
-		affinity = precise_alloc("%*pbl", cpumask_pr_args(mmap->mask));
-		type = nvme_qmap_get_mmap_type(qmap, qid);
-		tmp_buf =
-		    precise_alloc("%s%12d\t%12s\t%12d\t%12s\n", str, qid, affinity,
-				  mmap->nvme_qid, type);
-		kfree(affinity);
-		kfree(str);
-		if (NULL == affinity || NULL == tmp_buf) {
-			qmap_err(qmap, "no mem for blk mq view map.");
-			kfree(tmp_buf);
-			return NULL;
-		}
-		str = tmp_buf;
-	}
-	return str;
-}
-
 /* attention this must be the exactly one nmap, not the head one */
 static inline int nvme_qmap_flag_enabled(struct nvme_qmap_nmap *nmap)
 {
@@ -468,6 +408,11 @@ void nvme_qmap_finish_compl(struct nvme_ctrl *ctrl)
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_finish_compl);
 
+#define MAP_TYPE_DEFAULT	"Default"
+#define MAP_TYPE_READ		"Read"
+#define MAP_TYPE_POLL		"Poll"
+#define MAP_TYPE_UNKNOWN	"Unknown"
+
 static const char *nvme_qmap_get_nmap_type(struct nvme_qmap *qmap, int qid)
 {
 	if (qid_in_default(qmap, qid))
@@ -489,75 +434,6 @@ static inline int nqid2comptid(int qid)
 static inline int compatid2nqid(int comptid)
 {
 	return comptid + 1;
-}
-
-static char *nvme_qmap_topo_nq_view(struct nvme_qmap *qmap,
-				    struct nvme_qmap_nmap *top_nmap)
-{
-	struct nvme_ctrl *ctrl = qmap->ctrl;
-	struct pci_dev *pdev = to_pci_dev(ctrl->dev);
-	int nr_queues, rw_queues, idx;
-	const struct cpumask *mask;
-	const struct qidmask *qidmask;
-	char *str, *tmp_buf;
-	char *name, *cpu_list, *src_qid_list;
-
-	rw_queues = qmap->last_sets.nr_ques[HCTX_TYPE_DEFAULT]
-		+ qmap->last_sets.nr_ques[HCTX_TYPE_READ];
-	nr_queues = rw_queues + qmap->last_sets.nr_ques[HCTX_TYPE_POLL];
-
-	/* the header */
-	str = precise_alloc("%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\n",
-			    "idx", "nqid", "cpu_affinity", "src_nqid", "fake_did",
-			    "dst_nqid", "dst_mqid", "group_type");
-
-	/* nqid starts from 1 */
-	for (idx = 1; idx <= nr_queues; idx++) {
-		struct nvme_qmap_nmap *nmap = &top_nmap[idx];
-		u16 dst_mqid = qmap->comp_map[idx];
-		const char *type;
-
-		name = precise_alloc("%d", nqid2comptid(idx));
-
-		/* io queue start from 1 in msix table */
-		if (idx <= rw_queues) {
-			mask = pci_irq_get_affinity(pdev, idx);
-			cpu_list = precise_alloc("%*pbl", cpumask_pr_args(mask));
-		} else {
-			cpu_list = precise_alloc("NULL");
-		}
-
-		qidmask = &nmap->qid_mask;
-		if (nvme_qmap_flag_occupied(nmap))
-			src_qid_list =
-			    precise_alloc("Occupy:%*pbl", qidmask->nr, qidmask->bits);
-		if (nvme_qmap_flag_disabled(nmap))
-			src_qid_list =
-			    precise_alloc("Dead:%*pbl", qidmask->nr, qidmask->bits);
-		if (nvme_qmap_flag_enabled(nmap))
-			src_qid_list =
-			    precise_alloc("%*pbl", qidmask->nr, qidmask->bits);
-
-		type = nvme_qmap_get_nmap_type(qmap, idx);
-
-		tmp_buf =
-		    precise_alloc("%s%12s\t%12d\t%12s\t%12s\t%12d\t%12d\t%12d\t%12s\n", str,
-				  name, idx, cpu_list, src_qid_list,
-				  nqid2comptid(nmap->dst_qid), nmap->dst_qid, dst_mqid, type);
-
-		kfree(name);
-		kfree(cpu_list);
-		kfree(src_qid_list);
-		kfree(str);
-
-		if (!name || !cpu_list || !src_qid_list || !tmp_buf) {
-			qmap_err(qmap, "no mem for nq view map.");
-			kfree(tmp_buf);
-			return NULL;
-		}
-		str = tmp_buf;
-	}
-	return str;
 }
 
 static inline int locate_word(const char *buf, int *start_off)
@@ -1095,6 +971,131 @@ static ssize_t queue_map_store
 static DEVICE_ATTR_RW(queue_map);
 
 #ifdef CONFIG_DEBUG_FS
+
+#define precise_alloc(fmt, args...) kasprintf(GFP_KERNEL, fmt, ##args)
+
+static const char *nvme_qmap_get_mmap_type(struct nvme_qmap *qmap, int mqid)
+{
+	struct nvme_qmap_set *set = &qmap->sets;
+	u32 default_boundary = set->nr_ques[HCTX_TYPE_DEFAULT];
+	u32 read_boundary = default_boundary + set->nr_ques[HCTX_TYPE_READ];
+	u32 poll_boundary = read_boundary + set->nr_ques[HCTX_TYPE_POLL];
+
+	if (mqid < default_boundary)
+		return MAP_TYPE_DEFAULT;
+	if (mqid < read_boundary)
+		return MAP_TYPE_READ;
+	if (mqid < poll_boundary)
+		return MAP_TYPE_POLL;
+
+	return MAP_TYPE_UNKNOWN;
+}
+
+static char *nvme_qmap_topo_nq_view(struct nvme_qmap *qmap,
+				    struct nvme_qmap_nmap *top_nmap)
+{
+	struct nvme_ctrl *ctrl = qmap->ctrl;
+	struct pci_dev *pdev = to_pci_dev(ctrl->dev);
+	int nr_queues, rw_queues, idx;
+	const struct cpumask *mask;
+	const struct qidmask *qidmask;
+	char *str, *tmp_buf;
+	char *name, *cpu_list, *src_qid_list;
+
+	rw_queues = qmap->last_sets.nr_ques[HCTX_TYPE_DEFAULT]
+		+ qmap->last_sets.nr_ques[HCTX_TYPE_READ];
+	nr_queues = rw_queues + qmap->last_sets.nr_ques[HCTX_TYPE_POLL];
+
+	/* the header */
+	str = precise_alloc("%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\n",
+			    "idx", "nqid", "cpu_affinity", "src_nqid", "fake_did",
+			    "dst_nqid", "dst_mqid", "group_type");
+
+	/* nqid starts from 1 */
+	for (idx = 1; idx <= nr_queues; idx++) {
+		struct nvme_qmap_nmap *nmap = &top_nmap[idx];
+		u16 dst_mqid = qmap->comp_map[idx];
+		const char *type;
+
+		name = precise_alloc("%d", nqid2comptid(idx));
+
+		/* io queue start from 1 in msix table */
+		if (idx <= rw_queues) {
+			mask = pci_irq_get_affinity(pdev, idx);
+			cpu_list = precise_alloc("%*pbl", cpumask_pr_args(mask));
+		} else {
+			cpu_list = precise_alloc("NULL");
+		}
+
+		qidmask = &nmap->qid_mask;
+		if (nvme_qmap_flag_occupied(nmap))
+			src_qid_list =
+			    precise_alloc("Occupy:%*pbl", qidmask->nr, qidmask->bits);
+		if (nvme_qmap_flag_disabled(nmap))
+			src_qid_list =
+			    precise_alloc("Dead:%*pbl", qidmask->nr, qidmask->bits);
+		if (nvme_qmap_flag_enabled(nmap))
+			src_qid_list =
+			    precise_alloc("%*pbl", qidmask->nr, qidmask->bits);
+
+		type = nvme_qmap_get_nmap_type(qmap, idx);
+
+		tmp_buf =
+		    precise_alloc("%s%12s\t%12d\t%12s\t%12s\t%12d\t%12d\t%12d\t%12s\n", str,
+				  name, idx, cpu_list, src_qid_list,
+				  nqid2comptid(nmap->dst_qid), nmap->dst_qid, dst_mqid, type);
+
+		kfree(name);
+		kfree(cpu_list);
+		kfree(src_qid_list);
+		kfree(str);
+
+		if (!name || !cpu_list || !src_qid_list || !tmp_buf) {
+			qmap_err(qmap, "no mem for nq view map.");
+			kfree(tmp_buf);
+			return NULL;
+		}
+		str = tmp_buf;
+	}
+	return str;
+}
+
+static char *nvme_qmap_topo_mq_view(struct nvme_qmap *qmap)
+{
+	struct nvme_qmap_mmap *mmap;
+	int nr_queues, qid;
+	char *str, *tmp_buf;
+	char *affinity;
+	const char *type;
+
+	nr_queues = qmap->sets.nr_blk_mq;
+	/* the header */
+	str = precise_alloc("%12s\t%12s\t%12s\n",
+			    "index", "cpu_affinity", "dst_nvme_qid");
+	if (!str) {
+		qmap_err(qmap, "not enough mem for blk mq veiw head.");
+		return NULL;
+	}
+
+	for (qid = 0; qid < nr_queues; qid++) {
+		mmap = &qmap->blk_mq_map[qid];
+		affinity = precise_alloc("%*pbl", cpumask_pr_args(mmap->mask));
+		type = nvme_qmap_get_mmap_type(qmap, qid);
+		tmp_buf =
+		    precise_alloc("%s%12d\t%12s\t%12d\t%12s\n", str, qid, affinity,
+				  mmap->nvme_qid, type);
+		kfree(affinity);
+		kfree(str);
+		if (NULL == affinity || NULL == tmp_buf) {
+			qmap_err(qmap, "no mem for blk mq view map.");
+			kfree(tmp_buf);
+			return NULL;
+		}
+		str = tmp_buf;
+	}
+	return str;
+}
+
 static ssize_t nvme_qmap_debug_read(struct file *filp, char __user *buf,
 				    size_t count, loff_t *pos)
 {
@@ -1187,17 +1188,9 @@ static int nvme_qmap_add_files(struct nvme_qmap *qmap)
 	qmap->dbg_file = debugfs_create_file(dev_name(ctrl->device),
 					     0644, qmap_mgr.debug_nvme_qmap,
 					     (void *)qmap->ctrl, &nvme_qmap_fops);
-	if (IS_ERR(qmap->dbg_file)) {
+	/* don't care if it fails */
+	if (IS_ERR(qmap->dbg_file))
 		qmap_err(qmap, "failed to add debugfs for queue_map.");
-		sysfs_remove_file_from_group(&ctrl->device->kobj,
-					     &dev_attr_qmap.attr,
-					     NULL);
-		if (show_comptible_interface)
-			sysfs_remove_file_from_group(&ctrl->device->kobj,
-						     &dev_attr_queue_map.attr,
-						     NULL);
-		return -ENODEV;
-	}
 #endif /* CONFIG_DEBUG_FS */
 
 	qmap->sysfs_added = true;
