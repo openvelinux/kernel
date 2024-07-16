@@ -20,18 +20,25 @@ static bool show_comptible_interface;
 module_param(show_comptible_interface, bool, 0444);
 MODULE_PARM_DESC(show_comptible_interface, "show queue_map interface.");
 
-#define MAX_QMAP	4096
 struct qmap_manager {
-#ifdef CONFIG_DEBUG_FS
-	struct dentry		*debug_nvme_qmap;
-#endif
-	struct list_head	qmap_head;	/* 1:1 vs nvme_dev */
-	u16 *ar_comp_map[MAX_QMAP];
-	struct nvme_qmap *ar_instacne[MAX_QMAP];
-	const struct attribute *attr[MAX_QMAP];
+	u16 *comp_map;
+	struct nvme_qmap *qmap_instance;
+	const struct attribute *attr;
+	/* protect comp_map,qmap_instance,and qmap relations */
+	struct mutex qmap_lock;
 };
 
-struct qmap_manager qmap_mgr;
+#define MAX_QMAP	4096
+struct qmap_manager qmap_mgr[MAX_QMAP];
+
+struct {
+	struct rw_semaphore list_rwsem;
+	struct list_head	qmap_head;
+} qmap_list;
+
+#ifdef CONFIG_DEBUG_FS
+struct dentry		*debug_nvme_qmap;
+#endif
 
 struct nvme_qmap_internal {
 	struct nvme_qmap qmap;
@@ -68,13 +75,20 @@ do {\
 
 static int nvme_qmap_init_qmap_mgr(void)
 {
+	int i;
+
+	init_rwsem(&qmap_list.list_rwsem);
+	INIT_LIST_HEAD(&qmap_list.qmap_head);
+
+	for (i = 0; i < MAX_QMAP; i++)
+		mutex_init(&qmap_mgr[i].qmap_lock);
+
 #ifdef CONFIG_DEBUG_FS
 	/* don't care if it fails */
-	qmap_mgr.debug_nvme_qmap = debugfs_create_dir(QMAP_DEBUG_FS_DIR, NULL);
-	if (IS_ERR(qmap_mgr.debug_nvme_qmap))
+	debug_nvme_qmap = debugfs_create_dir(QMAP_DEBUG_FS_DIR, NULL);
+	if (IS_ERR(debug_nvme_qmap))
 		pr_err("failed to create nvme_qmap debug dir.\n");
 #endif /* CONFIG_DEBUG_FS */
-	INIT_LIST_HEAD(&qmap_mgr.qmap_head);
 
 	return 0;
 }
@@ -82,37 +96,44 @@ static int nvme_qmap_init_qmap_mgr(void)
 static inline void nvme_qmap_uninit_qmap_mgr(void)
 {
 #ifdef CONFIG_DEBUG_FS
-	debugfs_remove_recursive(qmap_mgr.debug_nvme_qmap);
+	if (!IS_ERR(debug_nvme_qmap))
+		debugfs_remove_recursive(debug_nvme_qmap);
 #endif /* CONFIG_DEBUG_FS */
 }
 
 static inline void nvme_qmap_mgr_set_attr(int instance, const struct attribute *attr)
 {
-	qmap_mgr.attr[instance] = attr;
+	qmap_mgr[instance].attr = attr;
 }
 
 static const struct attribute *nvme_qmap_mgr_get_attr(int instance)
 {
-	return qmap_mgr.attr[instance];
+	return qmap_mgr[instance].attr;
 }
 
 static inline void nvme_qmap_mgr_add_qmap(struct nvme_qmap *qmap)
 {
-	list_add_tail(&qmap->qmap_entry, &qmap_mgr.qmap_head);
-	qmap_mgr.ar_comp_map[qmap->ctrl->instance] = qmap->comp_map;
-	qmap_mgr.ar_instacne[qmap->ctrl->instance] = qmap;
+	down_write(&qmap_list.list_rwsem);
+	list_add_tail(&qmap->qmap_entry, &qmap_list.qmap_head);
+	up_write(&qmap_list.list_rwsem);
+
+	qmap_mgr[qmap->ctrl->instance].comp_map = qmap->comp_map;
+	qmap_mgr[qmap->ctrl->instance].qmap_instance = qmap;
 }
 
 static inline void nvme_qmap_mgr_remove_qmap(struct nvme_qmap *qmap)
 {
-	qmap_mgr.ar_instacne[qmap->ctrl->instance] = NULL;
-	qmap_mgr.ar_comp_map[qmap->ctrl->instance] = NULL;
+	qmap_mgr[qmap->ctrl->instance].qmap_instance = NULL;
+	qmap_mgr[qmap->ctrl->instance].comp_map = NULL;
+
+	down_write(&qmap_list.list_rwsem);
 	list_del(&qmap->qmap_entry);
+	up_write(&qmap_list.list_rwsem);
 }
 
 struct nvme_qmap *nvme_qmap_mgr_get_by_instance(int instance)
 {
-	return qmap_mgr.ar_instacne[instance];
+	return qmap_mgr[instance].qmap_instance;
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_mgr_get_by_instance);
 
@@ -124,6 +145,11 @@ static inline struct nvme_qmap *to_qmap(struct nvme_qmap_internal *qmap_inter)
 static inline struct nvme_qmap_internal *to_internal(struct nvme_qmap *qmap)
 {
 	return (struct nvme_qmap_internal *)qmap;
+}
+
+static inline struct mutex *get_lock(struct nvme_ctrl *ctrl)
+{
+	return &qmap_mgr[ctrl->instance].qmap_lock;
 }
 
 static inline void nvme_qmap_clear_mq_map(struct blk_mq_queue_map *qmap)
@@ -172,11 +198,14 @@ struct nvme_qmap *nvme_qmap_get_qmap_from_ndev(struct nvme_dev *ndev)
 {
 	struct nvme_qmap *qmap = NULL;
 
-	list_for_each_entry(qmap, &qmap_mgr.qmap_head, qmap_entry) {
+	down_read(&qmap_list.list_rwsem);
+	list_for_each_entry(qmap, &qmap_list.qmap_head, qmap_entry) {
 		if (qmap->nvme_dev == ndev)
-			return qmap;
+			break;
 	}
-	return NULL;
+	up_read(&qmap_list.list_rwsem);
+
+	return qmap;
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_get_qmap_from_ndev);
 
@@ -391,11 +420,11 @@ static inline bool nvme_qmap_sets_check(struct nvme_qmap *qmap, int src, int dst
 
 int nvme_qmap_wait_compl(struct nvme_ctrl *ctrl)
 {
-	if (mutex_lock_interruptible(&ctrl->scan_lock))
+	if (mutex_lock_interruptible(get_lock(ctrl)))
 		return -EINTR;
 
 	if (ctrl->state != NVME_CTRL_LIVE) {
-		mutex_unlock(&ctrl->scan_lock);
+		mutex_unlock(get_lock(ctrl));
 		return -EBUSY;
 	}
 	return 0;
@@ -404,7 +433,7 @@ EXPORT_SYMBOL_GPL(nvme_qmap_wait_compl);
 
 void nvme_qmap_finish_compl(struct nvme_ctrl *ctrl)
 {
-	mutex_unlock(&ctrl->scan_lock);
+	mutex_unlock(get_lock(ctrl));
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_finish_compl);
 
@@ -816,14 +845,22 @@ static int _nvme_qmap(struct nvme_ctrl *ctrl, struct nvme_qmap_qid_param *param)
 	return 0;
 }
 
-static int nvme_qmap_lock(struct nvme_ctrl *ctrl, struct nvme_qmap_qid_param *param)
+static int nvme_qmap_map(struct nvme_ctrl *ctrl, struct nvme_qmap_qid_param *param)
 {
 	int rc;
 
 	rc = nvme_qmap_wait_compl(ctrl);
 	if (rc)
 		return rc;
+
+	rc = mutex_lock_interruptible(&ctrl->scan_lock);
+	if (rc) {
+		nvme_qmap_finish_compl(ctrl);
+		return rc;
+	}
+
 	rc = _nvme_qmap(ctrl, param);
+	mutex_unlock(&ctrl->scan_lock);
 	nvme_qmap_finish_compl(ctrl);
 
 	return rc;
@@ -834,7 +871,7 @@ int nvme_qmap_map_queues(struct nvme_ctrl *ctrl, struct nvme_qmap_qid_param *par
 	int ret;
 
 	nvme_get_ctrl(ctrl);
-	ret = nvme_qmap_lock(ctrl, param);
+	ret = nvme_qmap_map(ctrl, param);
 	nvme_put_ctrl(ctrl);
 	return ret;
 }
@@ -909,7 +946,7 @@ static ssize_t qmap_store
 	if (nvme_qmap_gen_qid(ctrl, buf, &param))
 		return -EINVAL;
 
-	rc = nvme_qmap_lock(ctrl, &param);
+	rc = nvme_qmap_map(ctrl, &param);
 	nvme_qmap_free_qid_arr(&param);
 
 	if (rc)
@@ -959,7 +996,7 @@ static ssize_t queue_map_store
 	/* for historical reson. We have to transfer it */
 	queue_map_compat_change(&param);
 
-	rc = nvme_qmap_lock(ctrl, &param);
+	rc = nvme_qmap_map(ctrl, &param);
 	nvme_qmap_free_qid_arr(&param);
 
 	if (rc)
@@ -1186,7 +1223,7 @@ static int nvme_qmap_add_files(struct nvme_qmap *qmap)
 
 #ifdef CONFIG_DEBUG_FS
 	qmap->dbg_file = debugfs_create_file(dev_name(ctrl->device),
-					     0644, qmap_mgr.debug_nvme_qmap,
+					     0444, debug_nvme_qmap,
 					     (void *)qmap->ctrl, &nvme_qmap_fops);
 	/* don't care if it fails */
 	if (IS_ERR(qmap->dbg_file))
@@ -1382,15 +1419,15 @@ static void nvme_qmap_cache_nvme_queues(struct nvme_qmap *qmap)
 {
 	struct nvme_qmap_internal *qmap_inter = to_internal(qmap);
 	int i, nr_queues;
-	void *nq;
+	u64 ptr_nq;
 	u64 st_size;
 
 	nr_queues = qmap->nr_queues;
-	nq = qmap_inter->nq;
+	ptr_nq = (u64)qmap_inter->nq;
 	st_size = qmap_inter->sq_st_size;
 
 	for (i = 0; i < nr_queues; i++)
-		qmap->nvmeq[i] = (struct nvme_queue *)(nq + i * st_size);
+		qmap->nvmeq[i] = (struct nvme_queue *)(ptr_nq + i * st_size);
 }
 
 static void restore_driver_data(struct blk_mq_tag_set *set,
@@ -1502,14 +1539,14 @@ static void nvme_qmap_do_restore(struct nvme_ctrl *ctrl)
 /* sync with enable and restore to make original routine works fine */
 void nvme_qmap_restore(struct nvme_ctrl *ctrl)
 {
-	/* sync with cease io*/
-	mutex_lock(&ctrl->scan_lock);
 	if (!nvme_qmap_mgr_enabled(ctrl->instance)) {
-		mutex_unlock(&ctrl->scan_lock);
 		return;
 	}
+
+	/* sync nvme_reset with qmap routine */
+	mutex_lock(get_lock(ctrl));
 	nvme_qmap_do_restore(ctrl);
-	mutex_unlock(&ctrl->scan_lock);
+	mutex_unlock(get_lock(ctrl));
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_restore);
 
@@ -1521,14 +1558,14 @@ EXPORT_SYMBOL_GPL(nvme_qmap_mgr_exceed_max);
 
 bool nvme_qmap_mgr_enabled(int instance)
 {
-	return !!qmap_mgr.ar_comp_map[instance];
+	return qmap_mgr[instance].comp_map;
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_mgr_enabled);
 
 /* check enabled before use this */
 int nvme_qmap_nqid_to_mqid(int instance, int nvme_qid)
 {
-	return qmap_mgr.ar_comp_map[instance][nvme_qid];
+	return qmap_mgr[instance].comp_map[nvme_qid];
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_nqid_to_mqid);
 
@@ -1640,10 +1677,22 @@ int nvme_qmap_enable_dynamically(struct nvme_ctrl *ctrl,
 		return -EINVAL;
 	}
 
+	if (nvme_qmap_mgr_enabled(ctrl->instance))
+		return -EINVAL;
+
 	ret = nvme_qmap_wait_compl(ctrl);
 	if (ret)
 		return ret;
+
+	ret = mutex_lock_interruptible(&ctrl->scan_lock);
+	if (ret) {
+		nvme_qmap_finish_compl(ctrl);
+		return ret;
+	}
+
 	ret = nvme_qmap_enable_qmap(ctrl, nq, size, nr_allocated_queues);
+	mutex_unlock(&ctrl->scan_lock);
+
 	nvme_qmap_finish_compl(ctrl);
 
 	return ret;

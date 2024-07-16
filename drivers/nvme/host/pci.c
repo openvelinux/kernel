@@ -2145,7 +2145,11 @@ static ssize_t qmap_enable_store(struct device *dev, struct device_attribute *at
 				 const char *buf, size_t count)
 {
 	struct nvme_dev *ndev = to_nvme_dev(dev_get_drvdata(dev));
-	int ret;
+	int ret, n = 0;
+
+	ret = kstrtoint(buf, 10, &n);
+	if (ret || !n)
+		return -EINVAL;
 
 	mutex_lock(&ndev->shutdown_lock);
 	ret = nvme_qmap_enable_dynamically(&ndev->ctrl, ndev->queues,
@@ -2158,7 +2162,17 @@ static ssize_t qmap_enable_store(struct device *dev, struct device_attribute *at
 
 	return count;
 }
-static DEVICE_ATTR_WO(qmap_enable);
+
+static ssize_t qmap_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+
+	if (nvme_qmap_mgr_enabled(ctrl->instance))
+		return sysfs_emit(buf, "enabled\n");
+	else
+		return sysfs_emit(buf, "disabled\n");
+}
+static DEVICE_ATTR_RW(qmap_enable);
 
 static umode_t nvme_pci_attrs_are_visible(struct kobject *kobj,
 		struct attribute *a, int n)
@@ -2873,10 +2887,8 @@ static void nvme_reset_work(struct work_struct *work)
 	}
 
 	nvme_qmap_reset(&dev->ctrl);
-
-	nvme_qmap_enable_at_startup
-		(&dev->ctrl, dev->queues, sizeof(struct nvme_queue), dev->nr_allocated_queues);
-
+	nvme_qmap_enable_at_startup(&dev->ctrl, dev->queues, sizeof(struct nvme_queue),
+				    dev->nr_allocated_queues);
 	nvme_qmap_add_enable_attr(&dev->ctrl, &dev_attr_qmap_enable.attr);
 
 	/*
