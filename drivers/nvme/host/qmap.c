@@ -1473,7 +1473,8 @@ void nvme_qmap_reset(struct nvme_ctrl *ctrl)
 
 	instance = ctrl->instance;
 
-	if (!nvme_qmap_mgr_enabled(instance))
+	if (nvme_qmap_mgr_exceed_max(instance) ||
+	    !nvme_qmap_mgr_enabled(instance))
 		return;
 
 	qmap = nvme_qmap_mgr_get_by_instance(instance);
@@ -1501,6 +1502,11 @@ EXPORT_SYMBOL_GPL(nvme_qmap_reset);
 
 void nvme_qmap_add_enable_attr(struct nvme_ctrl *ctrl, const struct attribute *attr)
 {
+	if (nvme_qmap_mgr_exceed_max(ctrl->instance)) {
+		dev_warn(ctrl->device, "qmap:instance exceed max.");
+		return;
+	}
+
 	if (nvme_qmap_mgr_get_attr(ctrl->instance))
 		return;
 
@@ -1514,10 +1520,15 @@ EXPORT_SYMBOL_GPL(nvme_qmap_add_enable_attr);
 
 void nvme_qmap_remove_enable_attr(struct nvme_ctrl *ctrl)
 {
-	const struct attribute *attr = nvme_qmap_mgr_get_attr(ctrl->instance);
+	const struct attribute *attr;
 
+	if (nvme_qmap_mgr_exceed_max(ctrl->instance))
+		return;
+
+	attr = nvme_qmap_mgr_get_attr(ctrl->instance);
 	if (!attr)
 		return;
+
 	sysfs_remove_file_from_group(&ctrl->device->kobj, attr, NULL);
 	nvme_qmap_mgr_set_attr(ctrl->instance, NULL);
 }
@@ -1539,9 +1550,9 @@ static void nvme_qmap_do_restore(struct nvme_ctrl *ctrl)
 /* sync with enable and restore to make original routine works fine */
 void nvme_qmap_restore(struct nvme_ctrl *ctrl)
 {
-	if (!nvme_qmap_mgr_enabled(ctrl->instance)) {
+	if (nvme_qmap_mgr_exceed_max(ctrl->instance) ||
+	    !nvme_qmap_mgr_enabled(ctrl->instance))
 		return;
-	}
 
 	/* sync nvme_reset with qmap routine */
 	mutex_lock(get_lock(ctrl));
@@ -1707,13 +1718,16 @@ void nvme_qmap_enable_at_startup(struct nvme_ctrl *ctrl,
 {
 	int instance = ctrl->instance;
 
-	if (!enable_at_startup || nvme_qmap_mgr_enabled(ctrl->instance))
+	if (!enable_at_startup)
 		return;
 
 	if (nvme_qmap_mgr_exceed_max(instance)) {
-		dev_err(ctrl->device, "qmap:instacne:%d excced max:%u", instance, MAX_QMAP);
+		dev_warn(ctrl->device, "qmap:instacne:%d excced max:%u", instance, MAX_QMAP);
 		return;
 	}
+
+	if (nvme_qmap_mgr_enabled(ctrl->instance))
+		return;
 
 	if (!ctrl->tagset) {
 		dev_err(ctrl->device, "qmap:no tagset. can't be enabled");
