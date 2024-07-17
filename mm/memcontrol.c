@@ -5135,6 +5135,9 @@ static int memory_wmark_read(struct seq_file *m, void *v)
 }
 #endif
 
+static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
+			      size_t nbytes, loff_t off);
+
 static struct cftype mem_cgroup_legacy_files[] = {
 	{
 		.name = "usage_in_bytes",
@@ -5278,6 +5281,11 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.seq_show = memory_wmark_read,
 	},
 #endif
+	{
+		.name = "reclaim",
+		.flags = CFTYPE_NS_DELEGATABLE,
+		.write = memory_reclaim,
+	},
 	{ },	/* terminate */
 };
 
