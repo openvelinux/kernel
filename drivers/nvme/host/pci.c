@@ -999,7 +999,8 @@ static inline struct blk_mq_tags *nvme_queue_tagset(struct nvme_queue *nvmeq)
 	if (!nvmeq->qid)
 		return nvmeq->dev->admin_tagset.tags[0];
 
-	if (nvme_qmap_mgr_enabled(nvmeq->dev->ctrl.instance)) {
+	if (!nvme_qmap_mgr_exceed_max(nvmeq->dev->ctrl.instance) &&
+	    nvme_qmap_mgr_enabled(nvmeq->dev->ctrl.instance)) {
 		int mqid = nvme_qmap_nqid_to_mqid
 			(nvmeq->dev->ctrl.instance, nvmeq->qid);
 		return nvmeq->dev->tagset.tags[mqid];
