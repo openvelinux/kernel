@@ -6261,6 +6261,13 @@ a single guest_memfd file, but the bound ranges must not overlap).
 
 See KVM_SET_USER_MEMORY_REGION2 for additional details.
 
+
+In the case of confidential VM types where there is an initial set up of
+private guest memory before the guest is 'finalized'/measured, this ioctl
+should only be issued after completing all the necessary setup to put the
+guest into a 'finalized' state so that the above semantics can be reliably
+ensured.
+
 5. The kvm_run structure
 ========================
 
