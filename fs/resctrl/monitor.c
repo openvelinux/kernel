@@ -813,12 +813,12 @@ int resctrl_mon_resource_init(void)
 	struct rdt_resource *r = resctrl_arch_get_resource(RDT_RESOURCE_L3);
 	int ret;
 
+	if (!r->mon_capable)
+		return 0;
+
 	ret = dom_data_init(r);
 	if (ret)
 		return ret;
-
-	if (!r->mon_capable)
-		return 0;
 
 	l3_mon_evt_init(r);
 
