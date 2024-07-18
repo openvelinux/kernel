@@ -1066,14 +1066,13 @@ static char *nvme_qmap_topo_nq_view(struct nvme_qmap *qmap,
 
 		qidmask = &nmap->qid_mask;
 		if (nvme_qmap_flag_occupied(nmap))
-			src_qid_list =
-			    precise_alloc("Occupy:%*pbl", qidmask->nr, qidmask->bits);
-		if (nvme_qmap_flag_disabled(nmap))
-			src_qid_list =
-			    precise_alloc("Dead:%*pbl", qidmask->nr, qidmask->bits);
-		if (nvme_qmap_flag_enabled(nmap))
-			src_qid_list =
-			    precise_alloc("%*pbl", qidmask->nr, qidmask->bits);
+			src_qid_list = precise_alloc("Occupy:%*pbl", qidmask->nr, qidmask->bits);
+		else if (nvme_qmap_flag_disabled(nmap))
+			src_qid_list = precise_alloc("Dead:%*pbl", qidmask->nr, qidmask->bits);
+		else if (nvme_qmap_flag_enabled(nmap))
+			src_qid_list = precise_alloc("%*pbl", qidmask->nr, qidmask->bits);
+		else
+			src_qid_list = precise_alloc("error");
 
 		type = nvme_qmap_get_nmap_type(qmap, idx);
 
