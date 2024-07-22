@@ -658,8 +658,7 @@ static void cs_etm_save_etmv4_header(__u64 data[], struct auxtrace_record *itr, 
 	/* Get trace configuration register */
 	data[CS_ETMV4_TRCCONFIGR] = cs_etmv4_get_config(itr);
 	/* traceID set to legacy version, in case new perf running on older system */
-	data[CS_ETMV4_TRCTRACEIDR] =
-		CORESIGHT_LEGACY_CPU_TRACE_ID(cpu) | CORESIGHT_TRACE_ID_UNUSED_FLAG;
+	data[CS_ETMV4_TRCTRACEIDR] = CORESIGHT_LEGACY_CPU_TRACE_ID(cpu);
 
 	/* Get read-only information from sysFS */
 	data[CS_ETMV4_TRCIDR0] = cs_etm_get_ro(cs_etm_pmu, cpu,
@@ -692,8 +691,7 @@ static void cs_etm_save_ete_header(__u64 data[], struct auxtrace_record *itr, in
 	/* Get trace configuration register */
 	data[CS_ETE_TRCCONFIGR] = cs_etmv4_get_config(itr);
 	/* traceID set to legacy version, in case new perf running on older system */
-	data[CS_ETE_TRCTRACEIDR] =
-		CORESIGHT_LEGACY_CPU_TRACE_ID(cpu) | CORESIGHT_TRACE_ID_UNUSED_FLAG;
+	data[CS_ETE_TRCTRACEIDR] = CORESIGHT_LEGACY_CPU_TRACE_ID(cpu);
 
 	/* Get read-only information from sysFS */
 	data[CS_ETE_TRCIDR0] = cs_etm_get_ro(cs_etm_pmu, cpu,
@@ -751,8 +749,7 @@ static void cs_etm_get_metadata(int cpu, u32 *offset,
 		/* Get configuration register */
 		info->priv[*offset + CS_ETM_ETMCR] = cs_etm_get_config(itr);
 		/* traceID set to legacy value in case new perf running on old system */
-		info->priv[*offset + CS_ETM_ETMTRACEIDR] =
-			CORESIGHT_LEGACY_CPU_TRACE_ID(cpu) | CORESIGHT_TRACE_ID_UNUSED_FLAG;
+		info->priv[*offset + CS_ETM_ETMTRACEIDR] = CORESIGHT_LEGACY_CPU_TRACE_ID(cpu);
 		/* Get read-only information from sysFS */
 		info->priv[*offset + CS_ETM_ETMCCER] =
 			cs_etm_get_ro(cs_etm_pmu, cpu,
