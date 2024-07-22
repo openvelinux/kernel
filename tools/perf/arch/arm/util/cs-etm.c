@@ -650,6 +650,12 @@ static bool cs_etm_is_ete(struct auxtrace_record *itr, int cpu)
 	return TRCDEVARCH_ARCHVER(trcdevarch) == 5 && TRCDEVARCH_ARCHPART(trcdevarch) == 0xA13;
 }
 
+static __u64 cs_etm_get_legacy_trace_id(int cpu)
+{
+	/* Wrap at 48 so that invalid trace IDs aren't saved into files. */
+	return CORESIGHT_LEGACY_CPU_TRACE_ID(cpu % 48);
+}
+
 static void cs_etm_save_etmv4_header(__u64 data[], struct auxtrace_record *itr, int cpu)
 {
 	struct cs_etm_recording *ptr = container_of(itr, struct cs_etm_recording, itr);
@@ -658,7 +664,7 @@ static void cs_etm_save_etmv4_header(__u64 data[], struct auxtrace_record *itr, 
 	/* Get trace configuration register */
 	data[CS_ETMV4_TRCCONFIGR] = cs_etmv4_get_config(itr);
 	/* traceID set to legacy version, in case new perf running on older system */
-	data[CS_ETMV4_TRCTRACEIDR] = CORESIGHT_LEGACY_CPU_TRACE_ID(cpu);
+	data[CS_ETMV4_TRCTRACEIDR] = cs_etm_get_legacy_trace_id(cpu);
 
 	/* Get read-only information from sysFS */
 	data[CS_ETMV4_TRCIDR0] = cs_etm_get_ro(cs_etm_pmu, cpu,
@@ -691,7 +697,7 @@ static void cs_etm_save_ete_header(__u64 data[], struct auxtrace_record *itr, in
 	/* Get trace configuration register */
 	data[CS_ETE_TRCCONFIGR] = cs_etmv4_get_config(itr);
 	/* traceID set to legacy version, in case new perf running on older system */
-	data[CS_ETE_TRCTRACEIDR] = CORESIGHT_LEGACY_CPU_TRACE_ID(cpu);
+	data[CS_ETE_TRCTRACEIDR] = cs_etm_get_legacy_trace_id(cpu);
 
 	/* Get read-only information from sysFS */
 	data[CS_ETE_TRCIDR0] = cs_etm_get_ro(cs_etm_pmu, cpu,
@@ -749,7 +755,7 @@ static void cs_etm_get_metadata(int cpu, u32 *offset,
 		/* Get configuration register */
 		info->priv[*offset + CS_ETM_ETMCR] = cs_etm_get_config(itr);
 		/* traceID set to legacy value in case new perf running on old system */
-		info->priv[*offset + CS_ETM_ETMTRACEIDR] = CORESIGHT_LEGACY_CPU_TRACE_ID(cpu);
+		info->priv[*offset + CS_ETM_ETMTRACEIDR] = cs_etm_get_legacy_trace_id(cpu);
 		/* Get read-only information from sysFS */
 		info->priv[*offset + CS_ETM_ETMCCER] =
 			cs_etm_get_ro(cs_etm_pmu, cpu,
