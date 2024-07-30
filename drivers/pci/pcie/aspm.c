@@ -1034,6 +1034,8 @@ void pcie_aspm_exit_link_state(struct pci_dev *pdev)
 		pcie_config_aspm_path(parent_link);
 	}
 
+	pcie_aspm_update_sysfs_visibility(parent);
+
 	mutex_unlock(&aspm_lock);
 	up_read(&pci_bus_sem);
 }
