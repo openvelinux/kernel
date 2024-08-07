@@ -5153,6 +5153,9 @@ static struct iommu_device *intel_iommu_probe_device(struct device *dev)
 	if (translation_pre_enabled(iommu))
 		dev_iommu_priv_set(dev, DEFER_DEVICE_DOMAIN_INFO);
 
+	if (dev_is_pci(dev))
+		pci_prepare_ats(to_pci_dev(dev), VTD_PAGE_SHIFT);
+
 	return &iommu->iommu;
 }
 
