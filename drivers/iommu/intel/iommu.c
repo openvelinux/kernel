@@ -4419,6 +4419,8 @@ static struct iommu_device *intel_iommu_probe_device(struct device *dev)
 	}
 
 	dev_iommu_priv_set(dev, info);
+	if (pdev && pci_ats_supported(pdev))
+		pci_prepare_ats(pdev, VTD_PAGE_SHIFT);
 
 	if (sm_supported(iommu) && !dev_is_real_dma_subdevice(dev)) {
 		ret = intel_pasid_alloc_table(dev);
