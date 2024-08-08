@@ -228,7 +228,8 @@ static int expand_one_shrinker_info(struct mem_cgroup *memcg,
 		if (!old)
 			return 0;
 
-		new = kvmalloc_node(sizeof(*new) + size, GFP_KERNEL, nid);
+		new = kvmalloc_node(sizeof(*new) + size, GFP_KERNEL,
+				    node_online(nid) ? nid : NUMA_NO_NODE);
 		if (!new)
 			return -ENOMEM;
 
@@ -275,7 +276,8 @@ int alloc_shrinker_info(struct mem_cgroup *memcg)
 	defer_size = shrinker_defer_size(shrinker_nr_max);
 	size = map_size + defer_size;
 	for_each_node(nid) {
-		info = kvzalloc_node(sizeof(*info) + size, GFP_KERNEL, nid);
+		info = kvzalloc_node(sizeof(*info) + size, GFP_KERNEL,
+				     node_online(nid) ? nid : NUMA_NO_NODE);
 		if (!info) {
 			free_shrinker_info(memcg);
 			ret = -ENOMEM;
