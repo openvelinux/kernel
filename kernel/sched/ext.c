@@ -2718,7 +2718,8 @@ static void process_ddsp_deferred_locals(struct rq *rq)
 	}
 }
 
-static void put_prev_task_scx(struct rq *rq, struct task_struct *p)
+static void put_prev_task_scx(struct rq *rq, struct task_struct *p,
+			      struct task_struct *next)
 {
 	update_curr_scx(rq);
 
