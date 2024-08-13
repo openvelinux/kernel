@@ -275,6 +275,21 @@ Depends: \${shlibs:Depends}
 Description: Performance analysis tools for Linux $version
  This package contains the 'perf' performance analysis tools and 'bpftool' for
  Linux kernel version $version.
+
+Package: linux-cpupower
+Architecture: $debarch
+Description: CPU power management tools for Linux
+ The cpupower command allows inspection and control of cpufreq and cpuidle
+ tunables for hardware that supports these features.  It replaces
+ "cpufreq-info" and "cpufreq-set" in cpufrequtils.
+
+Package: libcpupower1
+Architecture: $debarch
+Section: libs
+Description: CPU frequency and voltage scaling tools for Linux (libraries)
+ libcpupower is a library for inspecting and controlling cpufreq and
+ cpuidle tunables.
+ This package contains the shared library.
 EOF
 fi
 
