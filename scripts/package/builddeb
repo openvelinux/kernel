@@ -110,8 +110,11 @@ version=$KERNELRELEASE
 tmpdir=debian/linux-image
 dbg_dir=debian/linux-image-dbg
 tools_dir=debian/linux-tools
+cpupower_dir=debian/cpupower
 packagename=linux-image-$version
 dbg_packagename=$packagename-dbg
+libcpupower1_pkgname=libcpupower1
+cpupower_pkgname=linux-cpupower
 
 if [ "$ARCH" = "um" ] ; then
 	packagename=user-mode-linux-$version
@@ -134,7 +137,7 @@ esac
 BUILD_DEBUG=$(if_enabled_echo CONFIG_DEBUG_INFO Yes)
 
 # Setup the directory structure
-rm -rf "$tmpdir" "$dbg_dir" "$tools_dir" debian/files
+rm -rf "$tmpdir" "$dbg_dir" "$tools_dir" "$cpupower_dir" debian/files
 mkdir -m 755 -p "$tmpdir/DEBIAN"
 mkdir -p "$tmpdir/lib" "$tmpdir/boot"
 
@@ -235,6 +238,35 @@ if [ -n "$BUILD_DEBUG" ] ; then
 	create_package "$dbg_packagename" "$dbg_dir"
 fi
 
+#cpupower
+create_pkg_linux_cpupower() {
+	rm $cpupower_dir -rf && mkdir $cpupower_dir
+	$MAKE -C $srctree/tools/power/cpupower
+	mkdir -p $cpupower_dir/usr/sbin
+	cp $srctree/tools/power/cpupower/cpupower $cpupower_dir/usr/sbin/
+	create_package "$cpupower_pkgname" "$cpupower_dir"
+}
+
+#libcpupower
+create_pkg_libcpupower() {
+	rm $cpupower_dir -rf && mkdir $cpupower_dir
+	$MAKE -C $srctree/tools/power/cpupower
+
+	case "$ARCH" in
+	*"x86"*)
+		libdir="lib/x86_64"
+	;;
+	*)
+		libdir="lib/aarch64"
+	;;
+	esac
+
+	mkdir -p $cpupower_dir/usr/$libdir-linux-gnu
+	cp -d $srctree/tools/power/cpupower/*.so $cpupower_dir/usr/$libdir-linux-gnu
+	cp -d $srctree/tools/power/cpupower/*.so.* $cpupower_dir/usr/$libdir-linux-gnu
+	create_package "$libcpupower1_pkgname" "$cpupower_dir"
+}
+
 if [ -n "$BUILD_TOOLS" ] ; then
 	# Build perf
 	$MAKE -C $srctree/tools/perf LDFLAGS= srctree=$(pwd) DESTDIR=$(pwd)/$tools_dir prefix=/usr install
@@ -254,6 +286,9 @@ if [ -n "$BUILD_TOOLS" ] ; then
 	dpkg-shlibdeps $tools_dir/usr/sbin/bpftool $tools_dir/usr/bin/* $tools_dir/usr/$LIB/traceevent/plugins/*
 
 	create_package linux-tools "$tools_dir"
+
+	create_pkg_linux_cpupower
+	create_pkg_libcpupower
 fi
 
 exit 0
