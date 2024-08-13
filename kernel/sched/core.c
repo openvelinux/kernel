@@ -6029,8 +6029,8 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
 	schedstat_inc(this_rq()->sched_count);
 }
 
-static void put_prev_task_balance(struct rq *rq, struct task_struct *prev,
-				  struct rq_flags *rf)
+static void prev_balance(struct rq *rq, struct task_struct *prev,
+			 struct rq_flags *rf)
 {
 	const struct sched_class *start_class = prev->sched_class;
 	const struct sched_class *class;
@@ -6057,8 +6057,6 @@ static void put_prev_task_balance(struct rq *rq, struct task_struct *prev,
 		if (class->balance && class->balance(rq, prev, rf))
 			break;
 	}
-
-	put_prev_task(rq, prev);
 }
 
 /*
@@ -6096,7 +6094,8 @@ __pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	}
 
 restart:
-	put_prev_task_balance(rq, prev, rf);
+	prev_balance(rq, prev, rf);
+	put_prev_task(rq, prev);
 
 	for_each_active_class(class) {
 		p = class->pick_next_task(rq);
@@ -6201,7 +6200,8 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 		goto out;
 	}
 
-	put_prev_task_balance(rq, prev, rf);
+	prev_balance(rq, prev, rf);
+	put_prev_task(rq, prev);
 
 	smt_mask = cpu_smt_mask(cpu);
 	need_sync = !!rq->core->core_cookie;
