@@ -2199,6 +2199,7 @@ static struct attribute *nvme_pci_attrs[] = {
 	&dev_attr_cmbloc.attr,
 	&dev_attr_cmbsz.attr,
 	&dev_attr_hmb.attr,
+	&dev_attr_qmap_enable.attr,
 	NULL,
 };
 
@@ -2890,7 +2891,6 @@ static void nvme_reset_work(struct work_struct *work)
 	nvme_qmap_reset(&dev->ctrl);
 	nvme_qmap_enable_at_startup(&dev->ctrl, dev->queues, sizeof(struct nvme_queue),
 				    dev->nr_allocated_queues);
-	nvme_qmap_add_enable_attr(&dev->ctrl, &dev_attr_qmap_enable.attr);
 
 	/*
 	 * If only admin queue live, keep it to do further investigation or
@@ -3192,7 +3192,6 @@ static void nvme_remove(struct pci_dev *pdev)
 	nvme_remove_namespaces(&dev->ctrl);
 	nvme_dev_disable(dev, true);
 	nvme_remove_attrs(dev);
-	nvme_qmap_remove_enable_attr(&dev->ctrl);
 	nvme_free_host_mem(dev);
 	nvme_dev_remove_admin(dev);
 	nvme_free_queues(dev, 0);
