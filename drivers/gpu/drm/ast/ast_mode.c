@@ -1022,9 +1022,11 @@ static void ast_crtc_dpms(struct drm_crtc *crtc, int mode)
 			ast_set_dp501_video_output(crtc->dev, 1);
 
 		if (ast->tx_chip_types & AST_TX_ASTDP_BIT) {
-			ast_dp_power_on_off(crtc->dev, AST_DP_POWER_ON);
-			ast_wait_for_vretrace(ast);
-			ast_dp_set_on_off(crtc->dev, 1);
+			if (ast->output.astdp.connector.physical_status == connector_status_connected) {
+				ast_dp_power_on_off(crtc->dev, AST_DP_POWER_ON);
+				ast_wait_for_vretrace(ast);
+				ast_dp_set_on_off(crtc->dev, 1);
+			}
 		}
 
 		ast_state = to_ast_crtc_state(crtc->state);
@@ -1681,32 +1683,46 @@ static int ast_dp501_output_init(struct ast_device *ast)
 
 static int ast_astdp_connector_helper_get_modes(struct drm_connector *connector)
 {
+	struct ast_connector *ast_connector = to_ast_connector(connector);
 	void *edid;
 	struct drm_device *dev = connector->dev;
 	struct ast_device *ast = to_ast_device(dev);
 
 	int succ;
-	int count;
+	int count = 0;
 
-	edid = kmalloc(EDID_LENGTH, GFP_KERNEL);
-	if (!edid)
-		goto err_drm_connector_update_edid_property;
+	if (ast_connector->physical_status == connector_status_connected) {
+		edid = kmalloc(EDID_LENGTH, GFP_KERNEL);
+		if (!edid)
+			goto err_drm_connector_update_edid_property;
 
-	/*
-	 * Protect access to I/O registers from concurrent modesetting
-	 * by acquiring the I/O-register lock.
-	 */
-	mutex_lock(&ast->ioregs_lock);
+		/*
+		 * Protect access to I/O registers from concurrent modesetting
+		 * by acquiring the I/O-register lock.
+		 */
+		mutex_lock(&ast->ioregs_lock);
 
-	succ = ast_astdp_read_edid(connector->dev, edid);
-	if (succ < 0)
-		goto err_mutex_unlock;
+		succ = ast_astdp_read_edid(connector->dev, edid);
+		if (succ < 0)
+			goto err_mutex_unlock;
 
-	mutex_unlock(&ast->ioregs_lock);
+		mutex_unlock(&ast->ioregs_lock);
 
-	drm_connector_update_edid_property(connector, edid);
-	count = drm_add_edid_modes(connector, edid);
-	kfree(edid);
+		drm_connector_update_edid_property(connector, edid);
+		count = drm_add_edid_modes(connector, edid);
+		kfree(edid);
+	} else {
+		drm_connector_update_edid_property(connector, NULL);
+
+		/*
+		 * There's no EDID data without a connected monitor. Set BMC-
+		 * compatible modes in this case. The XGA default resolution
+		 * should work well for all BMCs.
+		 */
+		count = drm_add_modes_noedid(connector, 4096, 4096);
+		if (count)
+			drm_set_preferred_mode(connector, 1024, 768);
+	}
 
 	return count;
 
@@ -1729,9 +1745,11 @@ static int ast_astdp_connector_helper_detect_ctx(struct drm_connector *connector
 	if (ast_astdp_is_connected(ast))
 		status = connector_status_connected;
 
+	if (status != ast_connector->physical_status)
+		++connector->epoch_counter;
 	ast_connector->physical_status = status;
 
-	return status;
+	return connector_status_connected;
 }
 
 static const struct drm_connector_helper_funcs ast_astdp_connector_helper_funcs = {
