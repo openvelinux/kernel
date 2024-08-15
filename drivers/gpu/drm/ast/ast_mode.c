@@ -1559,21 +1559,35 @@ static int ast_sil164_output_init(struct ast_device *ast)
 
 static int ast_dp501_connector_helper_get_modes(struct drm_connector *connector)
 {
+	struct ast_connector *ast_connector = to_ast_connector(connector);
 	void *edid;
 	bool succ;
 	int count;
 
-	edid = kmalloc(EDID_LENGTH, GFP_KERNEL);
-	if (!edid)
-		goto err_drm_connector_update_edid_property;
+	if (ast_connector->physical_status == connector_status_connected) {
+		edid = kmalloc(EDID_LENGTH, GFP_KERNEL);
+		if (!edid)
+			goto err_drm_connector_update_edid_property;
 
-	succ = ast_dp501_read_edid(connector->dev, edid);
-	if (!succ)
-		goto err_kfree;
+		succ = ast_dp501_read_edid(connector->dev, edid);
+		if (!succ)
+			goto err_kfree;
 
-	drm_connector_update_edid_property(connector, edid);
-	count = drm_add_edid_modes(connector, edid);
-	kfree(edid);
+		drm_connector_update_edid_property(connector, edid);
+		count = drm_add_edid_modes(connector, edid);
+		kfree(edid);
+	} else {
+		drm_connector_update_edid_property(connector, NULL);
+
+		/*
+		 * There's no EDID data without a connected monitor. Set BMC-
+		 * compatible modes in this case. The XGA default resolution
+		 * should work well for all BMCs.
+		 */
+		count = drm_add_modes_noedid(connector, 4096, 4096);
+		if (count)
+			drm_set_preferred_mode(connector, 1024, 768);
+	}
 
 	return count;
 
@@ -1585,8 +1599,8 @@ err_drm_connector_update_edid_property:
 }
 
 static int ast_dp501_connector_helper_detect_ctx(struct drm_connector *connector,
-						 struct drm_modeset_acquire_ctx *ctx,
-						 bool force)
+					 struct drm_modeset_acquire_ctx *ctx,
+					 bool force)
 {
 	struct ast_connector *ast_connector = to_ast_connector(connector);
 	struct ast_device *ast = to_ast_device(connector->dev);
@@ -1595,9 +1609,11 @@ static int ast_dp501_connector_helper_detect_ctx(struct drm_connector *connector
 	if (ast_dp501_is_connected(ast))
 		status = connector_status_connected;
 
+	if (status != ast_connector->physical_status)
+		++connector->epoch_counter;
 	ast_connector->physical_status = status;
 
-	return status;
+	return connector_status_connected;
 }
 
 static const struct drm_connector_helper_funcs ast_dp501_connector_helper_funcs = {
