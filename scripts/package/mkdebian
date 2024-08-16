@@ -220,6 +220,7 @@ Homepage: https://www.kernel.org/
 
 Package: $packagename-$version
 Architecture: $debarch
+Depends: kmod, linux-base (>= 4.3~), initramfs-tools (>= 0.120+deb8u2) | linux-initramfs-tool
 Description: Linux kernel, version $version
  This package contains the Linux kernel, modules and corresponding other
  files, version: $version.
@@ -269,6 +270,7 @@ cat <<EOF >> debian/control
 Package: linux-tools
 Architecture: $debarch
 Replaces: linux-base, linux-tools-common
+Provides: linux-perf, bpftool
 Depends: \${shlibs:Depends}
 Description: Performance analysis tools for Linux $version
  This package contains the 'perf' performance analysis tools and 'bpftool' for
