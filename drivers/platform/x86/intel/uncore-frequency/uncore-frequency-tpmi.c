@@ -430,6 +430,9 @@ static int uncore_probe(struct auxiliary_device *auxdev, const struct auxiliary_
 
 	auxiliary_set_drvdata(auxdev, tpmi_uncore);
 
+	if (topology_max_die_per_package() > 1)
+		return 0;
+
 	tpmi_uncore->root_cluster.root_domain = true;
 	tpmi_uncore->root_cluster.uncore_root = tpmi_uncore;
 
@@ -453,7 +456,9 @@ static void uncore_remove(struct auxiliary_device *auxdev)
 {
 	struct tpmi_uncore_struct *tpmi_uncore = auxiliary_get_drvdata(auxdev);
 
-	uncore_freq_remove_die_entry(&tpmi_uncore->root_cluster.uncore_data);
+	if (tpmi_uncore->root_cluster.root_domain)
+		uncore_freq_remove_die_entry(&tpmi_uncore->root_cluster.uncore_data);
+
 	remove_cluster_entries(tpmi_uncore);
 
 	uncore_freq_common_exit();
