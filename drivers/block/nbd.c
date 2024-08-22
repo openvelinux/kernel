@@ -153,7 +153,7 @@ static struct dentry *nbd_dbg_dir;
 
 #define NBD_DEF_BLKSIZE_BITS 10
 
-static int nbd_version = 5;
+static int nbd_version = 6;
 static unsigned int nbds_max = 16;
 static int max_part = 16;
 static int part_shift;
@@ -1156,7 +1156,7 @@ static int nbd_reconnect_socket(struct nbd_device *nbd, unsigned long arg)
 		}
 		worker = kthread_create(recv_work, args, "knbd%d.%d-recv",
 					nbd->index, i);
-		if (!worker) {
+		if (IS_ERR(worker)) {
 			sockfd_put(sock);
 			kfree(args);
 			return -ENOMEM;
