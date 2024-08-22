@@ -4970,6 +4970,11 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
 		unsigned long min_wmark = min_wmark_pages(zone);
 		bool wmark;
 
+		if (cpusets_enabled() &&
+			(alloc_flags & ALLOC_CPUSET) &&
+			!__cpuset_zone_allowed(zone, gfp_mask))
+				continue;
+
 		if (memcg_oom_priority_enabled())
 			min_wmark = wmark_pages(zone, alloc_flags & ALLOC_WMARK_MASK);
 
