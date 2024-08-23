@@ -414,7 +414,7 @@ int drm_open(struct inode *inode, struct file *filp)
 	int retcode = 0;
 	int need_setup = 0;
 
-	minor = drm_minor_acquire(iminor(inode));
+	minor = drm_minor_acquire(&drm_minors_xa, iminor(inode));
 	if (IS_ERR(minor))
 		return PTR_ERR(minor);
 
