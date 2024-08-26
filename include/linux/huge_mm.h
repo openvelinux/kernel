@@ -303,11 +303,6 @@ static inline bool is_huge_zero_pmd(pmd_t pmd)
 	return READ_ONCE(huge_zero_pfn) == pmd_pfn(pmd) && pmd_present(pmd);
 }
 
-static inline bool is_huge_zero_pud(pud_t pud)
-{
-	return false;
-}
-
 struct page *mm_get_huge_zero_page(struct mm_struct *mm);
 void mm_put_huge_zero_page(struct mm_struct *mm);
 
@@ -452,11 +447,6 @@ static inline bool is_huge_zero_page(struct page *page)
 }
 
 static inline bool is_huge_zero_pmd(pmd_t pmd)
-{
-	return false;
-}
-
-static inline bool is_huge_zero_pud(pud_t pud)
 {
 	return false;
 }
