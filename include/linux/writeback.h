@@ -153,6 +153,12 @@ struct wb_domain {
 	 */
 	unsigned long dirty_limit_tstamp;
 	unsigned long dirty_limit;
+
+#ifdef CONFIG_CGROUP_WRITEBACK
+	/* User can set by memcgroup v2 interfaces. */
+	unsigned long dirty_thresh;
+	unsigned long dirty_bg_thresh;
+#endif
 };
 
 /**
