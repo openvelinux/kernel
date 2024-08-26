@@ -5323,29 +5323,29 @@ int follow_phys(struct vm_area_struct *vma,
 		unsigned long *prot, resource_size_t *phys)
 {
 	int ret = -EINVAL;
-	pte_t *ptep, pte;
-	spinlock_t *ptl;
+	struct follow_pfnmap_args args = { .vma = vma, .address = vma->vm_start };
 
 	if (!(vma->vm_flags & (VM_IO | VM_PFNMAP)))
 		goto out;
 
-	if (follow_pte(vma->vm_mm, address, &ptep, &ptl))
+	if (follow_pfnmap_start(&args))
 		goto out;
-	pte = *ptep;
 
 	/* Never return PFNs of anon folios in COW mappings. */
-	if (vm_normal_page(vma, address, pte))
-		goto unlock;
+	if (!args.special) {
+		follow_pfnmap_end(&args);
+		goto out;
+	}
 
-	if ((flags & FOLL_WRITE) && !pte_write(pte))
-		goto unlock;
+	if ((flags & FOLL_WRITE) && !args.writable) {
+		follow_pfnmap_end(&args);
+		goto out;
+	}
 
-	*prot = pgprot_val(pte_pgprot(pte));
-	*phys = (resource_size_t)pte_pfn(pte) << PAGE_SHIFT;
-
+	*prot = pgprot_val(args.pgprot);
+	*phys = (resource_size_t)args.pfn << PAGE_SHIFT;
+	follow_pfnmap_end(&args);
 	ret = 0;
-unlock:
-	pte_unmap_unlock(ptep, ptl);
 out:
 	return ret;
 }
