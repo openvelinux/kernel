@@ -208,6 +208,24 @@ static void wb_min_max_ratio(struct bdi_writeback *wb,
 	*maxp = max;
 }
 
+static void overwrite_domain_dirty_limits(struct dirty_throttle_control *dtc,
+					  unsigned long *thresh,
+					  unsigned long *bg_thresh)
+{
+	unsigned long dirty_thresh, dirty_bg_thresh;
+
+	if (!dtc->gdtc || !dtc->dom)
+		return;
+
+	dirty_thresh = READ_ONCE(dtc->dom->dirty_thresh);
+	dirty_bg_thresh = READ_ONCE(dtc->dom->dirty_bg_thresh);
+
+	if (dirty_thresh)
+		*thresh = DIV_ROUND_UP(dirty_thresh, PAGE_SIZE);
+	if (dirty_bg_thresh)
+		*bg_thresh = DIV_ROUND_UP(dirty_bg_thresh, PAGE_SIZE);
+}
+
 #else	/* CONFIG_CGROUP_WRITEBACK */
 
 #define GDTC_INIT(__wb)		.wb = (__wb),                           \
@@ -240,6 +258,12 @@ static void wb_min_max_ratio(struct bdi_writeback *wb,
 {
 	*minp = wb->bdi->min_ratio;
 	*maxp = wb->bdi->max_ratio;
+}
+
+static void overwrite_domain_dirty_limits(struct dirty_throttle_control *dtc,
+					  unsigned long *thresh,
+					  unsigned long *bg_thresh)
+{
 }
 
 #endif	/* CONFIG_CGROUP_WRITEBACK */
@@ -420,6 +444,10 @@ static void domain_dirty_limits(struct dirty_throttle_control *dtc)
 		bg_thresh += bg_thresh / 4 + global_wb_domain.dirty_limit / 32;
 		thresh += thresh / 4 + global_wb_domain.dirty_limit / 32;
 	}
+
+	/* Overwrite thresh and bg_thresh if has user set. */
+	overwrite_domain_dirty_limits(dtc, &thresh, &bg_thresh);
+
 	/*
 	 * Dirty throttling logic assumes the limits in page units fit into
 	 * 32-bits. This gives 16TB dirty limits max which is hopefully enough.
