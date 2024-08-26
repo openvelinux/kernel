@@ -122,17 +122,25 @@ trip_point_temp_store(struct device *dev, struct device_attribute *attr,
 
 	trip = &tz->trips[trip_id];
 
-	if (temp != trip->temperature) {
-		if (tz->ops.set_trip_temp) {
-			ret = tz->ops.set_trip_temp(tz, trip_id, temp);
-			if (ret)
-				goto unlock;
-		}
+	if (temp == trip->temperature)
+		goto unlock;
 
-		trip->temperature = temp;
-
-		thermal_zone_trip_updated(tz, trip);
+	/* Arrange the condition to avoid integer overflows. */
+	if (temp != THERMAL_TEMP_INVALID &&
+	    temp <= trip->hysteresis + THERMAL_TEMP_INVALID) {
+		ret = -EINVAL;
+		goto unlock;
 	}
+
+	if (tz->ops.set_trip_temp) {
+		ret = tz->ops.set_trip_temp(tz, trip_id, temp);
+		if (ret)
+			goto unlock;
+	}
+
+	trip->temperature = temp;
+
+	thermal_zone_trip_updated(tz, trip);
 
 unlock:
 	mutex_unlock(&tz->lock);
@@ -173,12 +181,30 @@ trip_point_hyst_store(struct device *dev, struct device_attribute *attr,
 
 	trip = &tz->trips[trip_id];
 
-	if (hyst != trip->hysteresis) {
-		trip->hysteresis = hyst;
+	if (hyst == trip->hysteresis)
+		goto unlock;
 
-		thermal_zone_trip_updated(tz, trip);
+	/*
+	 * Allow the hysteresis to be updated when the temperature is invalid
+	 * to allow user space to avoid having to adjust hysteresis after a
+	 * valid temperature has been set, but in that case just change the
+	 * value and do nothing else.
+	 */
+	if (trip->temperature == THERMAL_TEMP_INVALID) {
+		WRITE_ONCE(trip->hysteresis, hyst);
+		goto unlock;
 	}
 
+	if (trip->temperature - hyst <= THERMAL_TEMP_INVALID) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	trip->hysteresis = hyst;
+
+	thermal_zone_trip_updated(tz, trip);
+
+unlock:
 	mutex_unlock(&tz->lock);
 
 	return ret ? ret : count;
