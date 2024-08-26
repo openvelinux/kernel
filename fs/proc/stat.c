@@ -215,7 +215,7 @@ static int show_stat(struct seq_file *p, void *v)
 		steal		= cpustat[CPUTIME_STEAL];
 		guest		= cpustat[CPUTIME_GUEST];
 		guest_nice	= cpustat[CPUTIME_GUEST_NICE];
-		seq_printf(p, "cpu%d", id);
+		seq_printf(p, "cpu%d", override ? id : i);
 		seq_put_decimal_ull(p, " ", nsec_to_clock_t(user));
 		seq_put_decimal_ull(p, " ", nsec_to_clock_t(nice));
 		seq_put_decimal_ull(p, " ", nsec_to_clock_t(system));
