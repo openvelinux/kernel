@@ -89,7 +89,7 @@ bool hugepage_vma_check(struct vm_area_struct *vma,
 	if (transparent_hugepage_flags & (1 << TRANSPARENT_HUGEPAGE_NEVER_DAX))
 		return false;
 
-	if (vma_is_dax(vma))
+	if (vma_is_special_huge(vma))
 		return in_pf;
 
 	/*
