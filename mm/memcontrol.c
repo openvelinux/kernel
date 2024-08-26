@@ -6977,6 +6977,66 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 	return nbytes;
 }
 
+#ifdef CONFIG_CGROUP_WRITEBACK
+static int memory_dirty_thresh_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+	seq_printf(m, "%lu\n", READ_ONCE(memcg->cgwb_domain.dirty_thresh));
+
+	return 0;
+}
+
+static ssize_t memory_dirty_thresh_write(struct kernfs_open_file *of,
+					char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	unsigned long dirty_thresh;
+	int ret;
+
+	buf = strstrip(buf);
+	if (!buf)
+		return -EINVAL;
+
+	ret = kstrtoul(buf, 10, &dirty_thresh);
+	if (ret)
+		return ret;
+
+	WRITE_ONCE(memcg->cgwb_domain.dirty_thresh, dirty_thresh);
+
+	return nbytes;
+}
+
+static int memory_dirty_bg_thresh_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+	seq_printf(m, "%lu\n", READ_ONCE(memcg->cgwb_domain.dirty_bg_thresh));
+
+	return 0;
+}
+
+static ssize_t memory_dirty_bg_thresh_write(struct kernfs_open_file *of,
+					char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	unsigned long dirty_bg_thresh;
+	int ret;
+
+	buf = strstrip(buf);
+	if (!buf)
+		return -EINVAL;
+
+	ret = kstrtoul(buf, 10, &dirty_bg_thresh);
+	if (ret)
+		return ret;
+
+	WRITE_ONCE(memcg->cgwb_domain.dirty_bg_thresh, dirty_bg_thresh);
+
+	return nbytes;
+}
+#endif
+
 static struct cftype memory_files[] = {
 	{
 		.name = "current",
@@ -7057,6 +7117,20 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.file_offset = offsetof(struct mem_cgroup, wmark_low_event),
 		.seq_show = memory_wmark_read,
+	},
+#endif
+#ifdef CONFIG_CGROUP_WRITEBACK
+	{
+		.name = "dirty_thresh",
+		.flags = CFTYPE_NOT_ON_ROOT | CFTYPE_NS_DELEGATABLE,
+		.seq_show = memory_dirty_thresh_show,
+		.write = memory_dirty_thresh_write,
+	},
+	{
+		.name = "dirty_bg_thresh",
+		.flags = CFTYPE_NOT_ON_ROOT | CFTYPE_NS_DELEGATABLE,
+		.seq_show = memory_dirty_bg_thresh_show,
+		.write = memory_dirty_bg_thresh_write,
 	},
 #endif
 	{ }	/* terminate */
