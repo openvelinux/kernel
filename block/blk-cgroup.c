@@ -616,13 +616,6 @@ struct block_device *blkcg_conf_open_bdev(char **inputp)
 		return ERR_PTR(-ENODEV);
 	}
 
-	mutex_lock(&bdev->bd_queue->rq_qos_mutex);
-	if (!disk_live(bdev->bd_disk)) {
-		blkdev_put_no_open(bdev);
-		mutex_unlock(&bdev->bd_queue->rq_qos_mutex);
-		return ERR_PTR(-ENODEV);
-	}
-
 	*inputp = input;
 	return bdev;
 }
@@ -769,11 +762,9 @@ EXPORT_SYMBOL_GPL(blkg_conf_prep);
  */
 void blkg_conf_finish(struct blkg_conf_ctx *ctx)
 	__releases(&ctx->bdev->bd_queue->queue_lock) __releases(rcu)
-	__releases(&ctx->bdev->bd_queue->rq_qos_mutex)
 {
 	spin_unlock_irq(&bdev_get_queue(ctx->bdev)->queue_lock);
 	rcu_read_unlock();
-	mutex_unlock(&ctx->bdev->bd_queue->rq_qos_mutex);
 	blkdev_put_no_open(ctx->bdev);
 }
 EXPORT_SYMBOL_GPL(blkg_conf_finish);

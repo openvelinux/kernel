@@ -296,11 +296,9 @@ void rq_qos_exit(struct request_queue *q)
 {
 	blk_mq_debugfs_unregister_queue_rqos(q);
 
-	mutex_lock(&q->rq_qos_mutex);
 	while (q->rq_qos) {
 		struct rq_qos *rqos = q->rq_qos;
 		q->rq_qos = rqos->next;
 		rqos->ops->exit(rqos);
 	}
-	mutex_unlock(&q->rq_qos_mutex);
 }
