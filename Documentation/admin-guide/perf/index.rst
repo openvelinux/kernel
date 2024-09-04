@@ -15,6 +15,7 @@ Performance monitor support
    qcom_l3_pmu
    arm-ccn
    arm-cmn
+   arm-ni
    xgene-pmu
    arm_dsu_pmu
    thunderx2-pmu
