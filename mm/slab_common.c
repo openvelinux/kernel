@@ -233,7 +233,7 @@ static struct kmem_cache *create_cache(const char *name,
 	s->useroffset = useroffset;
 	s->usersize = usersize;
 #endif
-	err = __kmem_cache_create(s, flags);
+	err = do_kmem_cache_create(s, flags);
 	if (err)
 		goto out_free_cache;
 
@@ -681,7 +681,7 @@ void __init create_boot_cache(struct kmem_cache *s, const char *name,
 	s->usersize = usersize;
 #endif
 
-	err = __kmem_cache_create(s, flags);
+	err = do_kmem_cache_create(s, flags);
 
 	if (err)
 		panic("Creation of kmalloc slab %s size=%u failed. Reason %d\n",
