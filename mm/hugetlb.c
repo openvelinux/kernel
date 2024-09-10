@@ -6969,6 +6969,28 @@ long hugetlb_unreserve_pages(struct inode *inode, long start, long end,
 	return 0;
 }
 
+void hugetlb_folio_list_add(struct folio *folio, struct list_head *list)
+{
+	/*
+	 * hstate's hugepage_activelist is guarded by hugetlb_lock, hence hold
+	 * hugetlb_lock while modifying folio-> lru.
+	 */
+	spin_lock_irq(&hugetlb_lock);
+	list_add(&folio->lru, list);
+	spin_unlock_irq(&hugetlb_lock);
+}
+
+void hugetlb_folio_list_del(struct folio *folio)
+{
+	/*
+	 * hstate's hugepage_activelist is guarded by hugetlb_lock, hence hold
+	 * hugetlb_lock while modifying folio-> lru.
+	 */
+	spin_lock_irq(&hugetlb_lock);
+	list_del(&folio->lru);
+	spin_unlock_irq(&hugetlb_lock);
+}
+
 #ifdef CONFIG_HUGETLB_PMD_PAGE_TABLE_SHARING
 static unsigned long page_table_shareable(struct vm_area_struct *svma,
 				struct vm_area_struct *vma,
