@@ -146,6 +146,8 @@ extern void numa_policy_init(void);
 extern void mpol_rebind_task(struct task_struct *tsk, const nodemask_t *new);
 extern void mpol_rebind_mm(struct mm_struct *mm, nodemask_t *new);
 
+extern int policy_node_nodemask(struct mempolicy *mpol, gfp_t gfp_flags,
+				pgoff_t ilx, nodemask_t **nodemask);
 extern int huge_node(struct vm_area_struct *vma,
 				unsigned long addr, gfp_t gfp_flags,
 				struct mempolicy **mpol, nodemask_t **nodemask);
@@ -258,6 +260,13 @@ static inline void mpol_rebind_task(struct task_struct *tsk,
 
 static inline void mpol_rebind_mm(struct mm_struct *mm, nodemask_t *new)
 {
+}
+
+static inline int policy_node_nodemask(struct mempolicy *mpol, gfp_t gfp_flags,
+				       pgoff_t ilx, nodemask_t **nodemask)
+{
+	*nodemask = NULL;
+	return 0;
 }
 
 static inline int huge_node(struct vm_area_struct *vma,
