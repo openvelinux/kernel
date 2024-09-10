@@ -1530,7 +1530,7 @@ hugetlbfs_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (ctx->max_hpages != -1 || ctx->min_hpages != -1) {
 		sbinfo->spool = hugepage_new_subpool(ctx->hstate,
 						     ctx->max_hpages,
-						     ctx->min_hpages);
+						     ctx->min_hpages, true);
 		if (!sbinfo->spool)
 			goto out_free;
 	}

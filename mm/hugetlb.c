@@ -91,6 +91,7 @@ static int num_fault_mutexes;
 struct mutex *hugetlb_fault_mutex_table ____cacheline_aligned_in_smp;
 
 /* Forward declaration */
+static int __hugetlb_acct_memory(struct hstate *h, long delta, bool use_surplus);
 static int hugetlb_acct_memory(struct hstate *h, long delta);
 static void hugetlb_vma_lock_free(struct vm_area_struct *vma);
 static void hugetlb_vma_lock_alloc(struct vm_area_struct *vma);
@@ -128,7 +129,7 @@ static inline void unlock_or_release_subpool(struct hugepage_subpool *spool,
 }
 
 struct hugepage_subpool *hugepage_new_subpool(struct hstate *h, long max_hpages,
-						long min_hpages)
+					      long min_hpages, bool use_surplus)
 {
 	struct hugepage_subpool *spool;
 
@@ -142,7 +143,8 @@ struct hugepage_subpool *hugepage_new_subpool(struct hstate *h, long max_hpages,
 	spool->hstate = h;
 	spool->min_hpages = min_hpages;
 
-	if (min_hpages != -1 && hugetlb_acct_memory(h, min_hpages)) {
+	if (min_hpages != -1 &&
+	    __hugetlb_acct_memory(h, min_hpages, use_surplus)) {
 		kfree(spool);
 		return NULL;
 	}
@@ -2422,33 +2424,62 @@ static nodemask_t *policy_mbind_nodemask(gfp_t gfp)
 	return NULL;
 }
 
-/*
- * Increase the hugetlb pool such that it can accommodate a reservation
- * of size 'delta'.
+/**
+ * hugetlb_hstate_reserve_pages() - Reserve @requested number of hugetlb pages
+ * from hstate @h.
+ *
+ * @h: the hstate to reserve from.
+ * @requested: number of hugetlb pages to reserve.
+ *
+ * If there are insufficient available hugetlb pages, no reservations are made.
+ *
+ * Return: the number of surplus pages required to meet the @requested number of
+ *         hugetlb pages.
  */
-static int gather_surplus_pages(struct hstate *h, long delta)
+static int hugetlb_hstate_reserve_pages(struct hstate *h, long requested)
+	__must_hold(&hugetlb_lock)
+{
+	long needed;
+
+	needed = (h->resv_huge_pages + requested) - h->free_huge_pages;
+	if (needed <= 0) {
+		h->resv_huge_pages += requested;
+		return 0;
+	}
+
+	return needed;
+}
+
+/**
+ * gather_surplus_pages() - Increase the hugetlb pool such that it can
+ * accommodate a reservation of size @requested.
+ *
+ * @h: the hstate in concern.
+ * @requested: The requested number of hugetlb pages.
+ * @needed: The number of hugetlb pages the pool needs to be increased by, based
+ *          on current number of reservations and free hugetlb pages.
+ *
+ * Return: 0 if successful or negative error otherwise.
+ */
+static int gather_surplus_pages(struct hstate *h, long requested, long needed)
 	__must_hold(&hugetlb_lock)
 {
 	LIST_HEAD(surplus_list);
 	struct folio *folio, *tmp;
 	int ret;
 	long i;
-	long needed, allocated;
+	long allocated;
 	bool alloc_ok = true;
 	nodemask_t *mbind_nodemask, alloc_nodemask;
+
+	if (needed == 0)
+		return 0;
 
 	mbind_nodemask = policy_mbind_nodemask(htlb_alloc_mask(h));
 	if (mbind_nodemask)
 		nodes_and(alloc_nodemask, *mbind_nodemask, cpuset_current_mems_allowed);
 	else
 		alloc_nodemask = cpuset_current_mems_allowed;
-
-	lockdep_assert_held(&hugetlb_lock);
-	needed = (h->resv_huge_pages + delta) - h->free_huge_pages;
-	if (needed <= 0) {
-		h->resv_huge_pages += delta;
-		return 0;
-	}
 
 	allocated = 0;
 
@@ -2478,7 +2509,7 @@ retry:
 	 * because either resv_huge_pages or free_huge_pages may have changed.
 	 */
 	spin_lock_irq(&hugetlb_lock);
-	needed = (h->resv_huge_pages + delta) -
+	needed = (h->resv_huge_pages + requested) -
 			(h->free_huge_pages + allocated);
 	if (needed > 0) {
 		if (alloc_ok)
@@ -2499,7 +2530,7 @@ retry:
 	 * before they are reserved.
 	 */
 	needed += allocated;
-	h->resv_huge_pages += delta;
+	h->resv_huge_pages += requested;
 	ret = 0;
 
 	/* Free the needed pages to the hugetlb pool */
@@ -4759,7 +4790,7 @@ unsigned long hugetlb_total_pages(void)
 	return nr_total_pages;
 }
 
-static int hugetlb_acct_memory(struct hstate *h, long delta)
+static int __hugetlb_acct_memory(struct hstate *h, long delta, bool use_surplus)
 {
 	int ret = -ENOMEM;
 
@@ -4791,7 +4822,12 @@ static int hugetlb_acct_memory(struct hstate *h, long delta)
 	 * above.
 	 */
 	if (delta > 0) {
-		if (gather_surplus_pages(h, delta) < 0)
+		long needed = hugetlb_hstate_reserve_pages(h, delta);
+
+		if (!use_surplus && needed > 0)
+			goto out;
+
+		if (gather_surplus_pages(h, delta, needed) < 0)
 			goto out;
 
 		if (delta > allowed_mems_nr(h)) {
@@ -4807,6 +4843,11 @@ static int hugetlb_acct_memory(struct hstate *h, long delta)
 out:
 	spin_unlock_irq(&hugetlb_lock);
 	return ret;
+}
+
+static int hugetlb_acct_memory(struct hstate *h, long delta)
+{
+	return __hugetlb_acct_memory(h, delta, true);
 }
 
 static void hugetlb_vm_op_open(struct vm_area_struct *vma)
