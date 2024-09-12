@@ -5625,6 +5625,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 		WRITE_ONCE(memcg->swappiness, mem_cgroup_swappiness(parent));
 		WRITE_ONCE(memcg->oom_kill_disable, READ_ONCE(parent->oom_kill_disable));
 
+		memcg->oom_priority = READ_ONCE(parent->oom_priority);
 		page_counter_init(&memcg->memory, &parent->memory);
 		page_counter_init(&memcg->swap, &parent->swap);
 		page_counter_init(&memcg->kmem, &parent->kmem);
@@ -7098,7 +7099,6 @@ static int memory_dirty_bg_thresh_show(struct seq_file *m, void *v)
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
 
 	seq_printf(m, "%lu\n", READ_ONCE(memcg->cgwb_domain.dirty_bg_thresh));
-
 	return 0;
 }
 
@@ -7122,6 +7122,36 @@ static ssize_t memory_dirty_bg_thresh_write(struct kernfs_open_file *of,
 	return nbytes;
 }
 #endif
+
+static int memory_oom_priority_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+	seq_printf(m, "%d\n", READ_ONCE(memcg->oom_priority));
+
+	return 0;
+}
+
+static ssize_t memory_oom_priority_write(struct kernfs_open_file *of,
+				      char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	int ret, priority;
+
+	buf = strstrip(buf);
+	ret = kstrtoint(buf, 0, &priority);
+	if (ret)
+		return ret;
+
+	if ((priority != OOM_PRIORITY_DEFAULT) &&
+	    (priority != OOM_PRIORITY_LOW) &&
+	    (priority != OOM_PRIORITY_HIGH))
+		return -EINVAL;
+
+	WRITE_ONCE(memcg->oom_priority, priority);
+
+	return nbytes;
+}
 
 static struct cftype memory_files[] = {
 	{
@@ -7190,6 +7220,12 @@ static struct cftype memory_files[] = {
 		.name = "reclaim",
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
+	},
+	{
+		.name = "oom.priority",
+		.flags = CFTYPE_NOT_ON_ROOT | CFTYPE_NS_DELEGATABLE,
+		.seq_show = memory_oom_priority_show,
+		.write = memory_oom_priority_write,
 	},
 #ifdef CONFIG_MEMCG_BGD_RECLAIM
 	{
