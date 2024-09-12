@@ -42,6 +42,18 @@ enum memcg_stat_item {
 	MEMCG_NR_STAT,
 };
 
+/*
+ * When memory is insufficient, there are three behaviors to OOM:
+ * OOM_PRIORITY_LOW:  task will be selected first.
+ * OOM_PRIORITY_HIGH: task Will skip the memory reclaim retry.
+ * OOM_PRIORITY_DEFAULT: default behavior.
+ */
+enum oom_priority {
+	OOM_PRIORITY_DEFAULT,
+	OOM_PRIORITY_LOW,
+	OOM_PRIORITY_HIGH,
+};
+
 enum memcg_memory_event {
 	MEMCG_LOW,
 	MEMCG_HIGH,
@@ -269,6 +281,9 @@ struct mem_cgroup {
 	/* protected by memcg_oom_lock */
 	bool		oom_lock;
 	int		under_oom;
+
+	/* see enum oom_priority */
+	enum oom_priority oom_priority;
 
 	int	swappiness;
 	/* OOM-Killer disable */
@@ -1168,6 +1183,23 @@ static inline void memcg_memory_event_mm(struct mm_struct *mm,
 	rcu_read_unlock();
 }
 
+static inline enum oom_priority get_task_oom_priority(struct task_struct *task)
+{
+	struct mem_cgroup *memcg;
+	enum oom_priority priority = OOM_PRIORITY_DEFAULT;
+
+	if (mem_cgroup_disabled())
+		return priority;
+
+	rcu_read_lock();
+	memcg = mem_cgroup_from_task(task);
+	if (memcg)
+		priority = READ_ONCE(memcg->oom_priority);
+	rcu_read_unlock();
+
+	return priority;
+}
+
 void split_page_memcg(struct page *head, unsigned int nr);
 
 unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
@@ -1361,6 +1393,11 @@ static inline int mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 static inline unsigned short mem_cgroup_id(struct mem_cgroup *memcg)
 {
 	return 0;
+}
+
+static inline enum oom_priority get_task_oom_priority(struct task_struct *task)
+{
+	return OOM_PRIORITY_DEFAULT;
 }
 
 static inline struct mem_cgroup *mem_cgroup_from_id(unsigned short id)
