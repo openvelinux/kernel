@@ -4463,6 +4463,9 @@ static bool low_priority_memcg_oom(gfp_t gfp_mask, unsigned int order,
 	if (mem_cgroup_disabled())
 		return ret;
 
+	if (!memcg_oom_priority_enabled())
+		return ret;
+
 	/* The OOM killer will not help higher order allocs */
 	if (order > PAGE_ALLOC_COSTLY_ORDER)
 		return ret;
@@ -4934,7 +4937,8 @@ gfp_to_alloc_flags(gfp_t gfp_mask)
 {
 	unsigned int alloc_flags = ALLOC_WMARK_MIN | ALLOC_CPUSET;
 
-	if (get_task_oom_priority(current) == OOM_PRIORITY_LOW)
+	if (memcg_oom_priority_enabled() &&
+	   (get_task_oom_priority(current) == OOM_PRIORITY_LOW))
 		alloc_flags = ALLOC_WMARK_LP_MIN | ALLOC_CPUSET;
 
 	/*
@@ -5066,6 +5070,9 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
 		unsigned long reclaimable;
 		unsigned long min_wmark = min_wmark_pages(zone);
 		bool wmark;
+
+		if (memcg_oom_priority_enabled())
+			min_wmark = wmark_pages(zone, alloc_flags & ALLOC_WMARK_MASK);
 
 		available = reclaimable = zone_reclaimable_pages(zone);
 		available += zone_page_state_snapshot(zone, NR_FREE_PAGES);
