@@ -52,6 +52,9 @@ struct oom_control {
 
 	/* Used to print the constraint info. */
 	enum oom_constraint constraint;
+
+	/* Used to identify the low priority OOM. */
+	const bool priority_oom;
 };
 
 extern struct mutex oom_lock;
