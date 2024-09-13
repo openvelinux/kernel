@@ -4446,6 +4446,55 @@ __alloc_pages_cpuset_fallback(gfp_t gfp_mask, unsigned int order,
 	return page;
 }
 
+static bool low_priority_memcg_oom(gfp_t gfp_mask, unsigned int order,
+			     const struct alloc_context *ac)
+{
+	bool ret = false;
+
+	struct oom_control oc = {
+		.zonelist = ac->zonelist,
+		.nodemask = ac->nodemask,
+		.memcg = NULL,
+		.gfp_mask = gfp_mask,
+		.order = order,
+		.priority_oom = true,
+	};
+
+	if (mem_cgroup_disabled())
+		return ret;
+
+	/* The OOM killer will not help higher order allocs */
+	if (order > PAGE_ALLOC_COSTLY_ORDER)
+		return ret;
+
+	/*
+	 * Acquire the oom lock. If that fails, someone else is
+	 * making progress for us.
+	 */
+	if (!mutex_trylock(&oom_lock)) {
+		if (get_task_oom_priority(current) == OOM_PRIORITY_LOW) {
+			/* Wait for the previous OOM to complete before returning,
+			 * and directly attempt to get pages in the next call
+			 * __alloc_pages_direct_reclaim() if current is low priority.
+			 */
+			if (!mutex_lock_interruptible(&oom_lock))
+				goto out;
+		} else
+			schedule_timeout_uninterruptible(1);
+		return ret;
+	}
+
+	if (out_of_memory(&oc)) {
+		ret = true;
+
+		/* Hold the lock and wait for memory to be ready, prevent over kill. */
+		schedule_timeout_uninterruptible(1);
+	}
+out:
+	mutex_unlock(&oom_lock);
+	return ret;
+}
+
 static inline struct page *
 __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 	const struct alloc_context *ac, unsigned long *did_some_progress)
@@ -4456,6 +4505,7 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 		.memcg = NULL,
 		.gfp_mask = gfp_mask,
 		.order = order,
+		.priority_oom = false,
 	};
 	struct page *page;
 
@@ -4834,6 +4884,12 @@ __alloc_pages_direct_reclaim(gfp_t gfp_mask, unsigned int order,
 {
 	struct page *page = NULL;
 	bool drained = false;
+
+	if (get_task_oom_priority(current) == OOM_PRIORITY_LOW) {
+		drained = true;
+		*did_some_progress = 0;
+		goto retry;
+	}
 
 	*did_some_progress = __perform_reclaim(gfp_mask, order, ac);
 	if (unlikely(!(*did_some_progress)))
@@ -5242,6 +5298,11 @@ retry:
 	/* Avoid recursion of direct reclaim */
 	if (current->flags & PF_MEMALLOC)
 		goto nopage;
+
+	/* Try the low priority memcg first. */
+	if ((get_task_oom_priority(current) != OOM_PRIORITY_DEFAULT) &&
+		low_priority_memcg_oom(gfp_mask, order, ac))
+		goto restart;
 
 	/* Try direct reclaim and then allocating */
 	page = __alloc_pages_direct_reclaim(gfp_mask, order, alloc_flags, ac,
