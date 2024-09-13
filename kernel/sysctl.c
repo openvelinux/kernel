@@ -3029,6 +3029,15 @@ static struct ctl_table vm_table[] = {
 		.extra2		= SYSCTL_ONE_HUNDRED,
 	},
 #endif
+#ifdef CONFIG_MEMCG
+	{
+		.procname	= "memcg_oom_priority_enable",
+		.data		= &memcg_oom_priority_enable,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dobool,
+	},
+#endif
 	{
 		.procname	= "percpu_pagelist_high_fraction",
 		.data		= &percpu_pagelist_high_fraction,
