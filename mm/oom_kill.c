@@ -73,6 +73,11 @@ static inline bool is_memcg_oom(struct oom_control *oc)
 	return oc->memcg != NULL;
 }
 
+static inline bool is_priority_oom(struct oom_control *oc)
+{
+	return oc->priority_oom;
+}
+
 #ifdef CONFIG_NUMA
 /**
  * oom_cpuset_eligible() - check task eligibility for kill
@@ -330,6 +335,16 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 	if (oom_unkillable_task(task))
 		goto next;
 
+	/*
+	 * When the current task is low priority, only low priority tasks are
+	 * selected.  When the current task is high priority, it indicates that
+	 * the global min watermark is reached, and all tasks can be selected.
+	 */
+	if (is_priority_oom(oc) &&
+	   (get_task_oom_priority(current) == OOM_PRIORITY_LOW) &&
+	   (get_task_oom_priority(task) != OOM_PRIORITY_LOW))
+		goto next;
+
 	/* p may not have freeable memory in nodemask */
 	if (!is_memcg_oom(oc) && !oom_cpuset_eligible(task, oc))
 		goto next;
@@ -461,7 +476,16 @@ static void dump_tasks(struct oom_control *oc)
 
 	if (is_memcg_oom(oc))
 		mem_cgroup_scan_tasks(oc->memcg, dump_task, oc);
-	else {
+	else if (is_priority_oom(oc) && oc->chosen &&
+			 oc->chosen != (void *)-1UL) {
+		struct mem_cgroup *memcg;
+
+		memcg = get_mem_cgroup_from_mm(oc->chosen->mm);
+		if (memcg && !mem_cgroup_is_root(memcg)) {
+			mem_cgroup_scan_tasks(memcg, dump_task, oc);
+			mem_cgroup_put(memcg);
+		}
+	} else {
 		struct task_struct *p;
 
 		rcu_read_lock();
@@ -1075,6 +1099,8 @@ static void check_panic_on_oom(struct oom_control *oc)
 	/* Do not panic for oom kills triggered by sysrq */
 	if (is_sysrq_oom(oc))
 		return;
+	if (is_priority_oom(oc))
+		return;
 	dump_header(oc, NULL);
 	panic("Out of memory: %s panic_on_oom is enabled\n",
 		sysctl_panic_on_oom == 2 ? "compulsory" : "system-wide");
@@ -1159,7 +1185,7 @@ bool out_of_memory(struct oom_control *oc)
 
 	select_bad_process(oc);
 	/* Found nothing?!?! */
-	if (!oc->chosen) {
+	if (!oc->chosen && !is_priority_oom(oc)) {
 		dump_header(oc, NULL);
 		pr_warn("Out of memory and no killable processes...\n");
 		/*
@@ -1171,8 +1197,11 @@ bool out_of_memory(struct oom_control *oc)
 			panic("System is deadlocked on memory\n");
 	}
 	if (oc->chosen && oc->chosen != (void *)-1UL)
-		oom_kill_process(oc, !is_memcg_oom(oc) ? "Out of memory" :
-				 "Memory cgroup out of memory");
+		oom_kill_process(oc, !is_memcg_oom(oc) ?
+				(is_priority_oom(oc) ?
+				  "Low priority memory cgroup out of memory"
+				: "Out of memory")
+				: "Memory cgroup out of memory");
 	return !!oc->chosen;
 }
 
