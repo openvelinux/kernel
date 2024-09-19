@@ -807,6 +807,19 @@ void pagecache_isize_extended(struct inode *inode, loff_t from, loff_t to)
 	 */
 	if (page_mkclean(page))
 		set_page_dirty(page);
+
+	/*
+	 * The post-eof range of the page must be zeroed before it is exposed
+	 * to the file. Writeback normally does this, but since i_size has been
+	 * increased we handle it here.
+	 */
+	if (PageDirty(page)) {
+		unsigned int offset, end;
+
+		offset = from - page_offset(page);
+		end = min_t(unsigned int, to - page_offset(page), PAGE_SIZE);
+		zero_user_segments(page, offset, end, 0, 0);
+	}
 	unlock_page(page);
 	put_page(page);
 }
