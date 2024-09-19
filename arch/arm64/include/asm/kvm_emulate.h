@@ -116,6 +116,9 @@ static inline void vcpu_clear_wfx_traps(struct kvm_vcpu *vcpu)
 		vcpu->arch.hcr_el2 &= ~HCR_TWI;
 	else
 		vcpu->arch.hcr_el2 |= HCR_TWI;
+
+	if (force_wfi_trap)
+		vcpu->arch.hcr_el2 |= HCR_TWI;
 }
 
 static inline void vcpu_set_wfx_traps(struct kvm_vcpu *vcpu)
