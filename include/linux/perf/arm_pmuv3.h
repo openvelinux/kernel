@@ -235,8 +235,8 @@
  */
 #define ARMV8_PMU_EVTYPE_MASK   0xc800ffff      /* Mask for writable bits */
 #define ARMV8_PMU_EVTYPE_EVENT	GENMASK(15, 0)	/* Mask for EVENT bits */
-#define ARMV8_PMU_EVTYPE_TH	GENMASK(43, 32)
-#define ARMV8_PMU_EVTYPE_TC	GENMASK(63, 61)
+#define ARMV8_PMU_EVTYPE_TH	GENMASK_ULL(43, 32) /* arm64 only */
+#define ARMV8_PMU_EVTYPE_TC	GENMASK_ULL(63, 61) /* arm64 only */
 
 /*
  * Event filters for PMUv3
