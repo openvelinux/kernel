@@ -64,6 +64,48 @@ bool is_kvm_arm_initialised(void)
 	return kvm_arm_initialised;
 }
 
+static int vcpu_req_reload_wfi_traps(const char *val, const struct kernel_param *kp);
+
+static const struct kernel_param_ops force_wfi_trap_ops = {
+	.set = vcpu_req_reload_wfi_traps,
+	.get = param_get_bool,
+};
+
+bool force_wfi_trap;
+module_param_cb(force_wfi_trap, &force_wfi_trap_ops, &force_wfi_trap, 0644);
+
+static int vcpu_req_reload_wfi_traps(const char *val, const struct kernel_param *kp)
+{
+	struct kvm *kvm;
+	bool oldvalue;
+	int err;
+
+	oldvalue = force_wfi_trap;
+	err = param_set_bool(val, kp);
+	if (err)
+		return err;
+
+	if (oldvalue == force_wfi_trap)
+		return err;
+
+	/*
+	 * If set the force_wfi_trap from 1 to 0, no need to kick vcpus here.
+	 * The HCR_TWI flag will be cleared in kvm_arch_vcpu_load().
+	 */
+	if (force_wfi_trap == 0)
+		return 0;
+
+	/*
+	 * We need to kick vcpus out of guest mode here to reload
+	 * wfx trapping config when re-enter guest mode.
+	 */
+	mutex_lock(&kvm_lock);
+	list_for_each_entry(kvm, &vm_list, vm_list)
+		kvm_make_all_cpus_request(kvm, KVM_REQ_RELOAD_WFI_TRAPS);
+	mutex_unlock(&kvm_lock);
+	return err;
+}
+
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 {
 	return kvm_vcpu_exiting_guest_mode(vcpu) == IN_GUEST_MODE;
@@ -815,6 +857,13 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 
 		if (kvm_dirty_ring_check_request(vcpu))
 			return 0;
+
+		if (kvm_check_request(KVM_REQ_RELOAD_WFI_TRAPS, vcpu)) {
+			if (single_task_running())
+				vcpu_clear_wfx_traps(vcpu);
+			else
+				vcpu_set_wfx_traps(vcpu);
+		}
 	}
 
 	return 1;
