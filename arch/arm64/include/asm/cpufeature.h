@@ -858,6 +858,15 @@ static inline bool cpus_support_mpam(void)
 		cpus_have_final_cap(ARM64_MPAM);
 }
 
+#ifdef CONFIG_ARM64_MPAM
+bool mpam_detect_is_enabled(void);
+#else
+static inline bool mpam_detect_is_enabled(void)
+{
+	return false;
+}
+#endif
+
 static inline bool system_supports_lpa2(void)
 {
 	return cpus_have_final_cap(ARM64_HAS_LPA2);
