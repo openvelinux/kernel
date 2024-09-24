@@ -980,8 +980,9 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 		sve_init_vq_map();
 	}
 
-	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
-	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1))
+	if (mpam_detect_is_enabled() &&
+	   (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
+	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1)))
 		init_cpu_ftr_reg(SYS_MPAMIDR_EL1, info->reg_mpamidr);
 
 	if (id_aa64pfr1_mte(info->reg_id_aa64pfr1))
@@ -1220,8 +1221,9 @@ void update_cpu_features(int cpu,
 			sve_update_vq_map();
 	}
 
-	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
-	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1)) {
+	if (mpam_detect_is_enabled() &&
+	   (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
+	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1))) {
 		taint |= check_update_ftr_reg(SYS_MPAMIDR_EL1, cpu,
 					info->reg_mpamidr, boot->reg_mpamidr);
 	}
@@ -1994,6 +1996,19 @@ cpucap_panic_on_conflict(const struct arm64_cpu_capabilities *cap)
 	return !!(cap->type & ARM64_CPUCAP_PANIC_ON_CONFLICT);
 }
 
+static bool __read_mostly mpam_force_enabled;
+bool mpam_detect_is_enabled(void)
+{
+	return mpam_force_enabled;
+}
+
+static int __init mpam_setup(char *str)
+{
+	mpam_force_enabled = true;
+	return 0;
+}
+early_param("arm64.mpam", mpam_setup);
+
 static bool __maybe_unused
 test_has_mpam(const struct arm64_cpu_capabilities *entry, int scope)
 {
@@ -2004,6 +2019,12 @@ test_has_mpam(const struct arm64_cpu_capabilities *entry, int scope)
 	    !id_aa64pfr1_mpamfrac(pfr1))
 		return false;
 
+	if (is_kdump_kernel())
+		return false;
+
+	if (!mpam_detect_is_enabled())
+		return false;
+
 	/* Check firmware actually enabled MPAM on this cpu. */
 	return (read_sysreg_s(SYS_MPAM1_EL1) & MPAM_SYSREG_EN);
 }
@@ -2011,6 +2032,16 @@ test_has_mpam(const struct arm64_cpu_capabilities *entry, int scope)
 static void __maybe_unused
 cpu_enable_mpam(const struct arm64_cpu_capabilities *entry)
 {
+	u64 idr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
+
+	/*
+	 * Initialise MPAM EL2 registers and disable EL2 traps.
+	 */
+	write_sysreg_s(0, SYS_MPAM2_EL2);
+
+	if (idr & MPAMIDR_HAS_HCR)
+		write_sysreg_s(0, SYS_MPAMHCR_EL2);
+
 	/*
 	 * Access by the kernel (at EL1) should use the reserved PARTID
 	 * which is configured unrestricted. This avoids priority-inversion
