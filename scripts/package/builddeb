@@ -241,29 +241,54 @@ fi
 #cpupower
 create_pkg_linux_cpupower() {
 	rm $cpupower_dir -rf && mkdir $cpupower_dir
-	$MAKE -C $srctree/tools/power/cpupower
-	mkdir -p $cpupower_dir/usr/sbin
-	cp $srctree/tools/power/cpupower/cpupower $cpupower_dir/usr/sbin/
+	$MAKE -C $srctree/tools/power/cpupower DESTDIR=$(pwd)/$cpupower_dir prefix=/usr all install-tools install-man install-gmo install-lib
+	mkdir -p $cpupower_dir/usr/share/man/man1
+	for i in `ls $cpupower_dir/usr/man/man1/`
+	do
+		gzip -c $cpupower_dir/usr/man/man1/$i > $cpupower_dir/usr/share/man/man1/$i.gz;
+	done
+	rm -rf $cpupower_dir/usr/man
+
+	if [ "$ARCH" = "x86" ]; then
+		mkdir -p $cpupower_dir/usr/sbin
+		$MAKE -C $srctree/tools/power/x86/turbostat DESTDIR=$(pwd)/$cpupower_dir prefix=/usr install
+		$MAKE -C $srctree/tools/power/x86/x86_energy_perf_policy DESTDIR=$(pwd)/$cpupower_dir prefix=/usr install
+		mv $cpupower_dir/usr/bin/turbostat $cpupower_dir/usr/sbin/
+		mv $cpupower_dir/usr/bin/x86_energy_perf_policy $cpupower_dir/usr/sbin/
+
+		for i in `ls $cpupower_dir/usr/share/man/man8/`
+		do
+			gzip -c $cpupower_dir/usr/share/man/man8/$i > $cpupower_dir/usr/share/man/man8/$i.gz;
+			rm -rf $cpupower_dir/usr/share/man/man8/$i;
+		done
+
+		dpkg-shlibdeps --ignore-missing-info $cpupower_dir/usr/bin/* $cpupower_dir/usr/sbin/* -l$cpupower_dir/usr/lib/*
+	else
+		dpkg-shlibdeps --ignore-missing-info $cpupower_dir/usr/bin/* -l$cpupower_dir/usr/lib/*
+	fi
+
+	rm -rf $cpupower_dir/usr/lib $cpupower_dir/usr/include
+
 	create_package "$cpupower_pkgname" "$cpupower_dir"
 }
 
 #libcpupower
 create_pkg_libcpupower() {
 	rm $cpupower_dir -rf && mkdir $cpupower_dir
-	$MAKE -C $srctree/tools/power/cpupower
 
 	case "$ARCH" in
 	*"x86"*)
-		libdir="lib/x86_64"
-	;;
+		libdir="x86_64";;
 	*)
-		libdir="lib/aarch64"
-	;;
+		libdir="aarch64";;
 	esac
+	$MAKE -C $srctree/tools/power/cpupower DESTDIR=$(pwd)/$cpupower_dir prefix=/usr install-lib
+	rm -rf $(pwd)/$cpupower_dir/usr/include
+	mkdir -p $(pwd)/$cpupower_dir/usr/$libdir-linux-gnu
+	mv $(pwd)/$cpupower_dir/usr/lib/* $(pwd)/$cpupower_dir/usr/$libdir-linux-gnu/
+	mv $(pwd)/$cpupower_dir/usr/$libdir-linux-gnu $(pwd)/$cpupower_dir/usr/lib/
+	dpkg-shlibdeps --ignore-missing-info $(pwd)/$cpupower_dir/usr/lib/$libdir-linux-gnu/*
 
-	mkdir -p $cpupower_dir/usr/$libdir-linux-gnu
-	cp -d $srctree/tools/power/cpupower/*.so $cpupower_dir/usr/$libdir-linux-gnu
-	cp -d $srctree/tools/power/cpupower/*.so.* $cpupower_dir/usr/$libdir-linux-gnu
 	create_package "$libcpupower1_pkgname" "$cpupower_dir"
 }
 
