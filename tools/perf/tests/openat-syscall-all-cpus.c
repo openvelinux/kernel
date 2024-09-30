@@ -65,15 +65,15 @@ int test__openat_syscall_event_on_all_cpus(struct test *test __maybe_unused, int
 		 * without CPU_ALLOC. 1024 cpus in 2010 still seems
 		 * a reasonable upper limit tho :-)
 		 */
-		if (cpus->map[cpu] >= CPU_SETSIZE) {
-			pr_debug("Ignoring CPU %d\n", cpus->map[cpu]);
+		if (cpus->map[cpu].cpu >= CPU_SETSIZE) {
+			pr_debug("Ignoring CPU %d\n", cpus->map[cpu].cpu);
 			continue;
 		}
 
-		CPU_SET(cpus->map[cpu], &cpu_set);
+		CPU_SET(cpus->map[cpu].cpu, &cpu_set);
 		if (sched_setaffinity(0, sizeof(cpu_set), &cpu_set) < 0) {
 			pr_debug("sched_setaffinity() failed on CPU %d: %s ",
-				 cpus->map[cpu],
+				 cpus->map[cpu].cpu,
 				 str_error_r(errno, sbuf, sizeof(sbuf)));
 			goto out_close_fd;
 		}
@@ -81,7 +81,7 @@ int test__openat_syscall_event_on_all_cpus(struct test *test __maybe_unused, int
 			fd = openat(0, "/etc/passwd", O_RDONLY);
 			close(fd);
 		}
-		CPU_CLR(cpus->map[cpu], &cpu_set);
+		CPU_CLR(cpus->map[cpu].cpu, &cpu_set);
 	}
 
 	/*
@@ -99,7 +99,7 @@ int test__openat_syscall_event_on_all_cpus(struct test *test __maybe_unused, int
 	for (cpu = 0; cpu < cpus->nr; ++cpu) {
 		unsigned int expected;
 
-		if (cpus->map[cpu] >= CPU_SETSIZE)
+		if (cpus->map[cpu].cpu >= CPU_SETSIZE)
 			continue;
 
 		if (evsel__read_on_cpu(evsel, cpu, 0) < 0) {
@@ -111,7 +111,7 @@ int test__openat_syscall_event_on_all_cpus(struct test *test __maybe_unused, int
 		expected = nr_openat_calls + cpu;
 		if (perf_counts(evsel->counts, cpu, 0)->val != expected) {
 			pr_debug("evsel__read_on_cpu: expected to intercept %d calls on cpu %d, got %" PRIu64 "\n",
-				 expected, cpus->map[cpu], perf_counts(evsel->counts, cpu, 0)->val);
+				 expected, cpus->map[cpu].cpu, perf_counts(evsel->counts, cpu, 0)->val);
 			err = -1;
 		}
 	}

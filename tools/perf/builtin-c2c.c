@@ -2058,12 +2058,12 @@ static int setup_nodes(struct perf_session *session)
 			continue;
 
 		for (cpu = 0; cpu < map->nr; cpu++) {
-			set_bit(map->map[cpu], set);
+			set_bit(map->map[cpu].cpu, set);
 
-			if (WARN_ONCE(cpu2node[map->map[cpu]] != -1, "node/cpu topology bug"))
+			if (WARN_ONCE(cpu2node[map->map[cpu].cpu] != -1, "node/cpu topology bug"))
 				return -EINVAL;
 
-			cpu2node[map->map[cpu]] = node;
+			cpu2node[map->map[cpu].cpu] = node;
 		}
 	}
 

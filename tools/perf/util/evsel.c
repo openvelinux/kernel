@@ -2018,9 +2018,9 @@ retry_open:
 			test_attr__ready();
 
 			pr_debug2_peo("sys_perf_event_open: pid %d  cpu %d  group_fd %d  flags %#lx",
-				pid, cpus->map[cpu], group_fd, evsel->open_flags);
+				pid, cpus->map[cpu].cpu, group_fd, evsel->open_flags);
 
-			fd = sys_perf_event_open(&evsel->core.attr, pid, cpus->map[cpu],
+			fd = sys_perf_event_open(&evsel->core.attr, pid, cpus->map[cpu].cpu,
 						group_fd, evsel->open_flags);
 
 			FD(evsel, cpu, thread) = fd;
@@ -2036,7 +2036,7 @@ retry_open:
 			bpf_counter__install_pe(evsel, cpu, fd);
 
 			if (unlikely(test_attr__enabled)) {
-				test_attr__open(&evsel->core.attr, pid, cpus->map[cpu],
+				test_attr__open(&evsel->core.attr, pid, cpus->map[cpu].cpu,
 						fd, group_fd, evsel->open_flags);
 			}
 

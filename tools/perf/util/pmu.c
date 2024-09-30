@@ -1951,7 +1951,7 @@ int perf_pmu__cpus_match(struct perf_pmu *pmu, struct perf_cpu_map *cpus,
 	for (int i = 0; i < cpus->nr; i++) {
 		int cpu;
 
-		cpu = perf_cpu_map__idx(pmu_cpus, cpus->map[i]);
+		cpu = perf_cpu_map__idx(pmu_cpus, cpus->map[i].cpu);
 		if (cpu == -1)
 			unmatched_cpus->map[unmatched_nr++] = cpus->map[i];
 		else

@@ -16,7 +16,7 @@ struct perf_cpu_map *perf_cpu_map__dummy_new(void)
 
 	if (cpus != NULL) {
 		cpus->nr = 1;
-		cpus->map[0] = -1;
+		cpus->map[0].cpu = -1;
 		refcount_set(&cpus->refcnt, 1);
 	}
 
@@ -59,7 +59,7 @@ static struct perf_cpu_map *cpu_map__default_new(void)
 		int i;
 
 		for (i = 0; i < nr_cpus; ++i)
-			cpus->map[i] = i;
+			cpus->map[i].cpu = i;
 
 		cpus->nr = nr_cpus;
 		refcount_set(&cpus->refcnt, 1);
@@ -90,7 +90,7 @@ static struct perf_cpu_map *cpu_map__trim_new(int nr_cpus, int *tmp_cpus)
 		/* Remove dups */
 		j = 0;
 		for (i = 0; i < nr_cpus; i++) {
-			if (i == 0 || cpus->map[i] != cpus->map[i - 1])
+			if (i == 0 || cpus->map[i].cpu != cpus->map[i - 1].cpu)
 				cpus->map[j++] = cpus->map[i];
 		}
 		cpus->nr = j;
@@ -253,7 +253,7 @@ out:
 int perf_cpu_map__cpu(const struct perf_cpu_map *cpus, int idx)
 {
 	if (cpus && idx < cpus->nr)
-		return cpus->map[idx];
+		return cpus->map[idx].cpu;
 
 	return -1;
 }
@@ -265,7 +265,7 @@ int perf_cpu_map__nr(const struct perf_cpu_map *cpus)
 
 bool perf_cpu_map__empty(const struct perf_cpu_map *map)
 {
-	return map ? map->map[0] == -1 : true;
+	return map ? map->map[0].cpu == -1 : true;
 }
 
 int perf_cpu_map__idx(struct perf_cpu_map *cpus, int cpu)
@@ -273,7 +273,7 @@ int perf_cpu_map__idx(struct perf_cpu_map *cpus, int cpu)
 	int i;
 
 	for (i = 0; i < cpus->nr; ++i) {
-		if (cpus->map[i] == cpu)
+		if (cpus->map[i].cpu == cpu)
 			return i;
 	}
 
@@ -283,7 +283,7 @@ int perf_cpu_map__idx(struct perf_cpu_map *cpus, int cpu)
 int perf_cpu_map__max(struct perf_cpu_map *map)
 {
 	// cpu_map__trim_new() qsort()s it, cpu_map__default_new() sorts it as well.
-	return map->nr > 0 ? map->map[map->nr - 1] : -1;
+	return map->nr > 0 ? map->map[map->nr - 1].cpu : -1;
 }
 
 /*
@@ -322,19 +322,19 @@ struct perf_cpu_map *perf_cpu_map__merge(struct perf_cpu_map *orig,
 	/* Standard merge algorithm from wikipedia */
 	i = j = k = 0;
 	while (i < orig->nr && j < other->nr) {
-		if (orig->map[i] <= other->map[j]) {
-			if (orig->map[i] == other->map[j])
+		if (orig->map[i].cpu <= other->map[j].cpu) {
+			if (orig->map[i].cpu == other->map[j].cpu)
 				j++;
-			tmp_cpus[k++] = orig->map[i++];
+			tmp_cpus[k++] = orig->map[i++].cpu;
 		} else
-			tmp_cpus[k++] = other->map[j++];
+			tmp_cpus[k++] = other->map[j++].cpu;
 	}
 
 	while (i < orig->nr)
-		tmp_cpus[k++] = orig->map[i++];
+		tmp_cpus[k++] = orig->map[i++].cpu;
 
 	while (j < other->nr)
-		tmp_cpus[k++] = other->map[j++];
+		tmp_cpus[k++] = other->map[j++].cpu;
 	assert(k <= tmp_len);
 
 	merged = cpu_map__trim_new(k, tmp_cpus);

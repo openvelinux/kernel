@@ -6,6 +6,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+/** A wrapper around a CPU to avoid confusion with the perf_cpu_map's map's indices. */
+struct perf_cpu {
+	int cpu;
+};
+
 struct perf_cpu_map;
 
 LIBPERF_API struct perf_cpu_map *perf_cpu_map__dummy_new(void);

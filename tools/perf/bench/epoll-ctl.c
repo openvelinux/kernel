@@ -253,7 +253,7 @@ static int do_threads(struct worker *worker, struct perf_cpu_map *cpu)
 
 		if (!noaffinity) {
 			CPU_ZERO(&cpuset);
-			CPU_SET(cpu->map[i % cpu->nr], &cpuset);
+			CPU_SET(cpu->map[i % cpu->nr].cpu, &cpuset);
 
 			ret = pthread_attr_setaffinity_np(&thread_attr, sizeof(cpu_set_t), &cpuset);
 			if (ret)

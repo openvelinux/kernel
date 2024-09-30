@@ -1196,7 +1196,7 @@ static void synthesize_cpus(struct cpu_map_entries *cpus,
 	cpus->nr = map->nr;
 
 	for (i = 0; i < map->nr; i++)
-		cpus->cpu[i] = map->map[i];
+		cpus->cpu[i] = map->map[i].cpu;
 }
 
 static void synthesize_mask(struct perf_record_record_cpu_map *mask,
@@ -1208,7 +1208,7 @@ static void synthesize_mask(struct perf_record_record_cpu_map *mask,
 	mask->long_size = sizeof(long);
 
 	for (i = 0; i < map->nr; i++)
-		set_bit(map->map[i], mask->mask);
+		set_bit(map->map[i].cpu, mask->mask);
 }
 
 static size_t cpus_size(struct perf_cpu_map *map)
@@ -1224,7 +1224,7 @@ static size_t mask_size(struct perf_cpu_map *map, int *max)
 
 	for (i = 0; i < map->nr; i++) {
 		/* bit position of the cpu is + 1 */
-		int bit = map->map[i] + 1;
+		int bit = map->map[i].cpu + 1;
 
 		if (bit > *max)
 			*max = bit;
