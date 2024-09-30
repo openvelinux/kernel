@@ -234,7 +234,7 @@ static bool cpus_map_matched(struct evsel *a, struct evsel *b)
 		return false;
 
 	for (int i = 0; i < a->core.cpus->nr; i++) {
-		if (a->core.cpus->map[i] != b->core.cpus->map[i])
+		if (a->core.cpus->map[i].cpu != b->core.cpus->map[i].cpu)
 			return false;
 	}
 
@@ -1314,7 +1314,7 @@ static struct aggr_cpu_id perf_stat__get_aggr(struct perf_stat_config *config,
 	if (idx >= map->nr)
 		return id;
 
-	cpu = map->map[idx];
+	cpu = map->map[idx].cpu;
 
 	if (cpu_map__aggr_cpu_id_is_empty(config->cpus_aggr_map->map[cpu]))
 		config->cpus_aggr_map->map[cpu] = get_id(config, map, idx);
@@ -1449,7 +1449,7 @@ static inline int perf_env__get_cpu(struct perf_env *env, struct perf_cpu_map *m
 	if (idx > map->nr)
 		return -1;
 
-	cpu = map->map[idx];
+	cpu = map->map[idx].cpu;
 
 	if (cpu >= env->nr_cpus_avail)
 		return -1;

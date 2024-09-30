@@ -66,7 +66,7 @@ static bool perf_probe_api(setup_probe_fn_t fn)
 	cpus = perf_cpu_map__new(NULL);
 	if (!cpus)
 		return false;
-	cpu = cpus->map[0];
+	cpu = cpus->map[0].cpu;
 	perf_cpu_map__put(cpus);
 
 	do {
@@ -141,7 +141,7 @@ bool perf_can_record_cpu_wide(void)
 	cpus = perf_cpu_map__new(NULL);
 	if (!cpus)
 		return false;
-	cpu = cpus->map[0];
+	cpu = cpus->map[0].cpu;
 	perf_cpu_map__put(cpus);
 
 	fd = sys_perf_event_open(&attr, -1, cpu, -1, 0);

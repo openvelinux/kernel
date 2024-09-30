@@ -3,11 +3,12 @@
 #define __LIBPERF_INTERNAL_CPUMAP_H
 
 #include <linux/refcount.h>
+#include <perf/cpumap.h>
 
 struct perf_cpu_map {
 	refcount_t	refcnt;
 	int		nr;
-	int		map[];
+	struct perf_cpu	map[];
 };
 
 #ifndef MAX_NR_CPUS
