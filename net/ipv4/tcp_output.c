@@ -2322,7 +2322,8 @@ static bool tcp_can_coalesce_send_queue_head(struct sock *sk, int len)
 		if (unlikely(TCP_SKB_CB(skb)->eor) || 
 		    tcp_has_tx_tstamp(skb) ||
 		    !skb_pure_zcopy_same(skb, next) ||
-		    skb->devmem != next->devmem)
+		    skb->devmem != next->devmem ||
+		    !mptcp_skb_can_collapse(skb, next))
 			return false;
 
 		len -= skb->len;
