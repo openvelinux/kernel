@@ -12,10 +12,12 @@ enum hisi_cpu_type {
 	HI_1616,
 	HI_1620,
 	HI_IP09,
+	HI_IP10,
+	HI_IP10C,
 	UNKNOWN_HI_TYPE
 };
 
-/* HIP09 */
+/* HIP10 */
 #define AIDR_EL1_DVMBM_MASK	GENMASK_ULL(13, 12)
 #define SYS_LSUDVM_CTRL_EL2	sys_reg(3, 4, 15, 7, 4)
 #define LSUDVM_CTLR_EL2_MASK	BIT_ULL(0)
@@ -36,7 +38,7 @@ enum hisi_cpu_type {
 #define TOTEM_B_ID 3
 
 /*
- * MPIDR_EL1 layout on HIP09
+ * MPIDR_EL1 layout on HIP10
  *
  * Aff3[7:3]	- socket ID	[0-15]
  * Aff3[2:0]	- die ID	[1,3]

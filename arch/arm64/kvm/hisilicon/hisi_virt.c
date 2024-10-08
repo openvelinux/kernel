@@ -18,15 +18,19 @@ static const char * const hisi_cpu_type_str[] = {
 	"Hisi1616",
 	"Hisi1620",
 	"HIP09",
+	"HIP10",
+	"HIP10C",
 	"Unknown"
 };
 
 /* ACPI Hisi oem table id str */
 static const char * const oem_str[] = {
-	"HIP06",	/* Hisi 1612 */
-	"HIP07",	/* Hisi 1616 */
-	"HIP08",	/* Hisi 1620 */
-	"HIP09"		/* HIP09 */
+	"HIP06   ",	/* Hisi 1612 */
+	"HIP07   ",	/* Hisi 1616 */
+	"HIP08   ",	/* Hisi 1620 */
+	"HIP09   ",	/* HIP09 */
+	"HIP10   ",	/* HIP10 */
+	"HIP10C  "	/* HIP10C */
 };
 
 /*
@@ -47,7 +51,7 @@ static enum hisi_cpu_type acpi_get_hisi_cpu_type(void)
 	}
 
 	for (i = 0; i < str_size; ++i) {
-		if (!strncmp(oem_str[i], table->oem_table_id, 5))
+		if (!strncmp(oem_str[i], table->oem_table_id, 8))
 			return i;
 	}
 
@@ -153,7 +157,7 @@ static void hardware_disable_dvmbm(void *data)
 
 bool hisi_dvmbm_supported(void)
 {
-	if (cpu_type != HI_IP09)
+	if (cpu_type != HI_IP10 && cpu_type != HI_IP10C)
 		return false;
 
 	/* Determine whether DVMBM is supported by the hardware */
