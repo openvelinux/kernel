@@ -51,20 +51,29 @@ static inline struct iomap_page *to_iomap_page(struct page *page)
 static struct bio_set iomap_ioend_bioset;
 
 static struct iomap_page *
-iomap_page_create(struct inode *inode, struct page *page)
+iomap_page_create(struct inode *inode, struct page *page, unsigned int flags)
 {
 	struct iomap_page *iop = to_iomap_page(page);
 	unsigned int nr_blocks = i_blocks_per_page(inode, page);
+	gfp_t gfp;
 
 	if (iop || nr_blocks <= 1)
 		return iop;
 
+	if (flags & IOMAP_NOWAIT)
+		gfp = GFP_NOWAIT;
+	else
+		gfp = GFP_NOFS | __GFP_NOFAIL;
+
 	iop = kzalloc(struct_size(iop, uptodate, BITS_TO_LONGS(nr_blocks)),
-			GFP_NOFS | __GFP_NOFAIL);
+			gfp);
 	spin_lock_init(&iop->uptodate_lock);
-	if (PageUptodate(page))
-		bitmap_fill(iop->uptodate, nr_blocks);
-	attach_page_private(page, iop);
+	if (iop) {
+		spin_lock_init(&iop->uptodate_lock);
+		if (PageUptodate(page))
+			bitmap_fill(iop->uptodate, nr_blocks);
+		attach_page_private(page, iop);
+	}
 	return iop;
 }
 
@@ -226,7 +235,7 @@ static loff_t iomap_read_inline_data(const struct iomap_iter *iter,
 	if (WARN_ON_ONCE(size > iomap->length))
 		return -EIO;
 	if (poff > 0)
-		iomap_page_create(iter->inode, page);
+		iomap_page_create(iter->inode, page, iter->flags);
 
 	addr = kmap_local_page(page) + poff;
 	memcpy(addr, iomap->inline_data, size);
@@ -267,7 +276,7 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 	}
 
 	/* zero post-eof blocks as the page may be mapped */
-	iop = iomap_page_create(iter->inode, page);
+	iop = iomap_page_create(iter->inode, page, iter->flags);
 	iomap_adjust_read_range(iter->inode, iop, &pos, length, &poff, &plen);
 	if (plen == 0)
 		goto done;
@@ -550,7 +559,7 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 		unsigned len, struct page *page)
 {
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
-	struct iomap_page *iop = iomap_page_create(iter->inode, page);
+	struct iomap_page *iop;
 	loff_t block_size = i_blocksize(iter->inode);
 	loff_t block_start = round_down(pos, block_size);
 	loff_t block_end = round_up(pos + len, block_size);
@@ -559,6 +568,8 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	if (PageUptodate(page))
 		return 0;
 	ClearPageError(page);
+
+	iop = iomap_page_create(iter->inode, page, iter->flags);
 
 	do {
 		iomap_adjust_read_range(iter->inode, iop, &block_start,
@@ -1339,7 +1350,7 @@ iomap_writepage_map(struct iomap_writepage_ctx *wpc,
 		struct writeback_control *wbc, struct inode *inode,
 		struct page *page, u64 end_offset)
 {
-	struct iomap_page *iop = iomap_page_create(inode, page);
+	struct iomap_page *iop = iomap_page_create(inode, page, 0);
 	struct iomap_ioend *ioend, *next;
 	unsigned len = i_blocksize(inode);
 	u64 file_offset; /* file offset of page */
