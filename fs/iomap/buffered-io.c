@@ -563,6 +563,7 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	loff_t block_size = i_blocksize(iter->inode);
 	loff_t block_start = round_down(pos, block_size);
 	loff_t block_end = round_up(pos + len, block_size);
+	unsigned int nr_blocks = i_blocks_per_page(iter->inode, page);
 	unsigned from = offset_in_page(pos), to = from + len, poff, plen;
 
 	if (PageUptodate(page))
@@ -570,6 +571,8 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	ClearPageError(page);
 
 	iop = iomap_page_create(iter->inode, page, iter->flags);
+	if ((iter->flags & IOMAP_NOWAIT) && !iop && nr_blocks > 1)
+		return -EAGAIN;
 
 	do {
 		iomap_adjust_read_range(iter->inode, iop, &block_start,
@@ -587,7 +590,11 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 				return -EIO;
 			zero_user_segments(page, poff, from, to, poff + plen);
 		} else {
-			int status = iomap_read_page_sync(block_start, page,
+			int status;
+
+			if (iter->flags & IOMAP_NOWAIT)
+				return -EAGAIN;
+			status = iomap_read_page_sync(block_start, page,
 					poff, plen, srcmap);
 			if (status)
 				return status;
@@ -617,8 +624,12 @@ static int iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 {
 	const struct iomap_page_ops *page_ops = iter->iomap.page_ops;
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
+	unsigned fgp = AOP_FLAG_NOFS;
 	struct page *page;
 	int status = 0;
+
+	if (iter->flags & IOMAP_NOWAIT)
+		fgp |= FGP_NOWAIT;
 
 	BUG_ON(pos + len > iter->iomap.offset + iter->iomap.length);
 	if (srcmap != &iter->iomap)
@@ -634,9 +645,9 @@ static int iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	}
 
 	page = grab_cache_page_write_begin(iter->inode->i_mapping,
-				pos >> PAGE_SHIFT, AOP_FLAG_NOFS);
+				pos >> PAGE_SHIFT, fgp);
 	if (!page) {
-		status = -ENOMEM;
+		status = (iter->flags & IOMAP_NOWAIT) ? -EAGAIN : -ENOMEM;
 		goto out_no_page;
 	}
 
@@ -751,6 +762,8 @@ static loff_t iomap_write_iter(struct iomap_iter *iter, struct iov_iter *i)
 	loff_t pos = iter->pos;
 	ssize_t written = 0;
 	long status = 0;
+	struct address_space *mapping = iter->inode->i_mapping;
+	unsigned int bdp_flags = (iter->flags & IOMAP_NOWAIT) ? BDP_ASYNC : 0;
 
 	do {
 		struct page *page;
@@ -762,6 +775,11 @@ static loff_t iomap_write_iter(struct iomap_iter *iter, struct iov_iter *i)
 		bytes = min_t(unsigned long, PAGE_SIZE - offset,
 						iov_iter_count(i));
 again:
+		status = balance_dirty_pages_ratelimited_flags(mapping,
+							       bdp_flags);
+		if (unlikely(status))
+			break;
+
 		if (bytes > length)
 			bytes = length;
 
@@ -770,6 +788,10 @@ again:
 		 * Otherwise there's a nasty deadlock on copying from the
 		 * same page as we're writing to, without it being marked
 		 * up-to-date.
+		 *
+		 * For async buffered writes the assumption is that the user
+		 * page has already been faulted in. This can be optimized by
+		 * faulting the user page.
 		 */
 		if (unlikely(fault_in_iov_iter_readable(i, bytes))) {
 			status = -EFAULT;
@@ -780,7 +802,7 @@ again:
 		if (unlikely(status))
 			break;
 
-		if (mapping_writably_mapped(iter->inode->i_mapping))
+		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
 
 		copied = copy_page_from_iter_atomic(page, offset, bytes, i);
@@ -805,8 +827,6 @@ again:
 		pos += status;
 		written += status;
 		length -= status;
-
-		balance_dirty_pages_ratelimited(iter->inode->i_mapping);
 	} while (iov_iter_count(i) && length);
 
 	return written ? written : status;
@@ -823,6 +843,9 @@ iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *i,
 		.flags		= IOMAP_WRITE,
 	};
 	int ret;
+
+	if (iocb->ki_flags & IOCB_NOWAIT)
+		iter.flags |= IOMAP_NOWAIT;
 
 	while ((ret = iomap_iter(&iter, ops)) > 0)
 		iter.processed = iomap_write_iter(&iter, i);
