@@ -988,6 +988,7 @@ int dump_user_range(struct coredump_params *cprm, unsigned long start,
 		} else {
 			dump_skip(cprm, PAGE_SIZE);
 		}
+		cond_resched();
 	}
 	return 1;
 }
