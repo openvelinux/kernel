@@ -1216,6 +1216,20 @@ static void __blk_execute_rq_nowait(struct gendisk *bd_disk, struct request *rq,
 	blk_account_io_start(rq);
 
 	if (use_plug && current->plug && !at_head) {
+		// This is try to keep same logical as blk_add_rq_to_plug in v6.1
+		unsigned int request_count = current->plug->rq_count;
+		struct request *last = NULL;
+
+		if (!request_count)
+			trace_block_plug(rq->q);
+		else
+			last = list_entry_rq(current->plug->mq_list.prev);
+
+		if (request_count >= blk_plug_max_rq_count(current->plug) ||
+		    (!blk_queue_nomerges(rq->q) && last && blk_rq_bytes(last) >= BLK_PLUG_FLUSH_SIZE)) {
+			blk_flush_plug_list(current->plug, false);
+			trace_block_plug(rq->q);
+		}
 		blk_add_rq_to_plug(current->plug, rq);
 		return;
 	}
