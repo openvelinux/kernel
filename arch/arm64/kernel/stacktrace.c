@@ -389,10 +389,10 @@ noinline noinstr int arch_stack_walk_reliable(stack_trace_consume_fn consume_ent
 	return ret;
 }
 
-static bool dump_backtrace_entry(void *arg, unsigned long where)
+static bool dump_backtrace_entry(const struct kunwind_state *state, void *arg)
 {
 	char *loglvl = arg;
-	printk("%s %pSb\n", loglvl, (void *)where);
+	printk("%s %pSb\n", loglvl, (void *)state->common.pc);
 	return true;
 }
 
@@ -411,7 +411,7 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk,
 		return;
 
 	printk("%sCall trace:\n", loglvl);
-	arch_stack_walk(dump_backtrace_entry, (void *)loglvl, tsk, regs);
+	kunwind_stack_walk(dump_backtrace_entry, (void *)loglvl, tsk, regs);
 
 	put_task_stack(tsk);
 }
