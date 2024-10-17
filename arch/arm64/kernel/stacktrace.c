@@ -26,6 +26,14 @@ struct code_range {
 	unsigned long end;
 };
 
+enum kunwind_source {
+	KUNWIND_SOURCE_UNKNOWN,
+	KUNWIND_SOURCE_FRAME,
+	KUNWIND_SOURCE_CALLER,
+	KUNWIND_SOURCE_TASK,
+	KUNWIND_SOURCE_REGS_PC,
+};
+
 /*
  * Kernel unwind state
  *
@@ -43,6 +51,7 @@ struct kunwind_state {
 #ifdef CONFIG_KRETPROBES
 	struct llist_node *kr_cur;
 #endif
+	enum kunwind_source source;
 };
 
 static __always_inline void
@@ -51,6 +60,7 @@ kunwind_init(struct kunwind_state *state,
 {
 	unwind_init_common(&state->common);
 	state->task = task;
+	state->source = KUNWIND_SOURCE_UNKNOWN;
 }
 
 /*
@@ -68,6 +78,7 @@ kunwind_init_from_regs(struct kunwind_state *state,
 
 	state->common.fp = regs->regs[29];
 	state->common.pc = regs->pc;
+	state->source = KUNWIND_SOURCE_REGS_PC;
 }
 
 /*
@@ -85,6 +96,7 @@ kunwind_init_from_caller(struct kunwind_state *state)
 
 	state->common.fp = (unsigned long)__builtin_frame_address(1);
 	state->common.pc = (unsigned long)__builtin_return_address(0);
+	state->source = KUNWIND_SOURCE_CALLER;
 }
 
 /*
@@ -105,6 +117,7 @@ kunwind_init_from_task(struct kunwind_state *state,
 
 	state->common.fp = thread_saved_fp(task);
 	state->common.pc = thread_saved_pc(task);
+	state->source = KUNWIND_SOURCE_TASK;
 }
 
 static __always_inline int
@@ -154,9 +167,19 @@ kunwind_next(struct kunwind_state *state)
 	if (fp == (unsigned long)&task_pt_regs(tsk)->stackframe)
 		return -ENOENT;
 
-	err = unwind_next_frame_record(&state->common);
-	if (err)
-		return err;
+	switch (state->source) {
+	case KUNWIND_SOURCE_FRAME:
+	case KUNWIND_SOURCE_CALLER:
+	case KUNWIND_SOURCE_TASK:
+	case KUNWIND_SOURCE_REGS_PC:
+		err = unwind_next_frame_record(&state->common);
+		if (err)
+			return err;
+		state->source = KUNWIND_SOURCE_FRAME;
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	state->common.pc = ptrauth_strip_kernel_insn_pac(state->common.pc);
 
@@ -312,7 +335,7 @@ static inline bool kunwind_state_is_reliable(struct kunwind_state *state)
 
 static __always_inline int
 kunwind_reliable(struct kunwind_state *state,
-		 stack_trace_consume_fn consume_entry, void *cookie)
+		 kunwind_consume_fn consume_state, void *cookie)
 {
 	struct task_struct *tsk = state->task;
 	int ret = 0;
@@ -341,7 +364,7 @@ kunwind_reliable(struct kunwind_state *state,
 		if (!kunwind_state_is_reliable(state))
 			return -EINVAL;
 
-		if (!consume_entry(cookie, pc))
+		if (!consume_state(state, cookie))
 			return -EINVAL;
 		ret = kunwind_next(state);
 		if (ret < 0)
@@ -357,6 +380,10 @@ kunwind_reliable(struct kunwind_state *state,
 noinline noinstr int arch_stack_walk_reliable(stack_trace_consume_fn consume_entry,
 				      void *cookie, struct task_struct *task)
 {
+	struct kunwind_consume_entry_data data = {
+		.consume_entry = consume_entry,
+		.cookie = cookie,
+	};
 	int ret;
 	struct stack_info stacks[] = {
 		stackinfo_get_task(task),
@@ -384,15 +411,31 @@ noinline noinstr int arch_stack_walk_reliable(stack_trace_consume_fn consume_ent
 	else
 		kunwind_init_from_caller(&state);
 
-	ret = kunwind_reliable(&state, consume_entry, cookie);
+	ret = kunwind_reliable(&state, arch_kunwind_consume_entry, &data);
 
 	return ret;
 }
 
+static const char *state_source_string(const struct kunwind_state *state)
+{
+	switch (state->source) {
+	case KUNWIND_SOURCE_FRAME:	return NULL;
+	case KUNWIND_SOURCE_CALLER:	return "C";
+	case KUNWIND_SOURCE_TASK:	return "T";
+	case KUNWIND_SOURCE_REGS_PC:	return "P";
+	default:			return "U";
+	}
+}
+
 static bool dump_backtrace_entry(const struct kunwind_state *state, void *arg)
 {
+	const char *source = state_source_string(state);
 	char *loglvl = arg;
-	printk("%s %pSb\n", loglvl, (void *)state->common.pc);
+	printk("%s %pSb%s%s%s\n", loglvl,
+		(void *)state->common.pc,
+		source ? " (" : "",
+		source ? source : "",
+		source ? ")" : "");
 	return true;
 }
 
