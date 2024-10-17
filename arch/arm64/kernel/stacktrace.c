@@ -151,7 +151,7 @@ kunwind_next(struct kunwind_state *state)
 	int err;
 
 	/* Final frame; nothing to unwind */
-	if (fp == (unsigned long)task_pt_regs(tsk)->stackframe)
+	if (fp == (unsigned long)&task_pt_regs(tsk)->stackframe)
 		return -ENOENT;
 
 	err = unwind_next_frame_record(&state->common);
@@ -325,7 +325,7 @@ kunwind_reliable(struct kunwind_state *state,
 	do {
 		pc = ptrauth_strip_kernel_insn_pac(state->common.pc);
 		if (state->common.fp ==
-		    (unsigned long)task_pt_regs(tsk)->stackframe) {
+		    (unsigned long)&task_pt_regs(tsk)->stackframe) {
 			/* Final frame for kthread; nothing to unwind */
 			if (pc == (unsigned long)&kthread_return_to_user)
 				return 0;
