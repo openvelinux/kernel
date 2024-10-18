@@ -783,6 +783,15 @@ else ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS += -Os
 endif
 
+ifdef CONFIG_HAVE_PERF_EVENTS
+ifdef CONFIG_CC_IS_CLANG
+KBUILD_CFLAGS += -fdebug-info-for-profiling
+endif
+ifdef CONFIG_LD_IS_LLD
+KBUILD_LDFLAGS += --no-rosegment
+endif
+endif
+
 # Tell gcc to never replace conditional load with a non-conditional one
 ifdef CONFIG_CC_IS_GCC
 # gcc-10 renamed --param=allow-store-data-races=0 to
