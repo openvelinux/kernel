@@ -84,6 +84,8 @@
 #define IIDR_REVISION			GENMASK(15, 12)
 #define IIDR_IMPLEMENTER		GENMASK(11, 0)
 
+#define ARM_SMMU_AIDR			0x1C
+
 #define ARM_SMMU_CR0			0x20
 #define CR0_ATSCHK			(1 << 4)
 #define CR0_CMDQEN			(1 << 3)
@@ -927,4 +929,11 @@ static inline void arm_smmu_sva_notifier_synchronize(void) {}
 #define arm_smmu_sva_domain_alloc NULL
 
 #endif /* CONFIG_ARM_SMMU_V3_SVA */
+
+#if IS_ENABLED(CONFIG_ARM_SMMU_V3_IOMMUFD)
+void *arm_smmu_hw_info(struct device *dev, u32 *length, u32 *type);
+#else
+#define arm_smmu_hw_info NULL
+#endif /* CONFIG_ARM_SMMU_V3_IOMMUFD */
+
 #endif /* _ARM_SMMU_V3_H */
