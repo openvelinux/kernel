@@ -197,15 +197,18 @@ fallback:
 struct nvme_qmap *nvme_qmap_get_qmap_from_ndev(struct nvme_dev *ndev)
 {
 	struct nvme_qmap *qmap = NULL;
+	int found = 0;
 
 	down_read(&qmap_list.list_rwsem);
 	list_for_each_entry(qmap, &qmap_list.qmap_head, qmap_entry) {
-		if (qmap->nvme_dev == ndev)
+		if (qmap->nvme_dev == ndev) {
+			found = 1;
 			break;
+		}
 	}
 	up_read(&qmap_list.list_rwsem);
 
-	return qmap;
+	return found ? qmap : NULL;
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_get_qmap_from_ndev);
 
@@ -340,13 +343,14 @@ static int nvme_qmap_do_cease_io(struct nvme_ctrl *ctrl, unsigned long timeout)
 	return nvme_qmap_wait_mq_completed_timeout(ctrl->tagset, timeout);
 }
 
-static inline void nvme_qmap_restart_io(struct nvme_ctrl *ctrl)
+void nvme_qmap_restart_io(struct nvme_ctrl *ctrl)
 {
 	nvme_start_queues(ctrl);
 	nvme_unfreeze(ctrl);
 }
+EXPORT_SYMBOL_GPL(nvme_qmap_restart_io);
 
-static int nvme_qmap_cease_io(struct nvme_ctrl *ctrl)
+int nvme_qmap_cease_io(struct nvme_ctrl *ctrl)
 {
 	int ret;
 
@@ -356,6 +360,7 @@ static int nvme_qmap_cease_io(struct nvme_ctrl *ctrl)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(nvme_qmap_cease_io);
 
 /* attention this must be the exactly one nmap, not the head one */
 static inline int nvme_qmap_flag_enabled(struct nvme_qmap_nmap *nmap)
@@ -1328,21 +1333,11 @@ static void nvme_qmap_free_qmap(struct nvme_qmap *qmap)
 	kfree(qmap);
 }
 
-static bool nvme_qmap_sets_same(struct nvme_qmap *qmap, struct nvme_qmap_set *last_sets)
+static inline bool nvme_qmap_sets_same(struct nvme_qmap *qmap, int nr_hw_queues)
 {
-	struct blk_mq_tag_set *tagset = qmap->ctrl->tagset;
-	struct blk_mq_queue_map *map;
-	int i;
+	struct nvme_qmap_set *last_sets = &qmap->last_sets;
 
-	for (i = 0; i < HCTX_MAX_TYPES; i++) {
-		map = &tagset->map[i];
-		if (last_sets->nr_ques[i] != map->nr_queues) {
-			qmap_warn(qmap, "qsets:%d not same.orig:%u vs now:%u",
-				  i, last_sets->nr_ques[i], map->nr_queues);
-			return false;
-		}
-	}
-	return true;
+	return last_sets->nr_blk_mq == nr_hw_queues;
 }
 
 static struct nvme_qmap *nvme_qmap_alloc
@@ -1458,44 +1453,47 @@ static void nvme_qmap_restore_tagset(struct nvme_qmap *qmap)
 	mutex_unlock(&set->tag_list_lock);
 }
 
-static void nvme_qmap_zero_sets(struct nvme_qmap *qmap)
+static void nvme_qmap_do_restore(struct nvme_ctrl *ctrl)
 {
-	memset(&qmap->last_sets, 0, sizeof(qmap->last_sets));
+	struct nvme_qmap *qmap;
+
+	qmap = nvme_qmap_mgr_get_by_instance(ctrl->instance);
+
+	/* maybe no tagset, such as no io queues */
+	if (!nvme_qmap_get_tagset(qmap))
+		return;
+	nvme_qmap_restore_tagset(qmap);
+	nvme_qmap_restore_blk_mq_ops(qmap);
 }
 
 /* works only in nvme reset. no need to sync */
-void nvme_qmap_reset(struct nvme_ctrl *ctrl)
+int nvme_qmap_reset(struct nvme_ctrl *ctrl, int nr_hw_queues)
 {
 	int instance;
 	struct nvme_qmap *qmap;
-	struct blk_mq_tag_set *set;
 
 	instance = ctrl->instance;
 
 	if (nvme_qmap_mgr_exceed_max(instance) ||
 	    !nvme_qmap_mgr_enabled(instance))
-		return;
+		return -EINVAL;
 
 	qmap = nvme_qmap_mgr_get_by_instance(instance);
 
-	/* maybe no tagset, such as no io queues */
-	set = nvme_qmap_get_tagset(qmap);
-	if (!set) {
-		nvme_qmap_zero_sets(qmap);
-		return;
-	}
-
-	if (!nvme_qmap_sets_same(qmap, &qmap->last_sets)) {
-		qmap_warn(qmap, "sets changed. back to default.");
+	if (!nvme_qmap_sets_same(qmap, nr_hw_queues)) {
+		qmap_warn(qmap, "sets changed. qmap back to default.");
+		nvme_qmap_do_restore(ctrl);
+		blk_mq_update_nr_hw_queues(ctrl->tagset, nr_hw_queues);
 		nvme_qmap_init_default_map(qmap);
 		nvme_qmap_replace_blk_mq_ops(qmap);
-		return;
+		return 0;
 	}
 
+	blk_mq_update_nr_hw_queues(ctrl->tagset, qmap->sets.nr_blk_mq);
+	nvme_qmap_update_driver_data(ctrl->tagset);
 	qmap_warn(qmap, "ctrl reset! restore map.");
-	nvme_qmap_replace_blk_mq_ops(qmap);
-	blk_mq_update_nr_hw_queues(set, qmap->sets.nr_blk_mq);
-	nvme_qmap_update_driver_data(set);
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_reset);
 
@@ -1532,33 +1530,6 @@ void nvme_qmap_remove_enable_attr(struct nvme_ctrl *ctrl)
 	nvme_qmap_mgr_set_attr(ctrl->instance, NULL);
 }
 EXPORT_SYMBOL_GPL(nvme_qmap_remove_enable_attr);
-
-static void nvme_qmap_do_restore(struct nvme_ctrl *ctrl)
-{
-	struct nvme_qmap *qmap;
-
-	qmap = nvme_qmap_mgr_get_by_instance(ctrl->instance);
-
-	/* maybe no tagset, such as no io queues */
-	if (!nvme_qmap_get_tagset(qmap))
-		return;
-	nvme_qmap_restore_tagset(qmap);
-	nvme_qmap_restore_blk_mq_ops(qmap);
-}
-
-/* sync with enable and restore to make original routine works fine */
-void nvme_qmap_restore(struct nvme_ctrl *ctrl)
-{
-	if (nvme_qmap_mgr_exceed_max(ctrl->instance) ||
-	    !nvme_qmap_mgr_enabled(ctrl->instance))
-		return;
-
-	/* sync nvme_reset with qmap routine */
-	mutex_lock(get_lock(ctrl));
-	nvme_qmap_do_restore(ctrl);
-	mutex_unlock(get_lock(ctrl));
-}
-EXPORT_SYMBOL_GPL(nvme_qmap_restore);
 
 bool nvme_qmap_mgr_exceed_max(int instance)
 {

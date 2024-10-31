@@ -90,8 +90,7 @@ struct nvme_qmap *nvme_qmap_mgr_get_by_instance(int instance);
 int nvme_qmap_wait_compl(struct nvme_ctrl *ctrl);
 void nvme_qmap_finish_compl(struct nvme_ctrl *ctrl);
 struct nvme_qmap *nvme_qmap_get_qmap_from_ndev(struct nvme_dev *ndev);
-void nvme_qmap_restore(struct nvme_ctrl *ctrl);
-void nvme_qmap_reset(struct nvme_ctrl *ctrl);
+int nvme_qmap_reset(struct nvme_ctrl *ctrl, int nr_hw_queues);
 int nvme_qmap_enable_dynamically
 (struct nvme_ctrl *ctrl, struct nvme_queue *nq, u64 size, unsigned int nr_allocated_queues);
 int nvme_qmap_nqid_to_mqid(int instance, int nvme_qid);
@@ -100,6 +99,8 @@ void nvme_qmap_enable_at_startup
 void nvme_qmap_add_enable_attr(struct nvme_ctrl *ctrl, const struct attribute *attr);
 void nvme_qmap_remove_enable_attr(struct nvme_ctrl *ctrl);
 int nvme_qmap_map_queues(struct nvme_ctrl *ctrl, struct nvme_qmap_qid_param *param);
+void nvme_qmap_restart_io(struct nvme_ctrl *ctrl);
+int nvme_qmap_cease_io(struct nvme_ctrl *ctrl);
 
 /*
  * iterate all qid mask
