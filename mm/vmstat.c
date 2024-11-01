@@ -1250,6 +1250,9 @@ const char * const vmstat_text[] = {
 	"pgdemote_khugepaged",
 
 	/* enum writeback_stat_item counters */
+#ifdef CONFIG_HUGETLB_PAGE
+	"nr_hugetlb",
+#endif
 	"nr_dirty_threshold",
 	"nr_dirty_background_threshold",
 
