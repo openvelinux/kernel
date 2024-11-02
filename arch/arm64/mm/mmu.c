@@ -188,7 +188,7 @@ static void alloc_init_cont_pte(pmd_t *pmdp, unsigned long addr,
 
 	BUG_ON(pmd_sect(pmd));
 	if (pmd_none(pmd)) {
-		pmdval_t pmdval = PMD_TYPE_TABLE | PMD_TABLE_UXN;
+		pmdval_t pmdval = PMD_TYPE_TABLE | PMD_TABLE_UXN | PMD_TABLE_AF;
 		phys_addr_t pte_phys;
 
 		if (flags & NO_EXEC_MAPPINGS)
@@ -266,7 +266,7 @@ static void alloc_init_cont_pmd(pud_t *pudp, unsigned long addr,
 	 */
 	BUG_ON(pud_sect(pud));
 	if (pud_none(pud)) {
-		pudval_t pudval = PUD_TYPE_TABLE | PUD_TABLE_UXN;
+		pudval_t pudval = PUD_TYPE_TABLE | PUD_TABLE_UXN | PUD_TABLE_AF;
 		phys_addr_t pmd_phys;
 
 		if (flags & NO_EXEC_MAPPINGS)
@@ -317,7 +317,7 @@ static void alloc_init_pud(pgd_t *pgdp, unsigned long addr, unsigned long end,
 	p4d_t p4d = READ_ONCE(*p4dp);
 
 	if (p4d_none(p4d)) {
-		p4dval_t p4dval = P4D_TYPE_TABLE | P4D_TABLE_UXN;
+		p4dval_t p4dval = P4D_TYPE_TABLE | P4D_TABLE_UXN | P4D_TABLE_AF;
 		phys_addr_t pud_phys;
 
 		if (flags & NO_EXEC_MAPPINGS)
@@ -1260,13 +1260,13 @@ void __init early_fixmap_init(void)
 		pudp = pud_offset_kimg(p4dp, addr);
 	} else {
 		if (p4d_none(p4d))
-			__p4d_populate(p4dp, __pa_symbol(bm_pud), P4D_TYPE_TABLE);
+			__p4d_populate(p4dp, __pa_symbol(bm_pud), P4D_TYPE_TABLE | P4D_TABLE_AF);
 		pudp = fixmap_pud(addr);
 	}
 	if (pud_none(READ_ONCE(*pudp)))
-		__pud_populate(pudp, __pa_symbol(bm_pmd), PUD_TYPE_TABLE);
+		__pud_populate(pudp, __pa_symbol(bm_pmd), PUD_TYPE_TABLE | PUD_TABLE_AF);
 	pmdp = fixmap_pmd(addr);
-	__pmd_populate(pmdp, __pa_symbol(bm_pte), PMD_TYPE_TABLE);
+	__pmd_populate(pmdp, __pa_symbol(bm_pte), PMD_TYPE_TABLE | PMD_TABLE_AF);
 
 	/*
 	 * The boot-ioremap range spans multiple pmds, for which
