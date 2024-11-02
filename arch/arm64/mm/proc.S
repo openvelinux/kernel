@@ -420,10 +420,12 @@ SYM_FUNC_START(__cpu_setup)
 	 */
 	mair	.req	x17
 	tcr	.req	x16
+	tcr2	.req	x15
 	mov_q	mair, MAIR_EL1_SET
 	mov_q	tcr, TCR_TxSZ(VA_BITS) | TCR_CACHE_FLAGS | TCR_SMP_FLAGS | \
 			TCR_TG_FLAGS | TCR_KASLR_FLAGS | TCR_ASID16 | \
 			TCR_TBI0 | TCR_A1 | TCR_KASAN_SW_FLAGS | TCR_MTE_FLAGS
+	mov	tcr2, xzr
 
 	tcr_clear_errata_bits tcr, x9, x5
 
@@ -455,6 +457,21 @@ SYM_FUNC_START(__cpu_setup)
 #endif	/* CONFIG_ARM64_HW_AFDBM */
 	msr	mair_el1, mair
 	msr	tcr_el1, tcr
+
+	mrs_s	x1, SYS_ID_AA64MMFR3_EL1
+	ubfx	x1, x1, #ID_AA64MMFR3_EL1_S1PIE_SHIFT, #4
+	cbz	x1, .Lskip_indirection
+
+	orr	tcr2, tcr2, TCR2_EL1x_PIE
+
+.Lskip_indirection:
+
+	mrs_s	x1, SYS_ID_AA64MMFR3_EL1
+	ubfx	x1, x1, #ID_AA64MMFR3_EL1_TCRX_SHIFT, #4
+	cbz	x1, 1f
+	msr	REG_TCR2_EL1, tcr2
+1:
+
 	/*
 	 * Prepare SCTLR
 	 */
@@ -463,4 +480,5 @@ SYM_FUNC_START(__cpu_setup)
 
 	.unreq	mair
 	.unreq	tcr
+	.unreq	tcr2
 SYM_FUNC_END(__cpu_setup)
