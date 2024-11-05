@@ -597,12 +597,12 @@ void kvm_set_cpu_caps(void)
 		kvm_cpu_cap_set(X86_FEATURE_SPEC_CTRL_SSBD);
 
 	kvm_cpu_cap_mask(CPUID_7_1_EAX,
-		F(AVX_VNNI) | F(AVX512_BF16) |
+		F(SHA512) | F(SM3) | F(SM4) | F(AVX_VNNI) | F(AVX512_BF16) |
 		F(FZRM) | F(FSRS) | F(FSRC)
 	);
 
 	kvm_cpu_cap_init_kvm_defined(CPUID_7_1_EDX,
-		F(AVX_VNNI_INT8)
+		F(AVX_VNNI_INT8) | F(AVX_VNNI_INT16)
 	);
 
 	kvm_cpu_cap_mask(CPUID_D_1_EAX,
