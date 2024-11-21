@@ -12,7 +12,6 @@
 #include <signal.h>
 #include <dirent.h>
 #include <stdbool.h>
-#include <ctype.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
