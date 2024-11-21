@@ -1354,7 +1354,7 @@ unsigned int rdtgroup_cbm_to_size(struct rdt_resource *r,
 		}
 	}
 
-	return size / snc_nodes_per_l3_cache;
+	return size;
 }
 
 /**
@@ -2587,7 +2587,7 @@ static int rdt_parse_param(struct fs_context *fc, struct fs_parameter *param)
 		ctx->enable_cdpl2 = true;
 		return 0;
 	case Opt_mba_mbps:
-		if (!supports_mba_mbps() || snc_nodes_per_l3_cache > 1)
+		if (!supports_mba_mbps())
 			return -EINVAL;
 		ctx->enable_mba_mbps = true;
 		return 0;
