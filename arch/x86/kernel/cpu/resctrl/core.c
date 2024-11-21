@@ -393,12 +393,9 @@ void rdt_ctrl_update(void *arg)
  * id is found in a domain, return the domain. Otherwise, if requested by
  * caller, return the first domain whose id is bigger than the input id.
  * The domain list is sorted by id in ascending order.
- *
- * N.B. Returned value may be either a pointer to "struct rdt_domain" or
- * to "struct rdt_mondomain" depending on which domain list is scanned.
  */
-void *rdt_find_domain(struct list_head *h, int id,
-		      struct list_head **pos)
+struct rdt_domain *rdt_find_domain(struct list_head *h, int id,
+				   struct list_head **pos)
 {
 	struct rdt_domain *d;
 	struct list_head *l;
@@ -438,14 +435,9 @@ static void setup_default_ctrlval(struct rdt_resource *r, u32 *dc)
 
 static void domain_free(struct rdt_hw_domain *hw_dom)
 {
-	kfree(hw_dom->ctrl_val);
-	kfree(hw_dom);
-}
-
-static void mondomain_free(struct rdt_hw_mondomain *hw_dom)
-{
 	kfree(hw_dom->arch_mbm_total);
 	kfree(hw_dom->arch_mbm_local);
+	kfree(hw_dom->ctrl_val);
 	kfree(hw_dom);
 }
 
@@ -475,7 +467,7 @@ static int domain_setup_ctrlval(struct rdt_resource *r, struct rdt_domain *d)
  * @num_rmid:	The size of the MBM counter array
  * @hw_dom:	The domain that owns the allocated arrays
  */
-static int arch_domain_mbm_alloc(u32 num_rmid, struct rdt_hw_mondomain *hw_dom)
+static int arch_domain_mbm_alloc(u32 num_rmid, struct rdt_hw_domain *hw_dom)
 {
 	size_t tsize;
 
@@ -547,8 +539,8 @@ static void domain_add_cpu_mon(int cpu, struct rdt_resource *r)
 {
 	int id = get_cpu_cacheinfo_id(cpu, r->mon_scope);
 	struct list_head *add_pos = NULL;
-	struct rdt_hw_mondomain *hw_mondom;
-	struct rdt_mondomain *d;
+	struct rdt_hw_domain *hw_dom;
+	struct rdt_domain *d;
 	int err;
 
 	d = rdt_find_domain(&r->mondomains, id, &add_pos);
@@ -564,16 +556,16 @@ static void domain_add_cpu_mon(int cpu, struct rdt_resource *r)
 		return;
 	}
 
-	hw_mondom = kzalloc_node(sizeof(*hw_mondom), GFP_KERNEL, cpu_to_node(cpu));
-	if (!hw_mondom)
+	hw_dom = kzalloc_node(sizeof(*hw_dom), GFP_KERNEL, cpu_to_node(cpu));
+	if (!hw_dom)
 		return;
 
-	d = &hw_mondom->d_resctrl;
+	d = &hw_dom->d_resctrl;
 	d->id = id;
 	cpumask_set_cpu(cpu, &d->cpu_mask);
 
-	if (arch_domain_mbm_alloc(r->num_rmid, hw_mondom)) {
-		mondomain_free(hw_mondom);
+	if (arch_domain_mbm_alloc(r->num_rmid, hw_dom)) {
+		domain_free(hw_dom);
 		return;
 	}
 
@@ -582,7 +574,7 @@ static void domain_add_cpu_mon(int cpu, struct rdt_resource *r)
 	err = resctrl_online_mon_domain(r, d);
 	if (err) {
 		list_del(&d->list);
-		mondomain_free(hw_mondom);
+		domain_free(hw_dom);
 	}
 }
 
@@ -640,22 +632,22 @@ static void domain_remove_cpu_ctrl(int cpu, struct rdt_resource *r)
 static void domain_remove_cpu_mon(int cpu, struct rdt_resource *r)
 {
 	int id = get_cpu_cacheinfo_id(cpu, r->cache_level);
-	struct rdt_hw_mondomain *hw_mondom;
-	struct rdt_mondomain *d;
+	struct rdt_hw_domain *hw_dom;
+	struct rdt_domain *d;
 
 	d = rdt_find_domain(&r->mondomains, id, NULL);
 	if (IS_ERR_OR_NULL(d)) {
 		pr_warn("Couldn't find cache id for CPU %d\n", cpu);
 		return;
 	}
-	hw_mondom = resctrl_to_arch_mondom(d);
+	hw_dom = resctrl_to_arch_dom(d);
 
 	cpumask_clear_cpu(cpu, &d->cpu_mask);
 	if (cpumask_empty(&d->cpu_mask)) {
 		resctrl_offline_mon_domain(r, d);
 		list_del(&d->list);
 
-		mondomain_free(hw_mondom);
+		domain_free(hw_dom);
 
 		return;
 	}
