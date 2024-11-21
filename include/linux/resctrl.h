@@ -200,8 +200,6 @@ struct rdt_resource {
 	bool			cdp_capable;
 };
 
-#define MON_SCOPE_NODE 100
-
 /**
  * struct resctrl_schema - configuration abilities of a resource presented to
  *			   user-space
