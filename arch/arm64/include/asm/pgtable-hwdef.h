@@ -94,6 +94,7 @@
 #define P4D_TYPE_MASK		(_AT(p4dval_t, 3) << 0)
 #define P4D_TYPE_SECT		(_AT(p4dval_t, 1) << 0)
 #define P4D_SECT_RDONLY		(_AT(p4dval_t, 1) << 7)		/* AP[2] */
+#define P4D_TABLE_AF		(_AT(p4dval_t, 1) << 10)	/* Ignored if no FEAT_HAFT */
 #define P4D_TABLE_PXN		(_AT(p4dval_t, 1) << 59)
 #define P4D_TABLE_UXN		(_AT(p4dval_t, 1) << 60)
 
@@ -105,6 +106,7 @@
 #define PUD_TYPE_MASK		(_AT(pudval_t, 3) << 0)
 #define PUD_TYPE_SECT		(_AT(pudval_t, 1) << 0)
 #define PUD_SECT_RDONLY		(_AT(pudval_t, 1) << 7)		/* AP[2] */
+#define PUD_TABLE_AF		(_AT(pudval_t, 1) << 10)	/* Ignored if no FEAT_HAFT */
 #define PUD_TABLE_PXN		(_AT(pudval_t, 1) << 59)
 #define PUD_TABLE_UXN		(_AT(pudval_t, 1) << 60)
 
@@ -115,6 +117,7 @@
 #define PMD_TYPE_TABLE		(_AT(pmdval_t, 3) << 0)
 #define PMD_TYPE_SECT		(_AT(pmdval_t, 1) << 0)
 #define PMD_TABLE_BIT		(_AT(pmdval_t, 1) << 1)
+#define PMD_TABLE_AF		(_AT(pmdval_t, 1) << 10)	/* Ignored if no FEAT_HAFT */
 
 /*
  * Section
