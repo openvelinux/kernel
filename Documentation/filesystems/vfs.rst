@@ -814,7 +814,7 @@ cache in your filesystem.  The following members are defined:
 		sector_t (*bmap)(struct address_space *, sector_t);
 		void (*invalidate_folio) (struct folio *, size_t start, size_t len);
 		bool (*release_folio)(struct folio *, gfp_t);
-		void (*free_folio)(struct folio *);
+		void (*free_folio)(struct address_space *, struct folio *);
 		ssize_t (*direct_IO)(struct kiocb *, struct iov_iter *iter);
 		int (*migrate_folio)(struct mapping *, struct folio *dst,
 				struct folio *src, enum migrate_mode);
@@ -993,11 +993,14 @@ cache in your filesystem.  The following members are defined:
 	clear the uptodate flag if it cannot free private data yet.
 
 ``free_folio``
-	free_folio is called once the folio is no longer visible in the
-	page cache in order to allow the cleanup of any private data.
-	Since it may be called by the memory reclaimer, it should not
-	assume that the original address_space mapping still exists, and
-	it should not block.
+	free_folio is called once the folio is no longer visible in
+	the page cache in order to allow the cleanup of any private
+	data.  Since it may be called by the memory reclaimer, it
+	should not assume that the original address_space mapping
+	still exists at folio->mapping. The mapping the folio used to
+	belong to is instead passed for free_folio to read any
+	information it might need from the mapping. free_folio should
+	not block.
 
 ``direct_IO``
 	called by the generic read/write routines to perform direct_IO -

@@ -1365,7 +1365,8 @@ static void kvm_gmem_invalidate(struct folio *folio)
 static inline void kvm_gmem_invalidate(struct folio *folio) {}
 #endif
 
-static void kvm_gmem_free_folio(struct folio *folio)
+static void kvm_gmem_free_folio(struct address_space *mapping,
+				struct folio *folio)
 {
 	folio_clear_unevictable(folio);
 
