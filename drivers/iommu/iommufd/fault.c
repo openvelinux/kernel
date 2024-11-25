@@ -45,6 +45,11 @@ static int iommufd_fault_iopf_enable(struct iommufd_device *idev)
 	ret = iommu_dev_enable_feature(dev, IOMMU_DEV_FEAT_IOPF);
 	if (ret)
 		--idev->iopf_enabled;
+
+	ret = iommu_dev_enable_feature(idev->dev, IOMMU_DEV_FEAT_SVA);
+	if (ret)
+		return ret;
+
 	mutex_unlock(&idev->iopf_lock);
 
 	return ret;
@@ -53,6 +58,7 @@ static int iommufd_fault_iopf_enable(struct iommufd_device *idev)
 static void iommufd_fault_iopf_disable(struct iommufd_device *idev)
 {
 	mutex_lock(&idev->iopf_lock);
+	iommu_dev_disable_feature(idev->dev, IOMMU_DEV_FEAT_SVA);
 	if (!WARN_ON(idev->iopf_enabled == 0)) {
 		if (--idev->iopf_enabled == 0)
 			iommu_dev_disable_feature(idev->dev, IOMMU_DEV_FEAT_IOPF);
