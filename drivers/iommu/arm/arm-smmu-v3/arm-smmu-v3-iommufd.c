@@ -390,9 +390,11 @@ struct iommufd_viommu *arm_vsmmu_alloc(struct device *dev,
 	 * things non-coherent using the memattr, but No-Snoop behavior is not
 	 * effected.
 	 */
+	/*
 	if (!arm_smmu_master_canwbs(master) &&
 	    !(smmu->features & ARM_SMMU_FEAT_S2FWB))
 		return ERR_PTR(-EOPNOTSUPP);
+	*/
 
 	vsmmu = iommufd_viommu_alloc(ictx, struct arm_vsmmu, core,
 				     &arm_vsmmu_ops);
