@@ -754,7 +754,7 @@ try_restore_exclusive_pte(pte_t *src_pte, struct vm_area_struct *vma,
  * covered by this vma.
  */
 
-static unsigned long
+unsigned long
 copy_nonpresent_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		pte_t *dst_pte, pte_t *src_pte, struct vm_area_struct *dst_vma,
 		struct vm_area_struct *src_vma, unsigned long addr, int *rss)
@@ -919,7 +919,7 @@ copy_present_page(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma
  * Copy one pte.  Returns 0 if succeeded, or -EAGAIN if one preallocated page
  * is required to copy this pte.
  */
-static inline int
+int
 copy_present_pte(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 		 pte_t *dst_pte, pte_t *src_pte, unsigned long addr, int *rss,
 		 struct page **prealloc)
