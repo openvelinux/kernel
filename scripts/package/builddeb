@@ -212,7 +212,8 @@ install_linux_cpupower() {
 	done
 	rm -rf $pdir/usr/man
 
-	if [ "$ARCH" = "x86" ]; then
+	case "$ARCH" in
+	*"x86"*)
 		mkdir -p $pdir/usr/sbin
 		$MAKE -C $srctree/tools/power/x86/turbostat DESTDIR=$(pwd)/$pdir prefix=/usr install
 		$MAKE -C $srctree/tools/power/x86/x86_energy_perf_policy DESTDIR=$(pwd)/$pdir prefix=/usr install
@@ -225,10 +226,12 @@ install_linux_cpupower() {
 			rm -rf $(pwd)/$pdir/usr/share/man/man8/$i;
 		done
 
-		dpkg-shlibdeps --ignore-missing-info $(pwd)/$pdir/usr/bin/* $(pwd)/$pdir/usr/sbin/* -l$(pwd)/$pdir/usr/lib/*
-	else
-		dpkg-shlibdeps --ignore-missing-info $(pwd)/$pdir/usr/bin/* -l$(pwd)/$pdir/usr/lib/*
-	fi
+		dpkg-shlibdeps --ignore-missing-info $(pwd)/$pdir/usr/bin/* $(pwd)/$pdir/usr/sbin/* -l$(pwd)/$pdir/usr/lib/
+		;;
+	*)
+		dpkg-shlibdeps --ignore-missing-info $(pwd)/$pdir/usr/bin/* -l$(pwd)/$pdir/usr/lib/
+		;;
+	esac
 
 	rm -rf $(pwd)/$pdir/usr/lib $(pwd)/$pdir/usr/include
 }
@@ -266,10 +269,6 @@ do
 		install_linux_image debian/linux-image ${package};;
 	linux-libc-dev)
 		install_libc_headers debian/linux-libc-dev;;
-	linux-tools)
-		install_linux_tools debian/linux-tools
-		install_linux_cpupower debian/linux-cpupower
-		install_libcpupower1 debian/libcpupower;;
 	linux-headers-*)
 		install_kernel_headers debian/linux-headers ${package#linux-headers-};;
 	esac
@@ -285,9 +284,15 @@ do
 	linux-libc-dev)
 		create_package ${package} debian/linux-libc-dev;;
 	linux-tools)
+		install_linux_tools debian/linux-tools
 		create_package ${package} debian/linux-tools
+
+		install_linux_cpupower debian/linux-cpupower
 		create_package linux-cpupower debian/linux-cpupower
-		create_package libcpupower1 debian/libcpupower;;
+
+		install_libcpupower1 debian/libcpupower
+		create_package libcpupower1 debian/libcpupower
+		;;
 
 	linux-headers-*)
 		create_package ${package} debian/linux-headers;;
