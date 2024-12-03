@@ -278,7 +278,7 @@ Description: Performance analysis tools for Linux $version
 
 Package: linux-cpupower
 Architecture: $debarch
-Depends: \${shlibs:Depends}, libcpupower1 (>= $packageversion)
+Depends: \${shlibs:Depends}, libcpupower1 (= $packageversion)
 Description: CPU power management tools for Linux
  The cpupower command allows inspection and control of cpufreq and cpuidle
  tunables for hardware that supports these features.  It replaces
