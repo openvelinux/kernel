@@ -691,4 +691,14 @@ static inline void add_mm_rss_vec(struct mm_struct *mm, int *rss)
 		if (rss[i])
 			add_mm_counter(mm, i, rss[i]);
 }
+
+unsigned long
+copy_nonpresent_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
+		pte_t *dst_pte, pte_t *src_pte, struct vm_area_struct *dst_vma,
+		struct vm_area_struct *src_vma, unsigned long addr, int *rss);
+
+int
+copy_present_pte(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
+		 pte_t *dst_pte, pte_t *src_pte, unsigned long addr, int *rss,
+		 struct page **prealloc);
 #endif	/* __MM_INTERNAL_H */
