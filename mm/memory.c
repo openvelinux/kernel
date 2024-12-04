@@ -1411,6 +1411,26 @@ static inline void zap_nonpresent_pte(struct mmu_gather *tlb,
 	pte_clear_not_present_full(vma->vm_mm, addr, pte, tlb->fullmm);
 }
 
+static inline int do_zap_pte_range(struct mmu_gather *tlb,
+				   struct vm_area_struct *vma, pte_t *pte,
+				   unsigned long addr, unsigned long end,
+				   struct zap_details *details, int *rss,
+				   bool *force_flush, bool *force_break)
+{
+	pte_t ptent = ptep_get(pte);
+
+	if (pte_none(ptent))
+		return 1;
+
+	if (pte_present(ptent))
+		zap_present_pte(tlb, vma, pte, ptent, addr, details, rss,
+				force_flush, force_break);
+	else
+		zap_nonpresent_pte(tlb, vma, pte, ptent, addr, details, rss);
+
+	return 1;
+}
+
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pmd_t *pmd,
 				unsigned long addr, unsigned long end,
@@ -1422,6 +1442,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 	spinlock_t *ptl;
 	pte_t *start_pte;
 	pte_t *pte;
+	int nr;
 
 	tlb_change_page_size(tlb, PAGE_SIZE);
 	init_rss_vec(rss);
@@ -1432,25 +1453,16 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
 	do {
-		pte_t ptent = *pte;
-		if (pte_none(ptent))
-			continue;
-
 		if (need_resched())
 			break;
 
-		if (pte_present(ptent)) {
-			zap_present_pte(tlb, vma, pte, ptent, addr, details,
-					rss, &force_flush, &force_break);
-			if (unlikely(force_break)) {
-				addr += PAGE_SIZE;
-				break;
-			}
-		} else {
-			zap_nonpresent_pte(tlb, vma, pte, ptent, addr,
-						details, rss);
+		nr = do_zap_pte_range(tlb, vma, pte, addr, end, details, rss,
+				      &force_flush, &force_break);
+		if (unlikely(force_break)) {
+			addr += nr * PAGE_SIZE;
+			break;
 		}
-	} while (pte++, addr += PAGE_SIZE, addr != end);
+	} while (pte += nr, addr += PAGE_SIZE * nr, addr != end);
 
 	add_mm_rss_vec(mm, rss);
 	arch_leave_lazy_mmu_mode();
