@@ -1325,7 +1325,8 @@ static inline bool should_zap_cows(struct zap_details *details)
 static inline void zap_present_pte(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, pte_t *pte, pte_t ptent,
 		unsigned long addr, struct zap_details *details,
-		int *rss, bool *force_flush, bool *force_break)
+		int *rss, bool *force_flush, bool *force_break,
+		bool *any_skipped)
 {
 	struct mm_struct *mm = tlb->mm;
 	struct page *page;
@@ -1338,8 +1339,10 @@ static inline void zap_present_pte(struct mmu_gather *tlb,
 		 * unmap shared but keep private pages.
 		 */
 		if (details->check_mapping &&
-		    details->check_mapping != page_rmapping(page))
+		    details->check_mapping != page_rmapping(page)) {
+			*any_skipped = true;
 			return;
+		}
 	}
 	ptent = ptep_get_and_clear_full(mm, addr, pte,
 					tlb->fullmm);
@@ -1368,10 +1371,12 @@ static inline void zap_present_pte(struct mmu_gather *tlb,
 
 static inline void zap_nonpresent_pte(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, pte_t *pte, pte_t ptent,
-		unsigned long addr, struct zap_details *details, int *rss)
+		unsigned long addr, struct zap_details *details, int *rss,
+		bool *any_skipped)
 {
 	swp_entry_t entry;
 
+	*any_skipped = true;
 	entry = pte_to_swp_entry(ptent);
 	if (is_device_private_entry(entry) ||
 	    is_device_exclusive_entry(entry)) {
@@ -1387,6 +1392,7 @@ static inline void zap_nonpresent_pte(struct mmu_gather *tlb,
 				return;
 		}
 		pte_clear_not_present_full(vma->vm_mm, addr, pte, tlb->fullmm);
+		*any_skipped = false;
 		rss[mm_counter(page)]--;
 		if (is_device_private_entry(entry))
 			page_remove_rmap(page, false);
@@ -1409,13 +1415,15 @@ static inline void zap_nonpresent_pte(struct mmu_gather *tlb,
 	if (unlikely(!free_swap_and_cache(entry)))
 		print_bad_pte(vma, addr, ptent, NULL);
 	pte_clear_not_present_full(vma->vm_mm, addr, pte, tlb->fullmm);
+	*any_skipped = false;
 }
 
 static inline int do_zap_pte_range(struct mmu_gather *tlb,
 				   struct vm_area_struct *vma, pte_t *pte,
 				   unsigned long addr, unsigned long end,
 				   struct zap_details *details, int *rss,
-				   bool *force_flush, bool *force_break)
+				   bool *force_flush, bool *force_break,
+				   bool *any_skipped)
 {
 	pte_t ptent = ptep_get(pte);
 	int max_nr = (end - addr) / PAGE_SIZE;
@@ -1437,9 +1445,10 @@ static inline int do_zap_pte_range(struct mmu_gather *tlb,
 
 	if (pte_present(ptent))
 		zap_present_pte(tlb, vma, pte, ptent, addr, details, rss,
-				force_flush, force_break);
+				force_flush, force_break, any_skipped);
 	else
-		zap_nonpresent_pte(tlb, vma, pte, ptent, addr, details, rss);
+		zap_nonpresent_pte(tlb, vma, pte, ptent, addr, details, rss,
+				   any_skipped);
 
 	return nr + 1;
 }
@@ -1450,6 +1459,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct zap_details *details)
 {
 	bool force_flush = false, force_break = false;
+	bool any_skipped = false;
 	struct mm_struct *mm = tlb->mm;
 	int rss[NR_MM_COUNTERS];
 	spinlock_t *ptl;
@@ -1470,7 +1480,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 			break;
 
 		nr = do_zap_pte_range(tlb, vma, pte, addr, end, details, rss,
-				      &force_flush, &force_break);
+				      &force_flush, &force_break, &any_skipped);
 		if (unlikely(force_break)) {
 			addr += nr * PAGE_SIZE;
 			break;
