@@ -132,3 +132,4 @@ obj-$(CONFIG_HAVE_BOOTMEM_INFO_NODE) += bootmem_info.o
 obj-$(CONFIG_GENERIC_IOREMAP) += ioremap.o
 obj-$(CONFIG_BYTEDANCE_ASYNC_FORK) += async_fork.o
 obj-$(CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN) += hugetlb_background_clean.o
+obj-$(CONFIG_PT_RECLAIM) += pt_reclaim.o
