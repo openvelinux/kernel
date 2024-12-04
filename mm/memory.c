@@ -1418,9 +1418,22 @@ static inline int do_zap_pte_range(struct mmu_gather *tlb,
 				   bool *force_flush, bool *force_break)
 {
 	pte_t ptent = ptep_get(pte);
+	int max_nr = (end - addr) / PAGE_SIZE;
+	int nr = 0;
 
-	if (pte_none(ptent))
-		return 1;
+	/* Skip all consecutive none ptes */
+	if (pte_none(ptent)) {
+		for (nr = 1; nr < max_nr; nr++) {
+			ptent = ptep_get(pte + nr);
+			if (!pte_none(ptent))
+				break;
+		}
+		max_nr -= nr;
+		if (!max_nr)
+			return nr;
+		pte += nr;
+		addr += nr * PAGE_SIZE;
+	}
 
 	if (pte_present(ptent))
 		zap_present_pte(tlb, vma, pte, ptent, addr, details, rss,
@@ -1428,7 +1441,7 @@ static inline int do_zap_pte_range(struct mmu_gather *tlb,
 	else
 		zap_nonpresent_pte(tlb, vma, pte, ptent, addr, details, rss);
 
-	return 1;
+	return nr + 1;
 }
 
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
