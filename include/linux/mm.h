@@ -1732,6 +1732,7 @@ struct zap_details {
 	pgoff_t	first_index;			/* Lowest page->index to unmap */
 	pgoff_t last_index;			/* Highest page->index to unmap */
 	struct page *single_page;		/* Locked page to be unmapped */
+	bool reclaim_pt;			/* Need reclaim page tables? */
 };
 
 struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
