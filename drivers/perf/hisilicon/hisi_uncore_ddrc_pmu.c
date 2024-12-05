@@ -43,6 +43,11 @@
 #define DDRC_V2_EVENT_TYPE	0xe74
 #define DDRC_V2_PERF_CTRL	0xeA0
 
+/* DDRC interrupt registers definition in v3 */
+#define DDRC_V3_INT_MASK	0x534
+#define DDRC_V3_INT_STATUS	0x538
+#define DDRC_V3_INT_CLEAR	0x53C
+
 /* DDRC has 8-counters */
 #define DDRC_NR_COUNTERS	0x8
 #define DDRC_V1_PERF_CTRL_EN	0x2
@@ -61,6 +66,12 @@
 static const u32 ddrc_reg_off[] = {
 	DDRC_FLUX_WR, DDRC_FLUX_RD, DDRC_FLUX_WCMD, DDRC_FLUX_RCMD,
 	DDRC_PRE_CMD, DDRC_ACT_CMD, DDRC_RNK_CHG, DDRC_RW_CHG
+};
+
+struct hisi_ddrc_pmu_regs {
+	u32 int_mask;
+	u32 int_clear;
+	u32 int_status;
 };
 
 /*
@@ -223,76 +234,42 @@ static void hisi_ddrc_pmu_v2_disable_counter(struct hisi_pmu *ddrc_pmu,
 	writel(val, ddrc_pmu->base + DDRC_V2_EVENT_CTRL);
 }
 
-static void hisi_ddrc_pmu_v1_enable_counter_int(struct hisi_pmu *ddrc_pmu,
-						struct hw_perf_event *hwc)
+static void hisi_ddrc_pmu_enable_counter_int(struct hisi_pmu *ddrc_pmu,
+					     struct hw_perf_event *hwc)
 {
+	struct hisi_ddrc_pmu_regs *regs = ddrc_pmu->dev_info->private;
 	u32 val;
 
-	/* Write 0 to enable interrupt */
-	val = readl(ddrc_pmu->base + DDRC_INT_MASK);
+	val = readl(ddrc_pmu->base + regs->int_mask);
 	val &= ~(1 << hwc->idx);
-	writel(val, ddrc_pmu->base + DDRC_INT_MASK);
+	writel(val, ddrc_pmu->base + regs->int_mask);
 }
 
-static void hisi_ddrc_pmu_v1_disable_counter_int(struct hisi_pmu *ddrc_pmu,
-						 struct hw_perf_event *hwc)
+static void hisi_ddrc_pmu_disable_counter_int(struct hisi_pmu *ddrc_pmu,
+					      struct hw_perf_event *hwc)
 {
+	struct hisi_ddrc_pmu_regs *regs = ddrc_pmu->dev_info->private;
 	u32 val;
 
-	/* Write 1 to mask interrupt */
-	val = readl(ddrc_pmu->base + DDRC_INT_MASK);
+	val = readl(ddrc_pmu->base + regs->int_mask);
 	val |= 1 << hwc->idx;
-	writel(val, ddrc_pmu->base + DDRC_INT_MASK);
+	writel(val, ddrc_pmu->base + regs->int_mask);
 }
 
-static void hisi_ddrc_pmu_v2_enable_counter_int(struct hisi_pmu *ddrc_pmu,
-						struct hw_perf_event *hwc)
+static u32 hisi_ddrc_pmu_get_int_status(struct hisi_pmu *ddrc_pmu)
 {
-	u32 val;
+	struct hisi_ddrc_pmu_regs *regs = ddrc_pmu->dev_info->private;
 
-	val = readl(ddrc_pmu->base + DDRC_V2_INT_MASK);
-	val &= ~(1 << hwc->idx);
-	writel(val, ddrc_pmu->base + DDRC_V2_INT_MASK);
+	return readl(ddrc_pmu->base + regs->int_status);
 }
 
-static void hisi_ddrc_pmu_v2_disable_counter_int(struct hisi_pmu *ddrc_pmu,
-						struct hw_perf_event *hwc)
+static void hisi_ddrc_pmu_clear_int_status(struct hisi_pmu *ddrc_pmu,
+					   int idx)
 {
-	u32 val;
+	struct hisi_ddrc_pmu_regs *regs = ddrc_pmu->dev_info->private;
 
-	val = readl(ddrc_pmu->base + DDRC_V2_INT_MASK);
-	val |= 1 << hwc->idx;
-	writel(val, ddrc_pmu->base + DDRC_V2_INT_MASK);
+	writel(1 << idx, ddrc_pmu->base + regs->int_clear);
 }
-
-static u32 hisi_ddrc_pmu_v1_get_int_status(struct hisi_pmu *ddrc_pmu)
-{
-	return readl(ddrc_pmu->base + DDRC_INT_STATUS);
-}
-
-static void hisi_ddrc_pmu_v1_clear_int_status(struct hisi_pmu *ddrc_pmu,
-					      int idx)
-{
-	writel(1 << idx, ddrc_pmu->base + DDRC_INT_CLEAR);
-}
-
-static u32 hisi_ddrc_pmu_v2_get_int_status(struct hisi_pmu *ddrc_pmu)
-{
-	return readl(ddrc_pmu->base + DDRC_V2_INT_STATUS);
-}
-
-static void hisi_ddrc_pmu_v2_clear_int_status(struct hisi_pmu *ddrc_pmu,
-					      int idx)
-{
-	writel(1 << idx, ddrc_pmu->base + DDRC_V2_INT_CLEAR);
-}
-
-static const struct acpi_device_id hisi_ddrc_pmu_acpi_match[] = {
-	{ "HISI0233", },
-	{ "HISI0234", },
-	{}
-};
-MODULE_DEVICE_TABLE(acpi, hisi_ddrc_pmu_acpi_match);
 
 static int hisi_ddrc_pmu_init_data(struct platform_device *pdev,
 				   struct hisi_pmu *ddrc_pmu)
@@ -314,6 +291,10 @@ static int hisi_ddrc_pmu_init_data(struct platform_device *pdev,
 	}
 	/* DDRC PMUs only share the same SCCL */
 	ddrc_pmu->ccl_id = -1;
+
+	ddrc_pmu->dev_info = device_get_match_data(&pdev->dev);
+	if (!ddrc_pmu->dev_info)
+		return -ENODEV;
 
 	ddrc_pmu->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(ddrc_pmu->base)) {
@@ -428,12 +409,12 @@ static const struct hisi_uncore_ops hisi_uncore_ddrc_v1_ops = {
 	.stop_counters		= hisi_ddrc_pmu_v1_stop_counters,
 	.enable_counter		= hisi_ddrc_pmu_v1_enable_counter,
 	.disable_counter	= hisi_ddrc_pmu_v1_disable_counter,
-	.enable_counter_int	= hisi_ddrc_pmu_v1_enable_counter_int,
-	.disable_counter_int	= hisi_ddrc_pmu_v1_disable_counter_int,
+	.enable_counter_int	= hisi_ddrc_pmu_enable_counter_int,
+	.disable_counter_int	= hisi_ddrc_pmu_disable_counter_int,
 	.write_counter		= hisi_ddrc_pmu_v1_write_counter,
 	.read_counter		= hisi_ddrc_pmu_v1_read_counter,
-	.get_int_status		= hisi_ddrc_pmu_v1_get_int_status,
-	.clear_int_status	= hisi_ddrc_pmu_v1_clear_int_status,
+	.get_int_status		= hisi_ddrc_pmu_get_int_status,
+	.clear_int_status	= hisi_ddrc_pmu_clear_int_status,
 };
 
 static const struct hisi_uncore_ops hisi_uncore_ddrc_v2_ops = {
@@ -443,12 +424,12 @@ static const struct hisi_uncore_ops hisi_uncore_ddrc_v2_ops = {
 	.stop_counters		= hisi_ddrc_pmu_v2_stop_counters,
 	.enable_counter		= hisi_ddrc_pmu_v2_enable_counter,
 	.disable_counter	= hisi_ddrc_pmu_v2_disable_counter,
-	.enable_counter_int	= hisi_ddrc_pmu_v2_enable_counter_int,
-	.disable_counter_int	= hisi_ddrc_pmu_v2_disable_counter_int,
+	.enable_counter_int	= hisi_ddrc_pmu_enable_counter_int,
+	.disable_counter_int	= hisi_ddrc_pmu_disable_counter_int,
 	.write_counter		= hisi_ddrc_pmu_v2_write_counter,
 	.read_counter		= hisi_ddrc_pmu_v2_read_counter,
-	.get_int_status		= hisi_ddrc_pmu_v2_get_int_status,
-	.clear_int_status	= hisi_ddrc_pmu_v2_clear_int_status,
+	.get_int_status		= hisi_ddrc_pmu_get_int_status,
+	.clear_int_status	= hisi_ddrc_pmu_clear_int_status,
 };
 
 static int hisi_ddrc_pmu_dev_probe(struct platform_device *pdev,
@@ -467,15 +448,14 @@ static int hisi_ddrc_pmu_dev_probe(struct platform_device *pdev,
 	if (ddrc_pmu->identifier >= HISI_PMU_V2) {
 		ddrc_pmu->counter_bits = 48;
 		ddrc_pmu->check_event = DDRC_V2_NR_EVENTS;
-		ddrc_pmu->pmu_events.attr_groups = hisi_ddrc_pmu_v2_attr_groups;
 		ddrc_pmu->ops = &hisi_uncore_ddrc_v2_ops;
 	} else {
 		ddrc_pmu->counter_bits = 32;
 		ddrc_pmu->check_event = DDRC_V1_NR_EVENTS;
-		ddrc_pmu->pmu_events.attr_groups = hisi_ddrc_pmu_v1_attr_groups;
 		ddrc_pmu->ops = &hisi_uncore_ddrc_v1_ops;
 	}
 
+	ddrc_pmu->pmu_events.attr_groups = ddrc_pmu->dev_info->attr_groups;
 	ddrc_pmu->num_counters = DDRC_NR_COUNTERS;
 	ddrc_pmu->dev = &pdev->dev;
 	ddrc_pmu->on_cpu = -1;
@@ -540,6 +520,50 @@ static int hisi_ddrc_pmu_remove(struct platform_device *pdev)
 					    &ddrc_pmu->node);
 	return 0;
 }
+
+static struct hisi_ddrc_pmu_regs hisi_ddrc_v1_pmu_regs = {
+	.int_mask = DDRC_INT_MASK,
+	.int_clear = DDRC_INT_CLEAR,
+	.int_status = DDRC_INT_STATUS,
+};
+
+static const struct hisi_pmu_dev_info hisi_ddrc_v1 = {
+	.name = "ddrc",
+	.attr_groups = hisi_ddrc_pmu_v1_attr_groups,
+	.private = &hisi_ddrc_v1_pmu_regs,
+};
+
+static struct hisi_ddrc_pmu_regs hisi_ddrc_v2_pmu_regs = {
+	.int_mask = DDRC_V2_INT_MASK,
+	.int_clear = DDRC_V2_INT_CLEAR,
+	.int_status = DDRC_V2_INT_STATUS,
+};
+
+static const struct hisi_pmu_dev_info hisi_ddrc_v2 = {
+	.name = "ddrc",
+	.attr_groups = hisi_ddrc_pmu_v2_attr_groups,
+	.private = &hisi_ddrc_v2_pmu_regs,
+};
+
+static struct hisi_ddrc_pmu_regs hisi_ddrc_v3_pmu_regs = {
+	.int_mask = DDRC_V3_INT_MASK,
+	.int_clear = DDRC_V3_INT_CLEAR,
+	.int_status = DDRC_V3_INT_STATUS,
+};
+
+static const struct hisi_pmu_dev_info hisi_ddrc_v3 = {
+	.name = "ddrc",
+	.attr_groups = hisi_ddrc_pmu_v2_attr_groups,
+	.private = &hisi_ddrc_v3_pmu_regs,
+};
+
+static const struct acpi_device_id hisi_ddrc_pmu_acpi_match[] = {
+	{ "HISI0233", (kernel_ulong_t)&hisi_ddrc_v1},
+	{ "HISI0234", (kernel_ulong_t)&hisi_ddrc_v2},
+	{ "HISI0235", (kernel_ulong_t)&hisi_ddrc_v3},
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, hisi_ddrc_pmu_acpi_match);
 
 static struct platform_driver hisi_ddrc_pmu_driver = {
 	.driver = {
