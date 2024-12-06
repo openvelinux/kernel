@@ -15,6 +15,7 @@
 #include <linux/cpu.h>
 #include <linux/ptrace.h>
 #include <linux/time_namespace.h>
+#include <linux/async_fork.h>
 
 #include <asm/pvclock.h>
 #include <asm/vgtod.h>
@@ -127,8 +128,14 @@ int vdso_join_timens(struct task_struct *task, struct time_namespace *ns)
 {
 	struct mm_struct *mm = task->mm;
 	struct vm_area_struct *vma;
+	bool skip_lock = false;
 
-	mmap_read_lock(mm);
+	if (!mmap_read_trylock(mm)) {
+		if (is_child_mm_in_async_copy(mm))
+			skip_lock = true;
+		else
+			mmap_read_lock(mm);
+	}
 
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		unsigned long size = vma->vm_end - vma->vm_start;
@@ -137,7 +144,8 @@ int vdso_join_timens(struct task_struct *task, struct time_namespace *ns)
 			zap_page_range(vma, vma->vm_start, size);
 	}
 
-	mmap_read_unlock(mm);
+	if (likely(!skip_lock))
+		mmap_read_unlock(mm);
 	return 0;
 }
 #else
