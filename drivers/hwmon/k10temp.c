@@ -20,8 +20,9 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/pci_ids.h>
-#include <asm/amd_nb.h>
+#include <asm/amd_node.h>
 #include <asm/processor.h>
+#include <asm/amd_nb.h>
 
 MODULE_DESCRIPTION("AMD Family 10h+ CPU core temperature monitor");
 MODULE_AUTHOR("Clemens Ladisch <clemens@ladisch.de>");
