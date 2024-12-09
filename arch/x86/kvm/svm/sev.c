@@ -4778,100 +4778,129 @@ out_no_trace:
 	put_page(pfn_to_page(pfn));
 }
 
-static bool is_pfn_range_shared(kvm_pfn_t start, kvm_pfn_t end)
+/*
+ * Find the offset of the next contiguous shared PFN range within the bounds of
+ * pfn_start/npages_max. If no shared pages are present, 'offset' will correspond
+ * to the end off the range and 'npages_shared' will be 0.
+ */
+static int next_shared_offset(struct kvm *kvm, kvm_pfn_t pfn_start, long npages_max,
+			      kvm_pfn_t *offset, long *npages_shared)
 {
-	kvm_pfn_t pfn = start;
+	kvm_pfn_t pfn = pfn_start;
+	int ret;
 
-	while (pfn < end) {
-		int ret, rmp_level;
+	*offset = 0;
+	*npages_shared = 0;
+
+	while (pfn < pfn_start + npages_max) {
 		bool assigned;
+		int level;
 
-		ret = snp_lookup_rmpentry(pfn, &assigned, &rmp_level);
+		ret = snp_lookup_rmpentry(pfn, &assigned, &level);
 		if (ret) {
-			pr_warn_ratelimited("SEV: Failed to retrieve RMP entry: PFN 0x%llx GFN start 0x%llx GFN end 0x%llx RMP level %d error %d\n",
-					    pfn, start, end, rmp_level, ret);
-			return false;
+			pr_warn_ratelimited("SEV: Failed to retrieve RMP entry: PFN 0x%llx error %d\n",
+					    pfn, ret);
+			return -EINVAL;
 		}
 
 		if (assigned) {
-			pr_debug("%s: overlap detected, PFN 0x%llx start 0x%llx end 0x%llx RMP level %d\n",
-				 __func__, pfn, start, end, rmp_level);
-			return false;
+			/* Continue if a shared range hasn't been found yet. */
+			if (*npages_shared)
+				break;
+		} else {
+			if (!*npages_shared)
+				*offset = pfn - pfn_start;
+			*npages_shared += PHYS_PFN(page_level_size(level));
 		}
 
-		pfn++;
+		pfn += PHYS_PFN(page_level_size(level));
+
+		/*
+		 * Only possible if RMP entry size is larger than the folio,
+		 * which kvm_gmem_prepare() should never allow for.
+		 */
+		WARN_ON_ONCE(pfn > pfn_start + npages_max);
 	}
 
-	return true;
+	if (!*npages_shared)
+		*offset = npages_max;
+
+	return 0;
 }
 
-static u8 max_level_for_order(int order)
-{
-	if (order >= KVM_HPAGE_GFN_SHIFT(PG_LEVEL_2M))
-		return PG_LEVEL_2M;
-
-	return PG_LEVEL_4K;
-}
-
-static bool is_large_rmp_possible(struct kvm *kvm, kvm_pfn_t pfn, int order)
-{
-	kvm_pfn_t pfn_aligned = ALIGN_DOWN(pfn, PTRS_PER_PMD);
-
-	/*
-	 * If this is a large folio, and the entire 2M range containing the
-	 * PFN is currently shared, then the entire 2M-aligned range can be
-	 * set to private via a single 2M RMP entry.
-	 */
-	if (max_level_for_order(order) > PG_LEVEL_4K &&
-	    is_pfn_range_shared(pfn_aligned, pfn_aligned + PTRS_PER_PMD))
-		return true;
-
-	return false;
-}
-
+/*
+ * This relies on the fact that the folio backing the PFN range is locked while
+ * this callback is issued. Otherwise, concurrent accesses to the same folio
+ * could result in the RMP table getting out of sync with what gmem is tracking
+ * as prepared/unprepared, likely resulting in the vCPU looping on
+ * KVM_EXIT_MEMORY_FAULTs that are never resolved since gmem thinks it has
+ * already processed the RMP table updates.
+ *
+ * This also assumes gmem is using filemap invalidate locks (or some other
+ * mechanism) to ensure that invalidations/hole-punches don't get interleaved
+ * with prepare callbacks.
+ *
+ * The net affect of this is that RMP table checks/updates should be consistent
+ * for the range of PFNs/GFNs this function is called with.
+ */
 int sev_gmem_prepare(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, int max_order)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
-	kvm_pfn_t pfn_aligned;
-	gfn_t gfn_aligned;
-	int level, rc;
-	bool assigned;
+	unsigned long npages;
+	kvm_pfn_t pfn_start;
+	gfn_t gfn_start;
 
 	if (!sev_snp_guest(kvm))
 		return 0;
 
-	rc = snp_lookup_rmpentry(pfn, &assigned, &level);
-	if (rc) {
-		pr_err_ratelimited("SEV: Failed to look up RMP entry: GFN %llx PFN %llx error %d\n",
-				   gfn, pfn, rc);
-		return -ENOENT;
+	npages = (1ul << max_order);
+	pfn_start = ALIGN_DOWN(pfn, npages);
+	gfn_start = ALIGN_DOWN(gfn, npages);
+
+	for (pfn = pfn_start, gfn = gfn_start; pfn < pfn_start + npages;) {
+		long npages_shared;
+		kvm_pfn_t offset;
+		int rc;
+
+		rc = next_shared_offset(kvm, pfn, npages - (pfn - pfn_start),
+					&offset, &npages_shared);
+		if (rc < 0)
+			return offset;
+
+		pfn += offset;
+		gfn += offset;
+
+		while (npages_shared) {
+			int order, level;
+
+			if (IS_ALIGNED(pfn, 1ull << PMD_ORDER) &&
+			    npages_shared >= (1ul << PMD_ORDER)) {
+				order = PMD_ORDER;
+				level = PG_LEVEL_2M;
+			} else {
+				order = 0;
+				level = PG_LEVEL_4K;
+			}
+
+			pr_debug("%s: preparing sub-range: gfn 0x%llx pfn 0x%llx order %d npages_shared %ld\n",
+				 __func__, gfn, pfn, order, npages_shared);
+
+			rc = rmp_make_private(pfn, gfn_to_gpa(gfn), level,
+					      sev->asid, false);
+			if (rc) {
+				pr_err_ratelimited("SEV: Failed to update RMP entry: GFN 0x%llx PFN 0x%llx order %d error %d\n",
+						   gfn, pfn, order, rc);
+				return rc;
+			}
+
+			gfn += (1ull << order);
+			pfn += (1ull << order);
+			npages_shared -= (1ul << order);
+		}
 	}
 
-	if (assigned) {
-		pr_debug("%s: already assigned: gfn %llx pfn %llx max_order %d level %d\n",
-			 __func__, gfn, pfn, max_order, level);
-		return 0;
-	}
-
-	if (is_large_rmp_possible(kvm, pfn, max_order)) {
-		level = PG_LEVEL_2M;
-		pfn_aligned = ALIGN_DOWN(pfn, PTRS_PER_PMD);
-		gfn_aligned = ALIGN_DOWN(gfn, PTRS_PER_PMD);
-	} else {
-		level = PG_LEVEL_4K;
-		pfn_aligned = pfn;
-		gfn_aligned = gfn;
-	}
-
-	rc = rmp_make_private(pfn_aligned, gfn_to_gpa(gfn_aligned), level, sev->asid, false);
-	if (rc) {
-		pr_err_ratelimited("SEV: Failed to update RMP entry: GFN %llx PFN %llx level %d error %d\n",
-				   gfn, pfn, level, rc);
-		return -EINVAL;
-	}
-
-	pr_debug("%s: updated: gfn %llx pfn %llx pfn_aligned %llx max_order %d level %d\n",
-		 __func__, gfn, pfn, pfn_aligned, max_order, level);
+	pr_debug("%s: updated: gfn_start 0x%llx pfn_start 0x%llx npages %ld max_order %d\n",
+		 __func__, gfn_start, pfn_start, npages, max_order);
 
 	return 0;
 }
