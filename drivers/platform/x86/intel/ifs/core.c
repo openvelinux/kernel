@@ -21,6 +21,7 @@ static const struct x86_cpu_id ifs_cpu_ids[] __initconst = {
 	X86_MATCH(GRANITERAPIDS_X, ARRAY_GEN0),
 	X86_MATCH(GRANITERAPIDS_D, ARRAY_GEN0),
 	X86_MATCH(ATOM_CRESTMONT_X, ARRAY_GEN1),
+	X86_MATCH(ATOM_DARKMONT_X, ARRAY_GEN1),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, ifs_cpu_ids);
