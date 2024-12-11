@@ -505,7 +505,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		retval = -EINTR;
 		goto fail_uprobe_end;
 	}
-	try_enable_async_copy(oldmm, mm);
+	try_enable_async_copy(oldmm, mm, current);
 	flush_cache_dup_mm(oldmm);
 	uprobe_dup_mmap(oldmm, mm);
 	/*

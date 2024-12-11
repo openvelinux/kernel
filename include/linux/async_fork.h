@@ -6,6 +6,7 @@
 #include <linux/task_work.h>
 #include <linux/sched/mm.h>
 #include <linux/mmu_notifier.h>
+#include <linux/memcontrol.h>
 
 #ifdef CONFIG_BYTEDANCE_ASYNC_FORK
 
@@ -140,26 +141,52 @@ static inline bool mm_has_userfaultfd(struct mm_struct *mm)
 	return false;
 }
 
+static inline bool mem_cgroup_async_fork_enabled(struct task_struct *p)
+{
+	struct mem_cgroup *memcg;
+	int enabled = false;
+
+	if (mem_cgroup_disabled())
+		return false;
+	rcu_read_lock();
+	memcg = mem_cgroup_from_task(p);
+	if (memcg && READ_ONCE(memcg->async_fork_enabled))
+		enabled = true;
+	rcu_read_unlock();
+
+	return enabled;
+}
+
 /*
  * Called with parent_mm's mmap_sem held in write mode to prevent concurrent
  * usage of async-fork.
  */
 static inline void try_enable_async_copy(struct mm_struct *parent_mm,
-					 struct mm_struct *child_mm)
+					 struct mm_struct *child_mm,
+					 struct task_struct *p)
 {
-	int enabled = READ_ONCE(async_fork_enabled);
+	int global_enabled;
 
+	global_enabled = READ_ONCE(async_fork_enabled);
 	/*
 	 * Global variable async_fork_enabled may be 0, 1 or 2. It's default
 	 * value is 1. sysctl can control it.
 	 *
 	 * case 0: disable async-fork
-	 * case 1: depend on mm->async_copy_enabled, prctl() can control it.
+	 * case 1: depend on mm->async_copy_enabled(prctl() can control it) and
+		   memcg->async_fork_enabled.
 	 * case 2: enable async-fork
 	 */
-	if (enabled != 2 && !(enabled && READ_ONCE(parent_mm->async_copy_enabled)))
-		return;
+	if (global_enabled == 1) {
+		if (READ_ONCE(parent_mm->async_copy_enabled))
+			goto pass_check;
+		if (mem_cgroup_async_fork_enabled(p))
+			goto pass_check;
+	} else if (global_enabled == 2)
+		goto pass_check;
 
+	return;
+pass_check:
 	/* Never enable async-fork if this mm has notifiers */
 	if (mm_has_notifiers(parent_mm))
 		return;
@@ -204,7 +231,8 @@ static inline void try_copy_page_range_async(struct vm_area_struct *vma,
 static inline void try_clean_async_copy(struct mm_struct *mm) {}
 
 static inline void try_enable_async_copy(struct mm_struct *parent_mm,
-					 struct mm_struct *child_mm) {}
+					 struct mm_struct *child_mm,
+					 struct task_struct *p) {}
 
 #endif /* CONFIG_BYTEDANCE_ASYNC_FORK */
 #endif /* _ASYNC_FORK_H */
