@@ -393,6 +393,10 @@ struct mem_cgroup {
 	unsigned long watermark[NR_MEMCG_WMARK];
 	struct mutex wmark_lock;
 #endif
+
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	unsigned char async_fork_enabled;
+#endif
 	struct mem_cgroup_per_node *nodeinfo[];
 };
 

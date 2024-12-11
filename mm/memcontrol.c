@@ -5137,6 +5137,27 @@ static int memory_wmark_read(struct seq_file *m, void *v)
 
 static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, loff_t off);
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+static int mem_cgroup_async_fork_enabled_write(struct cgroup_subsys_state *css,
+					struct cftype *cft, u64 val)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	if (val != 0 && val != 1)
+		return -EINVAL;
+
+	WRITE_ONCE(memcg->async_fork_enabled, (unsigned char)val);
+	return 0;
+}
+
+static u64 mem_cgroup_async_fork_enabled_read(struct cgroup_subsys_state *css,
+					struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return (u64)READ_ONCE(memcg->async_fork_enabled);
+}
+#endif
 
 static struct cftype mem_cgroup_legacy_files[] = {
 	{
@@ -5286,6 +5307,13 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
 	},
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	{
+		.name = "async_fork_enabled",
+		.write_u64 = mem_cgroup_async_fork_enabled_write,
+		.read_u64 = mem_cgroup_async_fork_enabled_read,
+	},
+#endif
 	{ },	/* terminate */
 };
 
@@ -7116,6 +7144,13 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT | CFTYPE_NS_DELEGATABLE,
 		.seq_show = memory_dirty_bg_thresh_show,
 		.write = memory_dirty_bg_thresh_write,
+	},
+#endif
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	{
+		.name = "async_fork_enabled",
+		.write_u64 = mem_cgroup_async_fork_enabled_write,
+		.read_u64 = mem_cgroup_async_fork_enabled_read,
 	},
 #endif
 	{ }	/* terminate */
