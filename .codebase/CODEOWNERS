@@ -1,41 +1,228 @@
 /arch/arm64/ @guojinhui.liam @cuiyunhui
 /arch/arm64/kvm/ @xieyongji @dengliang.1214 @fam.zheng
+/arch/*/include/asm/percpu.h @zhengqi.arch
+/arch/*/include/asm/tlb.h @zhengqi.arch
 /arch/riscv/ @cuiyunhui @guojinhui.liam
 /arch/x86/ @weiguixiong @cuiyunhui @guojinhui.liam
 /arch/x86/kernel/cpu/mce/ @qirui.001 @zhaozhengyu
 /arch/x86/kvm/ @xieyongji @dengliang.1214 @fam.zheng
 /arch/x86/mm/ @lizhe.67 @weiguixiong
+/asm/elf.h @hezhongkun.hzk
+/binfmt @hezhongkun.hzk
+/block/ @xieyongji @yinxin.x @lilintjpu @changfengnan @lilei.777 @zhujia.zj
 /crypto/ @weiguixiong
-/security/ @weiguixiong
-/fs/ @vishal.saraswat @xieyongji @chenying.kernel @yinxin.x @hanjinke.666
-/block/ @xieyongji @chenying.kernel @yinxin.x @hanjinke.666
-/kernel/ @zhouchengming @zhengqi.arch @ligang.bdlg @qirui.001
-/kernel/sched/ @zhouchengming @chenying.kernel @zhouchuyi @jiahao.os
-/kernel/livepatch/ @zhouchengming @qirui.001 @cuiyunhui
-/kernel/cgroup/ @zhouchengming @maxing.lan
-/kernel/bpf/ @wangdongdong.6 @cong.wang @zhoufeng.zf @huangjie.albert @zhangyuchen.lcr
-/kernel/events/ @maxing.lan @huangjie.albert
-/tools/perf/ @ligang.bdlg @maxing.lan @huangjie.albert
-/mm/ @zhengqi.arch @vishal.saraswat @ligang.bdlg @lizhe.67
-/mm/damon/ @zhangyuchen.lcr @hezhongkun.hzk
-/mm/memory-failure.c @qirui.001 @zhaozhengyu
-/net/ @cong.wang @bobby.eshleman @peilin.ye @wangdongdong.6 @chenwei.0515
-/virt/ @xieyongji @dengliang.1214 @fam.zheng
+/Documentation/ABI/testing/sysfs-kernel-mm-damon @hezhongkun.hzk
+/Documentation/ABI/testing/sysfs-kernel-mm-hugepages @songmuchun
+/Documentation/accounting/taskstats* @zhouchengming
+/Documentation/admin-guide/mm/damon/ @hezhongkun.hzk
+/Documentation/admin-guide/mm/hugetlbpage.rst @songmuchun
+/Documentation/admin-guide/mm/memory-hotplug.rst @liusongtang
+/Documentation/admin-guide/mm/shrinker_debugfs.rst @zhengqi.arch
+/Documentation/admin-guide/mm/zswap.rst @zhouchengming
+/Documentation/admin-guide/pm/cpufreq.rst @zhouchuyi
+/Documentation/admin-guide/pm/cpuidle.rst @zhouchuyi
+/Documentation/admin-guide/pm/intel_pstate.rst @zhouchuyi
+/Documentation/core-api/boot-time-mm.rst @liusongtang
+/Documentation/core-api/maple_tree.rst @zhangpeng.00
+/Documentation/core-api/memory-hotplug.rst @liusongtang
+/Documentation/core-api/workqueue.rst @songmuchun
+/Documentation/cpu-freq/ @zhouchuyi
+/Documentation/devicetree/bindings/cpufreq/ @zhouchuyi
+/Documentation/driver-api/pm/cpuidle.rst @zhouchuyi
+/Documentation/mm/allocation-profiling.rst @liusongtang
+/Documentation/mm/damon/ @hezhongkun.hzk
+/Documentation/mm/hmm.rst @hezhongkun.hzk
+/Documentation/mm/hugetlbfs_reserv.rst @songmuchun
+/Documentation/mm/page_table_check.rst @liusongtang
+/Documentation/mm/vmemmap_dedup.rst @songmuchun
+/Documentation/mm/zsmalloc.rst @zhouchengming
+/Documentation/power/freezing-of-tasks.rst @songmuchun
+/Documentation/userspace-api/ELF.rst @hezhongkun.hzk
 /drivers/ @guojinhui.liam @cuiyunhui
 /drivers/acpi/apei/ @qirui.001 @zhaozhengyu
-/drivers/block/ @yinxin.x
+/drivers/ata/ @changfengnan @lilintjpu @lilei.777
+/drivers/base/arch_topology.c @zhouchuyi
+/drivers/base/memory.c @liusongtang
+/drivers/block/ @yinxin.x @lilintjpu @changfengnan @lilei.777
+/drivers/block/rbd.c @xuqiliang @liuliangqi
+/drivers/block/rbd_types.h @xuqiliang @liuliangqi
+/drivers/bytedance/hookbind @wangdongdong.6 @zhoufeng.zf
 /drivers/char/ipmi/ @zhangyuchen.lcr
+/drivers/cpufreq/ @zhouchuyi
+/drivers/cpuidle/* @zhouchuyi
 /drivers/crypto/ @weiguixiong
 /drivers/cxl/ @zhangyuchen.lcr
 /drivers/edac/ @qirui.001 @zhaozhengyu
 /drivers/iommu/ @guojinhui.liam
+/drivers/md/ @yinxin.x @lilintjpu @changfengnan @lilei.777 @zhujia.zj
 /drivers/misc/cxl/ @zhangyuchen.lcr
-/drivers/net/ @wangdongdong.6 @chenwei.0515
+/drivers/net/ @chenwei.0515 @wangdongdong.6
+/drivers/nvme/ @guzebing @lilintjpu @zhangqiankun.0212
 /drivers/pci/ @guojinhui.liam @cuiyunhui
 /drivers/perf/ @huangjie.albert
 /drivers/ras/ @qirui.001
-/drivers/virtio/ @xieyongji @dengliang.1214 @fam.zheng @huangjie.albert
+/drivers/scsi/ @changfengnan @lilintjpu @lilei.777
 /drivers/vdpa/ @xieyongji @fam.zheng
 /drivers/vfio/ @xieyongji @fam.zheng @dengliang.1214 @guojinhui.liam
 /drivers/vhost/ @xieyongji @cong.wang @fam.zheng @dengliang.1214
-/drivers/dax/ @xieyongji
+/drivers/virtio/ @xieyongji @dengliang.1214 @fam.zheng @huangjie.albert @wangdongdong.6 @chenwei.0515
+/fs/ @yinxin.x @lilintjpu
+/fs/*binfmt_*.c @hezhongkun.hzk
+/fs/cachefiles/ @zhujia.zj @yinxin.x
+/fs/ceph/ @xuqiliang @liuliangqi
+/fs/erofs/ @zhujia.zj @yinxin.x
+/fs/exec.c @hezhongkun.hzk
+/fs/exec_test.c @hezhongkun.hzk
+/fs/ext4/ @yinxin.x @lilintjpu @changfengnan @lilei.777
+/fs/fscache/ @zhujia.zj @yinxin.x
+/fs/fuse/ @lilintjpu @zhangtianci.1997 @zhujia.zj @yinxin.x
+/fs/hugetlbfs/ @songmuchun
+/fs/io_uring.c @changfengnan @lilintjpu
+/fs/jbd2/ @yinxin.x @lilintjpu @changfengnan @lilei.777
+/fs/Kconfig.binfmt @hezhongkun.hzk
+/fs/overlayfs/ @zhujia.zj @yinxin.x
+/fs/xfs/ @lilei.777 @zhujia.zj @lilintjpu
+/include/asm-generic/tlb.h @zhengqi.arch
+/include/linux/alloc_tag.h @liusongtang
+/include/linux/arch_topology.h @zhouchuyi
+/include/linux/ata.h @changfengnan @lilintjpu @lilei.777
+/include/linux/ata_platform.h @changfengnan @lilintjpu @lilei.777
+/include/linux/binfmts.h @hezhongkun.hzk
+/include/linux/ceph/ @xuqiliang @liuliangqi
+/include/linux/cpufreq.h @zhouchuyi
+/include/linux/cpuidle.h @zhouchuyi
+/include/linux/damon.h @hezhongkun.hzk
+/include/linux/elf.h @hezhongkun.hzk
+/include/linux/freezer.h @songmuchun
+/include/linux/fscache* @zhujia.zj @yinxin.x
+/include/linux/fs* @yinxin.x @lilintjpu
+/include/linux/gfp.h @songmuchun
+/include/linux/gfp_types.h @songmuchun
+/include/linux/hmm* @hezhongkun.hzk
+/include/linux/hugetlb.h @songmuchun
+/include/linux/jbd2.h  @yinxin.x @lilintjpu @changfengnan @lilei.777
+/include/linux/kernfs.h @yinxin.x @lilintjpu
+/include/linux/libata.h @changfengnan @lilintjpu @lilei.777
+/include/linux/maple_tree.h @zhangpeng.00
+/include/linux/memblock.h @liusongtang
+/include/linux/memcontrol.h @zhengqi.arch
+/include/linux/memfd.h @songmuchun
+/include/linux/memory_hotplug.h @liusongtang
+/include/linux/memory_hotplug.h @songmuchun
+/include/linux/memory.h @songmuchun
+/include/linux/memory-tiers.h @songmuchun
+/include/linux/mempolicy.h @songmuchun
+/include/linux/mempool.h @songmuchun
+/include/linux/memremap.h @songmuchun
+/include/linux/mm.h @songmuchun
+/include/linux/mm_*.h @songmuchun
+/include/linux/mmu_notifier.h @songmuchun
+/include/linux/mmzone.h @songmuchun
+/include/linux/nvme* @guzebing @lilintjpu @zhangqiankun.0212
+/include/linux/page[-_]* @songmuchun
+/include/linux/page_table_check.h @liusongtang
+/include/linux/pagewalk.h @songmuchun
+/include/linux/percpu*.h @zhengqi.arch
+/include/linux/pgalloc_tag.h @liusongtang
+/include/linux/preempt.h @zhouchengming @zhouchuyi @songmuchun
+/include/linux/psi* @zhouchengming @zhouchuyi
+/include/linux/rmap.h @songmuchun
+/include/linux/sched/cpufreq.h @zhouchuyi
+/include/linux/sched.h @zhouchengming @zhouchuyi @songmuchun
+/include/linux/sched/nohz.h @zhouchengming
+/include/linux/shmem_fs.h @hezhongkun.hzk
+/include/linux/shrinker.h @zhengqi.arch
+/include/linux/sl?b*.h @zhengqi.arch
+/include/linux/taskstats* @zhouchengming
+/include/linux/tick.h @zhouchengming
+/include/linux/vfs.h @yinxin.x @lilintjpu
+/include/linux/vmalloc.h @songmuchun
+/include/linux/wait.h @zhouchengming @zhouchuyi @songmuchun
+/include/linux/workqueue.h @songmuchun
+/include/linux/zpool.h @zhouchengming
+/include/linux/zsmalloc.h @zhouchengming
+/include/linux/zswap.h @zhouchengming
+/include/scsi/ @changfengnan @lilintjpu @lilei.777
+/include/trace/events/block.h @lilintjpu @changfengnan @lilei.777 @zhujia.zj @yinxin.x
+/include/trace/events/damon.h @hezhongkun.hzk
+/include/trace/events/erofs.h @zhujia.zj @yinxin.x
+/include/trace/events/ext4.h  @yinxin.x @lilintjpu @changfengnan @lilei.777
+/include/trace/events/fscache.h @zhujia.zj @yinxin.x
+/include/trace/events/jbd2.h  @yinxin.x @lilintjpu @changfengnan @lilei.777
+/include/trace/events/ksm.h @songmuchun
+/include/trace/events/libata.h @changfengnan @lilintjpu @lilei.777
+/include/trace/events/maple_tree.h @zhangpeng.00
+/include/trace/events/scsi.h @changfengnan @lilintjpu @lilei.777
+/include/uapi/linux/binfmts.h @hezhongkun.hzk
+/include/uapi/linux/dqblk_xfs.h @lilei.777 @zhujia.zj @lilintjpu
+/include/uapi/linux/elf.h @hezhongkun.hzk
+/include/uapi/linux/fs* @yinxin.x @lilintjpu
+/include/uapi/linux/fuse.h @lilintjpu @zhangtianci.1997 @zhujia.zj @yinxin.x
+/include/uapi/linux/nvme* @guzebing @lilintjpu @zhangqiankun.0212
+/include/uapi/linux/sched.h @zhouchengming @zhouchuyi @songmuchun
+/include/uapi/scsi/ @changfengnan @lilintjpu @lilei.777
+/io_uring/ @changfengnan @lilintjpu
+/kernel/bpf/ @wangdongdong.6 @cong.wang @zhoufeng.zf @huangjie.albert @zhangyuchen.lcr
+/kernel/events/ @maxing.lan @huangjie.albert
+/kernel/freezer.c @songmuchun
+/kernel/sched/ @zhouchengming @zhouchuyi @songmuchun
+/kernel/sched/cpufreq*.c @zhouchuyi
+/kernel/sched/psi.c @zhouchengming @zhouchuyi
+/kernel/taskstats.c @zhouchengming
+/kernel/time/tick*.* @zhouchengming
+/kernel/workqueue.c @songmuchun
+/lib/alloc_tag.c @liusongtang
+/lib/maple_tree.c @zhangpeng.00
+/lib/percpu*.c @zhengqi.arch
+/lib/test_hmm* @hezhongkun.hzk
+/lib/test_maple_tree.c @zhangpeng.00
+/mm/ @songmuchun
+/mm/damon/ @hezhongkun.hzk
+/mm/hmm* @hezhongkun.hzk
+/mm/hugetlb.c @songmuchun
+/mm/hugetlb_vmemmap.c @songmuchun
+/mm/hugetlb_vmemmap.h @songmuchun
+/mm/hwpoison-inject.c @liusongtang
+/mm/memblock.c @liusongtang
+/mm/memcontrol.c @zhengqi.arch
+/mm/memcontrol-v1.c @zhengqi.arch
+/mm/memcontrol-v1.h @zhengqi.arch
+/mm/memory-failure.c @liusongtang
+/mm/memory_hotplug.c @liusongtang
+/mm/mmap.c @hezhongkun.hzk
+/mm/mm_init.c @liusongtang
+/mm/mmu_gather.c @zhengqi.arch
+/mm/page_table_check.c @liusongtang
+/mm/percpu*.c @zhengqi.arch
+/mm/shmem.c @hezhongkun.hzk
+/mm/shrinker.c @zhengqi.arch
+/mm/shrinker_debug.c @zhengqi.arch
+/mm/sl?b* @zhengqi.arch
+/mm/swap_cgroup.c @zhengqi.arch
+/mm/vmalloc.c @songmuchun
+/mm/z3fold.c @zhouchengming
+/mm/zbud.c @zhouchengming
+/mm/zpool.c @zhouchengming
+/mm/zsmalloc.c @zhouchengming
+/mm/zswap.c @zhouchengming
+/net/ @cong.wang @bobby.eshleman @peilin.ye @chenwei.0515 @wangdongdong.6
+/net/ceph/ @xuqiliang @liuliangqi
+/samples/cgroup/* @zhengqi.arch
+/security/ @weiguixiong
+/tools/mm/ @songmuchun
+/tools/perf/ @maxing.lan @huangjie.albert
+/tools/testing/memblock/ @liusongtang
+/tools/testing/radix-tree/linux/maple_tree.h @zhangpeng.00
+/tools/testing/radix-tree/maple.c @zhangpeng.00
+/tools/testing/selftests/cgroup/memcg_protection.m @zhengqi.arch
+/tools/testing/selftests/cgroup/test_hugetlb_memcg.c @songmuchun
+/tools/testing/selftests/cgroup/test_hugetlb_memcg.c @zhengqi.arch
+/tools/testing/selftests/cgroup/test_kmem.c @zhengqi.arch
+/tools/testing/selftests/cgroup/test_memcontrol.c @zhengqi.arch
+/tools/testing/selftests/cgroup/test_zswap.c @zhouchengming
+/tools/testing/selftests/damon/ @hezhongkun.hzk
+/tools/testing/selftests/exec/ @hezhongkun.hzk
+/tools/testing/selftests/memory-hotplug/ @liusongtang
+/tools/testing/selftests/mm/ @songmuchun
+/tools/testing/selftests/mm/*hmm* @hezhongkun.hzk
+/virt/ @xieyongji @dengliang.1214 @fam.zheng
