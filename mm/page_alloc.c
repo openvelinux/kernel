@@ -3259,6 +3259,7 @@ static void __drain_all_pages(struct zone *zone, bool force_all_cpus)
 			drain_pages_zone(cpu, zone);
 		else
 			drain_pages(cpu);
+		cond_resched();
 	}
 
 	mutex_unlock(&pcpu_drain_mutex);
