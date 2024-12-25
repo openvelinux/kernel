@@ -203,9 +203,11 @@ enum mapping_flags {
 	/* writeback related tags are not used */
 	AS_NO_WRITEBACK_TAGS = 5,
 	AS_LARGE_FOLIO_SUPPORT = 6,
-	AS_RELEASE_ALWAYS,	/* Call ->release_folio(), even if no private data */
+	AS_RELEASE_ALWAYS = 7,	/* Call ->release_folio(), even if no private data */
 	AS_STABLE_WRITES,	/* must wait for writeback before modifying
 				   folio contents */
+	AS_INACCESSIBLE,	/* Do not attempt direct R/W access to the mapping,
+				   including to move the mapping */
 };
 
 /**
@@ -304,6 +306,22 @@ static inline void mapping_set_stable_writes(struct address_space *mapping)
 static inline void mapping_clear_stable_writes(struct address_space *mapping)
 {
 	clear_bit(AS_STABLE_WRITES, &mapping->flags);
+}
+
+static inline void mapping_set_inaccessible(struct address_space *mapping)
+{
+	/*
+	 * It's expected inaccessible mappings are also unevictable. Compaction
+	 * migrate scanner (isolate_migratepages_block()) relies on this to
+	 * reduce page locking.
+	 */
+	set_bit(AS_UNEVICTABLE, &mapping->flags);
+	set_bit(AS_INACCESSIBLE, &mapping->flags);
+}
+
+static inline bool mapping_inaccessible(struct address_space *mapping)
+{
+	return test_bit(AS_INACCESSIBLE, &mapping->flags);
 }
 
 static inline gfp_t mapping_gfp_mask(struct address_space * mapping)
