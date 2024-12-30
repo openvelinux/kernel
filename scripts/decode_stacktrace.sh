@@ -280,6 +280,18 @@ handle_line() {
 		last=$(( $last - 1 ))
 	fi
 
+	# Extract info after the symbol if present. E.g.:
+	# func_name+0x54/0x80 (P)
+	#                     ^^^
+	# The regex assumes only uppercase letters will be used. To be
+	# extended if needed.
+	local info_str=""
+	if [[ ${words[$last]} =~ \([A-Z]*\) ]]; then
+		info_str=${words[$last]}
+		unset words[$last]
+		last=$(( $last - 1 ))
+	fi
+
 	if [[ ${words[$last]} =~ \[([^]]+)\] ]]; then
 		module=${words[$last]}
 		module=${module#\[}
@@ -304,9 +316,9 @@ handle_line() {
 	# Add up the line number to the symbol
 	if [[ -z ${module} ]]
 	then
-		echo "${words[@]}" "$symbol"
+		echo "${words[@]}" "$symbol ${info_str}"
 	else
-		echo "${words[@]}" "$symbol $module"
+		echo "${words[@]}" "$symbol $module ${info_str}"
 	fi
 }
 
