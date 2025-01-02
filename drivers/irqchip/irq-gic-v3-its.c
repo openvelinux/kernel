@@ -93,8 +93,8 @@ struct rsv_devid_pool {
 static LIST_HEAD(rsv_devid_pools);
 static DEFINE_RAW_SPINLOCK(rsv_devid_pools_lock);
 
-/* Do we have usable rsv_devid_pool? Initialized to be true. */
-bool rsv_devid_pool_cap = true;
+/* Do we have usable rsv_devid_pool? Initialized to be false. */
+bool rsv_devid_pool_cap;
 static u8 rsv_buses_start, rsv_buses_count;
 
 static int __init rsv_buses_start_cfg(char *buf)
@@ -419,15 +419,19 @@ EXPORT_SYMBOL(gic_data_rdist_get_vlpi_base);
 /*
  * Currently we only build *one* devid pool.
  */
-static int build_devid_pools(void)
+void build_devid_pools(void)
 {
 	struct its_node *its;
 
 	its = list_first_entry(&its_nodes, struct its_node, entry);
 	if (readl_relaxed(its->base + GITS_IIDR) != 0x00051736)
-		return -EINVAL;
+		return;
 
-	return probe_devid_pool_one();
+	if (!probe_devid_pool_one())
+		rsv_devid_pool_cap = true;
+
+	if (rsv_devid_pool_cap)
+		pr_info("ITS: reserved device id pools enabled\n");
 }
 #endif
 
@@ -6209,13 +6213,6 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 			pr_err("ITS: Disabling GICv4 support\n");
 		}
 
-#ifdef CONFIG_VIRT_PLAT_DEV
-		if (build_devid_pools())
-			rsv_devid_pool_cap = false;
-
-		if (rsv_devid_pool_cap)
-			pr_info("ITS: reserved device id pools enabled\n");
-#endif
 	}
 
 	register_syscore_ops(&its_syscore_ops);
