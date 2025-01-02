@@ -180,6 +180,90 @@ int iort_register_domain_token(int trans_id, phys_addr_t base,
 	return 0;
 }
 
+static bool iort_mapd_to_its(struct acpi_iort_node *node)
+{
+	return node->type == ACPI_IORT_NODE_ITS_GROUP;
+}
+
+bool iort_gen_used_DeviceID_bitmap(unsigned long *bus_bm, resource_size_t len)
+{
+	struct acpi_iort_node *iort_node, *iort_end, *parent;
+	struct acpi_table_iort *iort;
+	int i, j, k, start_range, end_range_included;
+	struct acpi_iort_id_mapping *map;
+
+	if (!iort_table) {
+		pr_err(FW_BUG "iort_table hasn't inited.\n");
+		return -ENODEV;
+	}
+
+	/*
+	 * iort_table and iort both point to the start of IORT table, but
+	 * have different struct types
+	 */
+	iort = (struct acpi_table_iort *)iort_table;
+	iort_node = ACPI_ADD_PTR(struct acpi_iort_node, iort,
+				 iort->node_offset);
+	iort_end = ACPI_ADD_PTR(struct acpi_iort_node, iort,
+				iort_table->length);
+
+	for (i = 0; i < iort->node_count; i++) {
+		if (WARN_TAINT(iort_node >= iort_end, TAINT_FIRMWARE_WORKAROUND,
+			       "IORT node pointer overflows, bad table!\n"))
+			return -EINVAL;
+
+		/* find all map that go to ITS, so skip ITS node and no mapping node. */
+		if (iort_node->type == ACPI_IORT_NODE_ITS_GROUP ||
+			!iort_node->mapping_count ||
+			!iort_node->mapping_offset) {
+			pr_info(FW_INFO "[node %p type %d] don't map to its, skip it.\n",
+					iort_node, iort_node->type);
+			goto next_loop;
+		}
+
+		map = ACPI_ADD_PTR(struct acpi_iort_id_mapping, iort_node,
+						iort_node->mapping_offset);
+
+		for (j = 0; j < iort_node->mapping_count; j++, map++) {
+			/* Firmware bug! */
+			if (!map->output_reference) {
+				pr_err(FW_BUG "[node %p type %d] ID map has NULL parent reference, skip it.\n",
+						iort_node, iort_node->type);
+				goto next_loop;
+			}
+
+			parent = ACPI_ADD_PTR(struct acpi_iort_node, iort_table,
+								map->output_reference);
+			if (!iort_mapd_to_its(parent)) {
+				pr_debug(FW_INFO "[node %p type %d map %p] isn't map to its, skip it.\n",
+						iort_node, iort_node->type, map);
+				goto next_loop;
+			}
+			/*
+			 * What we want to get is some free DeviceID,
+			 * and [output_base, output_base + id_count) is that we find.
+			 * We will manage the DeviceID usage using bitmap. Since manage
+			 * that range one by one using bitmap is a litte awaste of memory,
+			 * let's use two level bitmap, and we can reuse PCIe's BUS concept
+			 * to build our two level bitmap.
+			 * Note that THIS HAS NOTHING TO DO WITH PCIe.
+			 */
+			start_range = PCI_BUS_NUM(map->output_base);
+			end_range_included = PCI_BUS_NUM(map->output_base + map->id_count);
+			pr_debug(FW_INFO "[node %p type %d map %p] add [%x,%x]->[%x,%x]\n",
+					iort_node, iort_node->type, map, map->output_base,
+					map->output_base + map->id_count, start_range,
+					end_range_included);
+			for (k = start_range; k != end_range_included + 1; ++k)
+				set_bit(k, bus_bm);
+		}
+next_loop:
+		iort_node = ACPI_ADD_PTR(struct acpi_iort_node, iort_node, iort_node->length);
+	}
+
+	return 0;
+}
+
 /**
  * iort_deregister_domain_token() - Deregister domain token based on ITS ID
  * @trans_id: ITS ID.
