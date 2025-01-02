@@ -495,7 +495,7 @@ config HISI_HIKEY_USB
 
 config VIRT_PLAT_DEV
 	bool "virt platform device driver"
-        depends on KVM && ARM64 && ARCH_HISI
+        depends on KVM && ARM64 && ARCH_HISI && ACPI_IORT
         default n
         help
           Enable this configuration option to probe the virtual platform device,
