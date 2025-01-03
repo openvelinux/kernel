@@ -2076,6 +2076,7 @@ static void nbd_disconnect_and_put(struct nbd_device *nbd)
 	flush_recv_works(nbd);
 	nbd_clear_que(nbd);
 	nbd->task_setup = NULL;
+	clear_bit(NBD_RT_BOUND, &nbd->config->runtime_flags);
 	mutex_unlock(&nbd->config_lock);
 
 	if (test_and_clear_bit(NBD_RT_HAS_CONFIG_REF,
