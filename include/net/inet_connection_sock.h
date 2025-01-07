@@ -79,6 +79,7 @@ struct inet_connection_sock_af_ops {
  * @icsk_mtup;		   MTU probing control data
  * @icsk_probes_tstamp:    Probe timestamp (cleared by non-zero window ack)
  * @icsk_user_timeout:	   TCP_USER_TIMEOUT value
+ * @icsk_tlp_pto_min:	   Min tlp pto timer in usecs
  */
 struct inet_connection_sock {
 	/* inet_sock has to be the first member! */
@@ -92,6 +93,7 @@ struct inet_connection_sock {
 	__u32			  icsk_rto;
 	__u32                     icsk_rto_min;
 	__u32                     icsk_delack_max;
+	__u32                     icsk_tlp_pto_min;
 	__u32			  icsk_pmtu_cookie;
 	const struct tcp_congestion_ops *icsk_ca_ops;
 	const struct inet_connection_sock_af_ops *icsk_af_ops;
