@@ -2826,11 +2826,16 @@ bool tcp_schedule_loss_probe(struct sock *sk, bool advancing_rto)
 	if (tp->srtt_us) {
 		timeout_us = tp->srtt_us >> 2;
 		if (tp->packets_out == 1) {
-			u32 pto_us = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_tlp_pto_us) ? :
-					READ_ONCE(init_net.ipv4.sysctl_tcp_tlp_pto_us);
+			u32 pto_us = jiffies_to_usecs(inet_csk(sk)->icsk_tlp_pto_min) ? :
+					(READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_tlp_pto_us) ? :
+					READ_ONCE(init_net.ipv4.sysctl_tcp_tlp_pto_us));
 			u32 rto_min = tcp_rto_min_us(sk);
 
-			pto_us = pto_us ? ((pto_us < rto_min) ? : rto_min) : rto_min;
+			if (pto_us)
+				pto_us = min_t(u32, max_t(u32, pto_us, TCP_TIMEOUT_MIN_US),
+					       rto_min);
+			else
+				pto_us = rto_min;
 
 			timeout_us += pto_us;
 		} else {
