@@ -2825,10 +2825,17 @@ bool tcp_schedule_loss_probe(struct sock *sk, bool advancing_rto)
 	 */
 	if (tp->srtt_us) {
 		timeout_us = tp->srtt_us >> 2;
-		if (tp->packets_out == 1)
-			timeout_us += tcp_rto_min_us(sk);
-		else
+		if (tp->packets_out == 1) {
+			u32 pto_us = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_tlp_pto_us) ? :
+					READ_ONCE(init_net.ipv4.sysctl_tcp_tlp_pto_us);
+			u32 rto_min = tcp_rto_min_us(sk);
+
+			pto_us = pto_us ? ((pto_us < rto_min) ? : rto_min) : rto_min;
+
+			timeout_us += pto_us;
+		} else {
 			timeout_us += TCP_TIMEOUT_MIN_US;
+		}
 		timeout = usecs_to_jiffies(timeout_us);
 	} else {
 		timeout = TCP_TIMEOUT_INIT;
