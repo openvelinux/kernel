@@ -913,7 +913,7 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 		 * to keep reservation accounting consistent.
 		 */
 		hugetlb_set_vma_policy(&pseudo_vma, inode, index);
-		folio = alloc_hugetlb_folio(&pseudo_vma, addr, 0);
+		folio = alloc_hugetlb_folio(&pseudo_vma, addr, false);
 		hugetlb_drop_vma_policy(&pseudo_vma);
 		if (IS_ERR(folio)) {
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
