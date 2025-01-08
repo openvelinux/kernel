@@ -39,7 +39,7 @@ static inline void __tlb_remove_table(void *_table)
 static inline void
 __pte_free_tlb(struct mmu_gather *tlb, pgtable_t pte, unsigned long addr)
 {
-	pgtable_pte_page_dtor(pte);
+	pagetable_dtor(pte);
 
 #ifndef CONFIG_ARM_LPAE
 	/*
@@ -59,7 +59,7 @@ __pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmdp, unsigned long addr)
 #ifdef CONFIG_ARM_LPAE
 	struct page *page = virt_to_page(pmdp);
 
-	pgtable_pmd_page_dtor(page);
+	pagetable_dtor(page);
 	tlb_remove_table(tlb, page);
 #endif
 }

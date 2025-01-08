@@ -56,7 +56,7 @@ static inline void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 
 #define __pte_free_tlb(tlb,pte,address)			\
 do {							\
-	pgtable_pte_page_dtor(pte);			\
+	pagetable_dtor(pte);			\
 	tlb_remove_page((tlb), pte);			\
 } while (0)
 

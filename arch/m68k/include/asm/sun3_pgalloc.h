@@ -19,7 +19,7 @@ extern const char bad_pmd_string[];
 
 #define __pte_free_tlb(tlb,pte,addr)			\
 do {							\
-	pgtable_pte_page_dtor(pte);			\
+	pagetable_dtor(pte);			\
 	tlb_remove_page((tlb), pte);			\
 } while (0)
 

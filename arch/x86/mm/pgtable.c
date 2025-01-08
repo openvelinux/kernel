@@ -60,7 +60,7 @@ early_param("userpte", setup_userpte);
 
 void ___pte_free_tlb(struct mmu_gather *tlb, struct page *pte)
 {
-	pgtable_pte_page_dtor(pte);
+	pagetable_dtor(pte);
 	paravirt_release_pte(page_to_pfn(pte));
 	paravirt_tlb_remove_table(tlb, pte);
 }
@@ -77,7 +77,7 @@ void ___pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmd)
 #ifdef CONFIG_X86_PAE
 	tlb->need_flush_all = 1;
 #endif
-	pgtable_pmd_page_dtor(page);
+	pagetable_dtor(page);
 	paravirt_tlb_remove_table(tlb, page);
 }
 
@@ -86,7 +86,7 @@ void ___pud_free_tlb(struct mmu_gather *tlb, pud_t *pud)
 {
 	struct page *page = virt_to_page(pud);
 
-	pagetable_pud_dtor(page);
+	pagetable_dtor(page);
 	paravirt_release_pud(__pa(pud) >> PAGE_SHIFT);
 	paravirt_tlb_remove_table(tlb, page);
 }
@@ -96,7 +96,7 @@ void ___p4d_free_tlb(struct mmu_gather *tlb, p4d_t *p4d)
 {
 	struct page *page = virt_to_page(p4d);
 
-	pagetable_p4d_dtor(page);
+	pagetable_dtor(page);
 	paravirt_release_p4d(__pa(p4d) >> PAGE_SHIFT);
 	paravirt_tlb_remove_table(tlb, page);
 }
@@ -230,7 +230,7 @@ static void free_pmds(struct mm_struct *mm, pmd_t *pmds[], int count)
 
 	for (i = 0; i < count; i++)
 		if (pmds[i]) {
-			pgtable_pmd_page_dtor(virt_to_page(pmds[i]));
+			pagetable_dtor(virt_to_page(pmds[i]));
 			free_page((unsigned long)pmds[i]);
 			mm_dec_nr_pmds(mm);
 		}
@@ -836,7 +836,7 @@ int pud_free_pmd_page(pud_t *pud, unsigned long addr)
 
 	free_page((unsigned long)pmd_sv);
 
-	pgtable_pmd_page_dtor(virt_to_page(pmd));
+	pagetable_dtor(virt_to_page(pmd));
 	free_page((unsigned long)pmd);
 
 	return 1;

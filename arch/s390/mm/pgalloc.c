@@ -259,7 +259,7 @@ void page_table_free(struct mm_struct *mm, unsigned long *table)
 		atomic_xor_bits(&page->_refcount, 3U << 24);
 	}
 
-	pgtable_pte_page_dtor(page);
+	pagetable_dtor(page);
 	__free_page(page);
 }
 
@@ -311,7 +311,7 @@ void __tlb_remove_table(void *_table)
 	case 3:		/* 4K page table with pgstes */
 		if (mask & 3)
 			atomic_xor_bits(&page->_refcount, 3 << 24);
-		pgtable_pte_page_dtor(page);
+		pagetable_dtor(page);
 		__free_page(page);
 		break;
 	}

@@ -2253,6 +2253,13 @@ static inline void pgtable_init(void)
 	pgtable_cache_init();
 }
 
+static inline void pagetable_dtor(struct page *page)
+{
+	ptlock_free(page);
+	__ClearPageTable(page);
+	dec_lruvec_page_state(page, NR_PAGETABLE);
+}
+
 static inline bool pgtable_pte_page_ctor(struct page *page)
 {
 	if (!ptlock_init(page))
@@ -2260,13 +2267,6 @@ static inline bool pgtable_pte_page_ctor(struct page *page)
 	__SetPageTable(page);
 	inc_lruvec_page_state(page, NR_PAGETABLE);
 	return true;
-}
-
-static inline void pgtable_pte_page_dtor(struct page *page)
-{
-	ptlock_free(page);
-	__ClearPageTable(page);
-	dec_lruvec_page_state(page, NR_PAGETABLE);
 }
 
 pte_t *__pte_offset_map(pmd_t *pmd, unsigned long addr, pmd_t *pmdvalp);
@@ -2371,13 +2371,6 @@ static inline bool pgtable_pmd_page_ctor(struct page *page)
 	return true;
 }
 
-static inline void pgtable_pmd_page_dtor(struct page *page)
-{
-	pmd_ptlock_free(page);
-	__ClearPageTable(page);
-	dec_lruvec_page_state(page, NR_PAGETABLE);
-}
-
 /*
  * No scalability reason to split PUD locks yet, but follow the same pattern
  * as the PMD locks to make it easier if we decide to.  The VM should not be
@@ -2403,22 +2396,10 @@ static inline void pagetable_pud_ctor(struct page *page)
 	inc_lruvec_page_state(page, NR_PAGETABLE);
 }
 
-static inline void pagetable_pud_dtor(struct page *page)
-{
-	__ClearPageTable(page);
-	dec_lruvec_page_state(page, NR_PAGETABLE);
-}
-
 static inline void pagetable_p4d_ctor(struct page *page)
 {
 	__SetPageTable(page);
 	inc_lruvec_page_state(page, NR_PAGETABLE);
-}
-
-static inline void pagetable_p4d_dtor(struct page *page)
-{
-	__ClearPageTable(page);
-	dec_lruvec_page_state(page, NR_PAGETABLE);
 }
 
 extern void __init pagecache_init(void);

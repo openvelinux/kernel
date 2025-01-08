@@ -37,7 +37,7 @@ static inline void __pte_free_tlb(struct mmu_gather *tlb, pgtable_t pgtable,
 {
 	struct page *page = virt_to_page(pgtable);
 
-	pgtable_pte_page_dtor(page);
+	pagetable_dtor(page);
 	__free_page(page);
 }
 
@@ -63,7 +63,7 @@ static inline void pte_free(struct mm_struct *mm, pgtable_t pgtable)
 {
 	struct page *page = virt_to_page(pgtable);
 
-	pgtable_pte_page_dtor(page);
+	pagetable_dtor(page);
 	__free_page(page);
 }
 
