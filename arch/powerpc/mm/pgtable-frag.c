@@ -25,7 +25,7 @@ void pte_frag_destroy(void *pte_frag)
 	count = ((unsigned long)pte_frag & ~PAGE_MASK) >> PTE_FRAG_SIZE_SHIFT;
 	/* We allow PTE_FRAG_NR fragments from a PTE page */
 	if (atomic_sub_and_test(PTE_FRAG_NR - count, &page->pt_frag_refcount)) {
-		pgtable_pte_page_dtor(page);
+		pagetable_dtor(page);
 		__free_page(page);
 	}
 }
@@ -116,7 +116,7 @@ void pte_fragment_free(unsigned long *table, int kernel)
 	BUG_ON(atomic_read(&page->pt_frag_refcount) <= 0);
 	if (atomic_dec_and_test(&page->pt_frag_refcount)) {
 		if (!kernel)
-			pgtable_pte_page_dtor(page);
+			pagetable_dtor(page);
 		__free_page(page);
 	}
 }

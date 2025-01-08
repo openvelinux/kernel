@@ -75,7 +75,7 @@ static inline void tlb_flush(struct mmu_gather *tlb)
 static inline void __pte_free_tlb(struct mmu_gather *tlb, pgtable_t pte,
 				  unsigned long addr)
 {
-	pgtable_pte_page_dtor(pte);
+	pagetable_dtor(pte);
 	tlb_remove_table(tlb, pte);
 }
 
@@ -85,7 +85,7 @@ static inline void __pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmdp,
 {
 	struct page *page = virt_to_page(pmdp);
 
-	pgtable_pmd_page_dtor(page);
+	pagetable_dtor(page);
 	tlb_remove_table(tlb, page);
 }
 #endif
@@ -96,7 +96,7 @@ static inline void __pud_free_tlb(struct mmu_gather *tlb, pud_t *pudp,
 {
 	struct page *page = virt_to_page(pudp);
 
-	pagetable_pud_dtor(page);
+	pagetable_dtor(page);
 	tlb_remove_table(tlb, page);
 }
 #endif

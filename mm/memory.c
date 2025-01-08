@@ -5594,6 +5594,7 @@ bool ptlock_alloc(struct page *page)
 
 void ptlock_free(struct page *page)
 {
-	kmem_cache_free(page_ptl_cachep, page->ptl);
+	if (page->ptl)
+		kmem_cache_free(page_ptl_cachep, page->ptl);
 }
 #endif
