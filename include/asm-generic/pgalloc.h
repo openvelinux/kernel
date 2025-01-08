@@ -191,16 +191,24 @@ static inline void pud_free(struct mm_struct *mm, pud_t *pud)
 static inline p4d_t *p4d_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
 	gfp_t gfp = GFP_PGTABLE_USER;
+	struct page *page;
 
 	if (mm == &init_mm)
 		gfp = GFP_PGTABLE_KERNEL;
-	return (p4d_t *)get_zeroed_page(gfp);
+
+	page = alloc_pages(gfp, 0);
+	if (!page)
+		return NULL;
+
+	pagetable_p4d_ctor(page);
+	return (p4d_t *)page_address(page);
 }
 #endif
 
 static inline void __p4d_free(struct mm_struct *mm, p4d_t *p4d)
 {
 	BUG_ON((unsigned long)p4d & (PAGE_SIZE-1));
+	pagetable_p4d_dtor(virt_to_page(p4d));
 	free_page((unsigned long)p4d);
 }
 
