@@ -2909,7 +2909,7 @@ static void __pte_free(pgtable_t pte)
 {
 	struct page *page = virt_to_page(pte);
 
-	pgtable_pte_page_dtor(page);
+	pagetable_dtor(page);
 	__free_page(page);
 }
 

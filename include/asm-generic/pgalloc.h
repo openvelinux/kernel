@@ -98,7 +98,7 @@ static inline pgtable_t pte_alloc_one(struct mm_struct *mm)
  */
 static inline void pte_free(struct mm_struct *mm, struct page *pte_page)
 {
-	pgtable_pte_page_dtor(pte_page);
+	pagetable_dtor(pte_page);
 	__free_page(pte_page);
 }
 
@@ -138,7 +138,7 @@ static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
 {
 	BUG_ON((unsigned long)pmd & (PAGE_SIZE-1));
-	pgtable_pmd_page_dtor(virt_to_page(pmd));
+	pagetable_dtor(virt_to_page(pmd));
 	free_page((unsigned long)pmd);
 }
 #endif
@@ -179,7 +179,7 @@ static inline void pud_free(struct mm_struct *mm, pud_t *pud)
 	struct page *page = virt_to_page(pud);
 
 	BUG_ON((unsigned long)pud & (PAGE_SIZE-1));
-	pagetable_pud_dtor(page);
+	pagetable_dtor(page);
 	free_page((unsigned long)pud);
 }
 
@@ -208,7 +208,7 @@ static inline p4d_t *p4d_alloc_one(struct mm_struct *mm, unsigned long addr)
 static inline void __p4d_free(struct mm_struct *mm, p4d_t *p4d)
 {
 	BUG_ON((unsigned long)p4d & (PAGE_SIZE-1));
-	pagetable_p4d_dtor(virt_to_page(p4d));
+	pagetable_dtor(virt_to_page(p4d));
 	free_page((unsigned long)p4d);
 }
 

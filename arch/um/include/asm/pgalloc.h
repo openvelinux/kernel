@@ -27,7 +27,7 @@ extern pgd_t *pgd_alloc(struct mm_struct *);
 
 #define __pte_free_tlb(tlb,pte, address)		\
 do {							\
-	pgtable_pte_page_dtor(pte);			\
+	pagetable_dtor(pte);			\
 	tlb_remove_page((tlb),(pte));			\
 } while (0)
 
@@ -35,7 +35,7 @@ do {							\
 
 #define __pmd_free_tlb(tlb, pmd, address)		\
 do {							\
-	pgtable_pmd_page_dtor(virt_to_page(pmd));	\
+	pagetable_dtor(virt_to_page(pmd));	\
 	tlb_remove_page((tlb),virt_to_page(pmd));	\
 } while (0)						\
 

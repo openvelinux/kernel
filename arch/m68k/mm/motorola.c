@@ -202,7 +202,7 @@ int free_pointer_table(void *table, int type)
 		list_del(dp);
 		mmu_page_dtor((void *)page);
 		if (type == TABLE_PTE)
-			pgtable_pte_page_dtor(virt_to_page(page));
+			pagetable_dtor(virt_to_page(page));
 		free_page (page);
 		return 1;
 	} else if (ptable_list[type].next != dp) {
