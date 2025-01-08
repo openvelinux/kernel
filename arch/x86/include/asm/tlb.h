@@ -34,7 +34,10 @@ static inline void tlb_flush(struct mmu_gather *tlb)
  */
 static inline void __tlb_remove_table(void *table)
 {
-	free_page_and_swap_cache(table);
+	struct page *page = (struct page *)table;
+
+	pagetable_dtor(page);
+	__free_page(page);
 }
 
 #ifdef CONFIG_PT_RECLAIM
@@ -43,7 +46,7 @@ static inline void __tlb_remove_table_one_rcu(struct rcu_head *head)
 	struct page *page;
 
 	page = container_of(head, struct page, rcu_head);
-	put_page(page);
+	__tlb_remove_table(page);
 }
 
 static inline void __tlb_remove_table_one(void *table)
