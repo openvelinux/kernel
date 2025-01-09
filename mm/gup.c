@@ -2847,6 +2847,16 @@ static unsigned long lockless_pages_from_mm(unsigned long start,
 		seq = raw_read_seqcount(&current->mm->write_protect_seq);
 		if (seq & 1)
 			return 0;
+		/*
+		 * pages under a FOLL_PIN should not be write protected during COW for fork.
+		 * The page table copy may have a race with gup, so if it is in the async-fork
+		 * process, let gup fail.
+		 * We don't need to worry about the case where async-fork is started after this
+		 * check, which is protected by write_protect_seq. Here we only focus on the case
+		 * after copy_page_range() releases write_protect_seq.
+		 */
+		if (is_parent_mm_in_async_copy(current->mm))
+			return 0;
 	}
 
 	/*
