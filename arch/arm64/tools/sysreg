@@ -1756,7 +1756,7 @@ Sysreg	CPACR_EL1	3	0	1	0	2
 Fields	CPACR_ELx
 EndSysreg
 
-SysregFields TRFCR_ELx
+Sysreg	TRFCR_EL1	3	0	1	2	1
 Res0	63:7
 UnsignedEnum	6:5	TS
 	0b0001	VIRTUAL
@@ -1766,10 +1766,6 @@ EndEnum
 Res0	4:2
 Field	1	ExTRE
 Field	0	E0TRE
-EndSysregFields
-
-Sysreg	TRFCR_EL1	3	0	1	2	1
-Fields	TRFCR_ELx
 EndSysreg
 
 Sysreg	SMPRI_EL1	3	0	1	2	4
@@ -2499,7 +2495,7 @@ Fields	ZCR_ELx
 EndSysreg
 
 Sysreg	TRFCR_EL12	3	5	1	2	1
-Fields	TRFCR_ELx
+Fields	TRFCR_EL1
 EndSysreg
 
 Sysreg	SMCR_EL12	3	5	1	2	6
