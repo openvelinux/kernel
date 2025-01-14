@@ -3000,6 +3000,15 @@ static struct ctl_table vm_table[] = {
 		.extra1		= SYSCTL_ONE,
 		.extra2		= SYSCTL_THREE_THOUSAND,
 	},
+	{
+		.procname	= "memcg_oom_priority_watermark_ratio",
+		.data		= &memcg_oom_priority_watermark_ratio,
+		.maxlen		= sizeof(memcg_oom_priority_watermark_ratio),
+		.mode		= 0644,
+		.proc_handler	= watermark_scale_factor_sysctl_handler,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE_HUNDRED,
+	},
 #ifdef CONFIG_MEMCG_BGD_RECLAIM
 	{
 		.procname	= "memcg_watermark_scale_factor",

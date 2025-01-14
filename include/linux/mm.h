@@ -2502,6 +2502,7 @@ extern void setup_per_cpu_pageset(void);
 extern int min_free_kbytes;
 extern int watermark_boost_factor;
 extern int watermark_scale_factor;
+extern int memcg_oom_priority_watermark_ratio;
 extern bool arch_has_descending_max_zone_pfns(void);
 
 /* nommu.c */
