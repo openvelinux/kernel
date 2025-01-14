@@ -330,6 +330,7 @@ enum zone_watermarks {
 	WMARK_MIN,
 	WMARK_LOW,
 	WMARK_HIGH,
+	WMARK_LP_MIN,
 	NR_WMARK
 };
 
