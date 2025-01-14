@@ -401,6 +401,12 @@ int user_min_free_kbytes = -1;
 int watermark_boost_factor __read_mostly = 15000;
 int watermark_scale_factor = 10;
 
+/*
+ * The min watermark of low prioriy memory cgroup comes from the global
+ * low watermark based on this ratio.
+ */
+int memcg_oom_priority_watermark_ratio = 50;
+
 static unsigned long nr_kernel_pages __initdata;
 static unsigned long nr_all_pages __initdata;
 static unsigned long dma_reserve __initdata;
@@ -4872,6 +4878,9 @@ gfp_to_alloc_flags(gfp_t gfp_mask)
 {
 	unsigned int alloc_flags = ALLOC_WMARK_MIN | ALLOC_CPUSET;
 
+	if (get_task_oom_priority(current) == OOM_PRIORITY_LOW)
+		alloc_flags = ALLOC_WMARK_LP_MIN | ALLOC_CPUSET;
+
 	/*
 	 * __GFP_HIGH is assumed to be the same as ALLOC_HIGH
 	 * and __GFP_KSWAPD_RECLAIM is assumed to be the same as ALLOC_KSWAPD
@@ -8723,6 +8732,13 @@ static void __setup_per_zone_wmarks(void)
 		zone->watermark_boost = 0;
 		zone->_watermark[WMARK_LOW]  = min_wmark_pages(zone) + tmp;
 		zone->_watermark[WMARK_HIGH] = min_wmark_pages(zone) + tmp * 2;
+
+		/*
+		 * Set the low priority min watermark to the ratio of
+		 * global low watermark which can be set in userspace.
+		 */
+		zone->_watermark[WMARK_LP_MIN] = min_wmark_pages(zone) +
+			low_wmark_pages(zone) * memcg_oom_priority_watermark_ratio / 100;
 
 		spin_unlock_irqrestore(&zone->lock, flags);
 	}
