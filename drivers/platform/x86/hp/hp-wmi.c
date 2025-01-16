@@ -1374,17 +1374,37 @@ static int platform_profile_victus_set(struct device *dev,
 	return 0;
 }
 
+static int hp_wmi_platform_profile_probe(void *drvdata, unsigned long *choices)
+{
+	if (is_omen_thermal_profile()) {
+		set_bit(PLATFORM_PROFILE_COOL, choices);
+	} else if (is_victus_thermal_profile()) {
+		set_bit(PLATFORM_PROFILE_QUIET, choices);
+	} else {
+		set_bit(PLATFORM_PROFILE_QUIET, choices);
+		set_bit(PLATFORM_PROFILE_COOL, choices);
+	}
+
+	set_bit(PLATFORM_PROFILE_BALANCED, choices);
+	set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
+
+	return 0;
+}
+
 static const struct platform_profile_ops platform_profile_omen_ops = {
+	.probe = hp_wmi_platform_profile_probe,
 	.profile_get = platform_profile_omen_get,
 	.profile_set = platform_profile_omen_set,
 };
 
 static const struct platform_profile_ops platform_profile_victus_ops = {
+	.probe = hp_wmi_platform_profile_probe,
 	.profile_get = platform_profile_victus_get,
 	.profile_set = platform_profile_victus_set,
 };
 
 static const struct platform_profile_ops hp_wmi_platform_profile_ops = {
+	.probe = hp_wmi_platform_profile_probe,
 	.profile_get = hp_wmi_platform_profile_get,
 	.profile_set = hp_wmi_platform_profile_set,
 };
@@ -1408,8 +1428,6 @@ static int thermal_profile_setup(struct platform_device *device)
 			return err;
 
 		platform_profile_handler.ops = &platform_profile_omen_ops;
-
-		set_bit(PLATFORM_PROFILE_COOL, platform_profile_handler.choices);
 	} else if (is_victus_thermal_profile()) {
 		tp = omen_thermal_profile_get();
 		if (tp < 0)
@@ -1424,8 +1442,6 @@ static int thermal_profile_setup(struct platform_device *device)
 			return err;
 
 		platform_profile_handler.ops = &platform_profile_victus_ops;
-
-		set_bit(PLATFORM_PROFILE_QUIET, platform_profile_handler.choices);
 	} else {
 		tp = thermal_profile_get();
 
@@ -1441,15 +1457,10 @@ static int thermal_profile_setup(struct platform_device *device)
 			return err;
 
 		platform_profile_handler.ops = &hp_wmi_platform_profile_ops;
-
-		set_bit(PLATFORM_PROFILE_QUIET, platform_profile_handler.choices);
-		set_bit(PLATFORM_PROFILE_COOL, platform_profile_handler.choices);
 	}
 
 	platform_profile_handler.name = "hp-wmi";
 	platform_profile_handler.dev = &device->dev;
-	set_bit(PLATFORM_PROFILE_BALANCED, platform_profile_handler.choices);
-	set_bit(PLATFORM_PROFILE_PERFORMANCE, platform_profile_handler.choices);
 
 	err = platform_profile_register(&platform_profile_handler, NULL);
 	if (err)
