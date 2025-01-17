@@ -7991,8 +7991,9 @@ void perf_event_exec(void)
 
 	perf_event_enable_on_exec(ctx);
 	perf_event_remove_on_exec(ctx);
+	rcu_read_lock();
 	perf_iterate_ctx(ctx, perf_event_addr_filters_exec, NULL, true);
-
+	rcu_read_unlock();
 	perf_unpin_context(ctx);
 	put_ctx(ctx);
 }
