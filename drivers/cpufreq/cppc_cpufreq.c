@@ -544,8 +544,8 @@ static int cppc_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	 */
 	policy->min = cppc_cpufreq_perf_to_khz(cpu_data,
 					       caps->lowest_nonlinear_perf);
-	policy->max = cppc_cpufreq_perf_to_khz(cpu_data,
-					       caps->nominal_perf);
+	policy->max = cppc_cpufreq_perf_to_khz(cpu_data, policy->boost_enabled ?
+					       caps->highest_perf : caps->nominal_perf);
 
 	/*
 	 * Set cpuinfo.min_freq to Lowest to make the full range of performance
@@ -554,8 +554,7 @@ static int cppc_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	 */
 	policy->cpuinfo.min_freq = cppc_cpufreq_perf_to_khz(cpu_data,
 							    caps->lowest_perf);
-	policy->cpuinfo.max_freq = cppc_cpufreq_perf_to_khz(cpu_data,
-							    caps->nominal_perf);
+	policy->cpuinfo.max_freq = policy->max;
 
 	policy->transition_delay_us = cppc_cpufreq_get_transition_delay_us(cpu);
 	policy->shared_type = cpu_data->shared_type;
