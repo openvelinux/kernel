@@ -2217,11 +2217,17 @@ enum {
 	EXT4_FLAGS_RESIZING,	/* Avoid superblock update and resize race */
 	EXT4_FLAGS_SHUTDOWN,	/* Prevent access to the file system */
 	EXT4_FLAGS_BDEV_IS_DAX,	/* Current block device support DAX */
+	EXT4_FLAGS_EMERGENCY_RO,/* Emergency read-only due to fs errors */
 };
 
 static inline int ext4_forced_shutdown(struct ext4_sb_info *sbi)
 {
 	return test_bit(EXT4_FLAGS_SHUTDOWN, &sbi->s_ext4_flags);
+}
+
+static inline int ext4_emergency_ro(struct super_block *sb)
+{
+	return test_bit(EXT4_FLAGS_EMERGENCY_RO, &EXT4_SB(sb)->s_ext4_flags);
 }
 
 /*
