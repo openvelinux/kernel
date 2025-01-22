@@ -2649,6 +2649,10 @@ static int _ext4_show_options(struct seq_file *seq, struct super_block *sb,
 	} else if (test_opt2(sb, DAX_INODE)) {
 		SEQ_OPTS_PUTS("dax=inode");
 	}
+
+	if (ext4_emergency_ro(sb))
+		SEQ_OPTS_PUTS("emergency_ro");
+
 	ext4_show_quota_options(seq, sb);
 	return 0;
 }
