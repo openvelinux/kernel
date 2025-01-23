@@ -1,0 +1,28 @@
+name: sys/linux-image-bsk
+trigger:
+  push:
+    notification:
+      when: [ never ]
+  manual:
+jobs:
+  setting:
+    image: hub.byted.org/codebase/ci_debian_bullseye
+    envs:
+      # Set BaseBranch Here
+      BaseBranch: v5.15.y.bsk.z
+      SourceBranch: ${{ Event.Ref.Name }}
+    auto-checkout: false
+    steps:
+    - id: BaseBranch
+      commands:
+      - echo "::set-output name=basebranch::$BaseBranch"
+      - echo "::set-output name=sourcebranch::$SourceBranch"
+post-trigger:
+  - repo: sys/linux-image-bsk
+    branch: base-ci
+    file: base-ci.yaml
+    if: true
+    inputs:
+      BaseBranch: ${{ Jobs.setting.Steps.BaseBranch.Outputs.basebranch }}
+      SourceBranch: ${{ Jobs.setting.Steps.BaseBranch.Outputs.sourcebranch }}
+
