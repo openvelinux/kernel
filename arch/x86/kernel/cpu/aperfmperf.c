@@ -138,7 +138,7 @@ void arch_freq_prepare_all(void)
 		msleep(APERFMPERF_REFRESH_DELAY_MS);
 }
 
-unsigned int arch_freq_get_on_cpu(int cpu)
+int arch_freq_get_on_cpu(int cpu)
 {
 	struct aperfmperf_sample *s = per_cpu_ptr(&samples, cpu);
 
