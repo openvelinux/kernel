@@ -35,6 +35,7 @@ struct kernel_clone_args {
 	int kthread;
 	struct cgroup *cgrp;
 	struct css_set *cset;
+	unsigned int kill_seq;
 };
 
 /*
