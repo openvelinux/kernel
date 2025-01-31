@@ -1473,6 +1473,12 @@ struct scx_event_stats {
 	 * the meantime. In this case, the task is bounced to the global DSQ.
 	 */
 	u64		SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE;
+
+	/*
+	 * If SCX_OPS_ENQ_LAST is not set, the number of times that a task
+	 * continued to run because there were no other tasks on the CPU.
+	 */
+	u64		SCX_EV_DISPATCH_KEEP_LAST;
 };
 
 /*
@@ -2924,6 +2930,7 @@ no_tasks:
 	if (prev_on_rq && (!static_branch_unlikely(&scx_ops_enq_last) ||
 	     scx_rq_bypassing(rq))) {
 		rq->scx.flags |= SCX_RQ_BAL_KEEP;
+		__scx_add_event(SCX_EV_DISPATCH_KEEP_LAST, 1);
 		goto has_tasks;
 	}
 	rq->scx.flags &= ~SCX_RQ_IN_BALANCE;
@@ -5445,6 +5452,7 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 	scx_bpf_events(&events, sizeof(events));
 	scx_dump_event(s, &events, SCX_EV_SELECT_CPU_FALLBACK);
 	scx_dump_event(s, &events, SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE);
+	scx_dump_event(s, &events, SCX_EV_DISPATCH_KEEP_LAST);
 
 	if (seq_buf_has_overflowed(&s) && dump_len >= sizeof(trunc_marker))
 		memcpy(ei->dump + dump_len - sizeof(trunc_marker),
@@ -7696,6 +7704,7 @@ __bpf_kfunc void scx_bpf_events(struct scx_event_stats *events,
 		e_cpu = per_cpu_ptr(&event_stats_cpu, cpu);
 		scx_agg_event(&e_sys, e_cpu, SCX_EV_SELECT_CPU_FALLBACK);
 		scx_agg_event(&e_sys, e_cpu, SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE);
+		scx_agg_event(&e_sys, e_cpu, SCX_EV_DISPATCH_KEEP_LAST);
 	}
 
 	/*
