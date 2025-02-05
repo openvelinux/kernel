@@ -245,6 +245,16 @@ void __account_forceidle_time(struct task_struct *p, u64 delta)
 }
 #endif
 
+#ifdef CONFIG_SCHED_INFO
+/*
+ * Account for run_delay time spent waiting in rq.
+ */
+void account_run_delay_time(struct task_struct *p, u64 delta)
+{
+	task_group_account_field(p, CPUTIME_RUN_DELAY, delta);
+}
+#endif
+
 /*
  * When a guest is interrupted for a longer amount of time, missed clock
  * ticks are not redelivered later. Due to that, this function may on
