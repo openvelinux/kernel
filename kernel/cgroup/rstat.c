@@ -356,6 +356,9 @@ static void cgroup_base_stat_add(struct cgroup_base_stat *dst_bstat,
 	dst_bstat->forceidle_sum += src_bstat->forceidle_sum;
 #endif
 	dst_bstat->ntime += src_bstat->ntime;
+#ifdef CONFIG_SCHED_INFO
+	dst_bstat->run_delay += src_bstat->run_delay;
+#endif
 }
 
 static void cgroup_base_stat_sub(struct cgroup_base_stat *dst_bstat,
@@ -368,6 +371,9 @@ static void cgroup_base_stat_sub(struct cgroup_base_stat *dst_bstat,
 	dst_bstat->forceidle_sum -= src_bstat->forceidle_sum;
 #endif
 	dst_bstat->ntime -= src_bstat->ntime;
+#ifdef CONFIG_SCHED_INFO
+	dst_bstat->run_delay -= src_bstat->run_delay;
+#endif
 }
 
 static void cgroup_base_stat_flush(struct cgroup *cgrp, int cpu)
@@ -463,6 +469,11 @@ void __cgroup_account_cputime_field(struct cgroup *cgrp,
 		rstatc->bstat.forceidle_sum += delta_exec;
 		break;
 #endif
+#ifdef CONFIG_SCHED_INFO
+	case CPUTIME_RUN_DELAY:
+		rstatc->bstat.run_delay += delta_exec;
+		break;
+#endif
 	default:
 		break;
 	}
@@ -507,6 +518,9 @@ static void root_cgroup_cputime(struct cgroup_base_stat *bstat)
 		bstat->forceidle_sum += cpustat[CPUTIME_FORCEIDLE];
 #endif
 		bstat->ntime += cpustat[CPUTIME_NICE];
+#ifdef CONFIG_SCHED_INFO
+		bstat->run_delay += cpustat[CPUTIME_RUN_DELAY];
+#endif
 	}
 }
 
@@ -518,6 +532,16 @@ static void cgroup_force_idle_show(struct seq_file *seq, struct cgroup_base_stat
 
 	do_div(forceidle_time, NSEC_PER_USEC);
 	seq_printf(seq, "core_sched.force_idle_usec %llu\n", forceidle_time);
+#endif
+}
+
+static void cgroup_run_delay_show(struct seq_file *seq, struct cgroup_base_stat *bstat)
+{
+#ifdef CONFIG_SCHED_INFO
+	u64 run_delay = bstat->run_delay;
+
+	do_div(run_delay, NSEC_PER_USEC);
+	seq_printf(seq, "run_delay_usec %llu\n", run_delay);
 #endif
 }
 
@@ -551,4 +575,5 @@ void cgroup_base_stat_cputime_show(struct seq_file *seq)
 			bstat.ntime);
 
 	cgroup_force_idle_show(seq, &bstat);
+	cgroup_run_delay_show(seq, &bstat);
 }
