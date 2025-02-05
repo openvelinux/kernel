@@ -219,6 +219,7 @@ static inline void sched_info_dequeue(struct rq *rq, struct task_struct *t)
 	t->sched_info.run_delay += delta;
 
 	rq_sched_info_dequeue(rq, delta);
+	account_run_delay_time(t, delta);
 }
 
 /*
@@ -241,6 +242,7 @@ static void sched_info_arrive(struct rq *rq, struct task_struct *t)
 	t->sched_info.pcount++;
 
 	rq_sched_info_arrive(rq, delta);
+	account_run_delay_time(t, delta);
 }
 
 /*
