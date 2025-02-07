@@ -2656,7 +2656,7 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 	wake_up_new_task(p);
 
 #ifdef CONFIG_BYTEDANCE_ASYNC_FORK
-	if (in_async_copy)
+	if (clone_flags & CLONE_PARENT_SETTID && in_async_copy)
 		put_user(nr, args->parent_tid);
 #endif
 
