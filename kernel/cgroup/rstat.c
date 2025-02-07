@@ -511,7 +511,6 @@ static void root_cgroup_cputime_cpu(struct cgroup_base_stat *bstatc, int cpu)
 	cputime->stime += cpustat[CPUTIME_SOFTIRQ];
 
 	cputime->sum_exec_runtime = cputime->utime + cputime->stime;
-	cputime->sum_exec_runtime += cpustat[CPUTIME_STEAL];
 
 	bstatc->ntime = cpustat[CPUTIME_NICE];
 #ifdef CONFIG_SCHED_CORE
