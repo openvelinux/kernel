@@ -272,6 +272,7 @@ int cgroup_rstat_init(struct cgroup *cgrp);
 void cgroup_rstat_exit(struct cgroup *cgrp);
 void cgroup_rstat_boot(void);
 void cgroup_base_stat_cputime_show(struct seq_file *seq);
+int cgroup_base_stat_percpu_show(struct seq_file *seq);
 
 /*
  * namespace.c
