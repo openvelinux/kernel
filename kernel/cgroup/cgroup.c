@@ -3729,6 +3729,11 @@ static int cpu_local_stat_show(struct seq_file *seq, void *v)
 	return ret;
 }
 
+static int cpu_stat_percpu_show(struct seq_file *seq, void *v)
+{
+	return cgroup_base_stat_percpu_show(seq);
+}
+
 #ifdef CONFIG_PSI
 static int cgroup_io_pressure_show(struct seq_file *seq, void *v)
 {
@@ -5271,6 +5276,10 @@ static struct cftype cgroup_base_files[] = {
 	{
 		.name = "cpu.stat.local",
 		.seq_show = cpu_local_stat_show,
+	},
+	{
+		.name = "cpu.stat.percpu",
+		.seq_show = cpu_stat_percpu_show,
 	},
 	{ }	/* terminate */
 };
