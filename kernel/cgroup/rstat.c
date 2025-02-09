@@ -495,6 +495,33 @@ void __cgroup_account_cputime_field(struct cgroup *cgrp,
 	cgroup_base_stat_cputime_account_end(cgrp, rstatc, flags);
 }
 
+static void root_cgroup_cputime_cpu(struct cgroup_base_stat *bstatc, int cpu)
+{
+	struct task_cputime *cputime = &bstatc->cputime;
+	struct kernel_cpustat kcpustat;
+	u64 *cpustat = kcpustat.cpustat;
+
+	kcpustat_cpu_fetch(&kcpustat, cpu);
+
+	cputime->utime  = cpustat[CPUTIME_USER];
+	cputime->utime += cpustat[CPUTIME_NICE];
+
+	cputime->stime  = cpustat[CPUTIME_SYSTEM];
+	cputime->stime += cpustat[CPUTIME_IRQ];
+	cputime->stime += cpustat[CPUTIME_SOFTIRQ];
+
+	cputime->sum_exec_runtime = cputime->utime + cputime->stime;
+	cputime->sum_exec_runtime += cpustat[CPUTIME_STEAL];
+
+	bstatc->ntime = cpustat[CPUTIME_NICE];
+#ifdef CONFIG_SCHED_CORE
+	bstatc->forceidle_sum = cpustat[CPUTIME_FORCEIDLE];
+#endif
+#ifdef CONFIG_SCHED_INFO
+	bstatc->run_delay = cpustat[CPUTIME_RUN_DELAY];
+#endif
+}
+
 /*
  * compute the cputime for the root cgroup by getting the per cpu data
  * at a global level, then categorizing the fields in a manner consistent
@@ -503,38 +530,13 @@ void __cgroup_account_cputime_field(struct cgroup *cgrp,
  */
 static void root_cgroup_cputime(struct cgroup_base_stat *bstat)
 {
-	struct task_cputime *cputime = &bstat->cputime;
+	struct cgroup_base_stat bstatc;
 	int i;
 
 	memset(bstat, 0, sizeof(*bstat));
 	for_each_possible_cpu(i) {
-		struct kernel_cpustat kcpustat;
-		u64 *cpustat = kcpustat.cpustat;
-		u64 user = 0;
-		u64 sys = 0;
-
-		kcpustat_cpu_fetch(&kcpustat, i);
-
-		user += cpustat[CPUTIME_USER];
-		user += cpustat[CPUTIME_NICE];
-		cputime->utime += user;
-
-		sys += cpustat[CPUTIME_SYSTEM];
-		sys += cpustat[CPUTIME_IRQ];
-		sys += cpustat[CPUTIME_SOFTIRQ];
-		cputime->stime += sys;
-
-		cputime->sum_exec_runtime += user;
-		cputime->sum_exec_runtime += sys;
-		cputime->sum_exec_runtime += cpustat[CPUTIME_STEAL];
-
-#ifdef CONFIG_SCHED_CORE
-		bstat->forceidle_sum += cpustat[CPUTIME_FORCEIDLE];
-#endif
-		bstat->ntime += cpustat[CPUTIME_NICE];
-#ifdef CONFIG_SCHED_INFO
-		bstat->run_delay += cpustat[CPUTIME_RUN_DELAY];
-#endif
+		root_cgroup_cputime_cpu(&bstatc, i);
+		cgroup_base_stat_add(bstat, &bstatc);
 	}
 }
 
@@ -609,3 +611,81 @@ static int __init bpf_rstat_kfunc_init(void)
 					 &bpf_rstat_kfunc_set);
 }
 late_initcall(bpf_rstat_kfunc_init);
+
+#define bstat_offset(field)	offsetof(struct cgroup_base_stat, field)
+
+static const struct bstat_entry {
+	const char	*name;
+	int		offset;
+} bstats[] = {
+	{ "usage_usec",		bstat_offset(cputime.sum_exec_runtime)	},
+	{ "user_usec",		bstat_offset(cputime.utime)		},
+	{ "system_usec",	bstat_offset(cputime.stime)		},
+	{ "nice_usec",		bstat_offset(ntime)			},
+#ifdef CONFIG_SCHED_CORE
+	{ "core_sched.force_idle_usec",	bstat_offset(forceidle_sum)	},
+#endif
+#ifdef CONFIG_SCHED_INFO
+	{ "run_delay_usec",	bstat_offset(run_delay)			},
+#endif
+};
+
+static void cgroup_bstat_cpu_read(struct cgroup_base_stat *bstatc,
+				  struct cgroup *cgrp, int cpu)
+{
+	if (cgroup_parent(cgrp))
+		/*
+		 * In theory cputime_adjust() is needed for tick-based
+		 * accounting of [u|s]time against scheduler-based rtime.
+		 * But for this percpu stats, although it's really easy
+		 * to scale [u|s]time to meet 'utime + stime = rtime',
+		 * there is no holder for prev_cputime which is required
+		 * to preserve monotonicity across reads which might be
+		 * unacceptable. So keep things simple to just provide
+		 * the raw cputimes and let userspace play tricks if
+		 * they want.
+		 */
+		*bstatc = cgroup_rstat_cpu(cgrp, cpu)->subtree_bstat;
+	else
+		root_cgroup_cputime_cpu(bstatc, cpu);
+}
+
+int cgroup_base_stat_percpu_show(struct seq_file *seq)
+{
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+	struct cgroup_base_stat __percpu *pcbstat;
+	struct cgroup_base_stat *bstat;
+	const struct bstat_entry *e;
+	int i;
+
+	pcbstat = alloc_percpu(struct cgroup_base_stat);
+	if (!pcbstat)
+		return -ENOMEM;
+
+	if (cgroup_parent(cgrp))
+		cgroup_rstat_flush_hold(cgrp);
+
+	for_each_possible_cpu(i) {
+		bstat = per_cpu_ptr(pcbstat, i);
+		cgroup_bstat_cpu_read(bstat, cgrp, i);
+	}
+
+	if (cgroup_parent(cgrp))
+		cgroup_rstat_flush_release();
+
+	for (e = bstats; e < bstats + ARRAY_SIZE(bstats); e++) {
+		seq_puts(seq, e->name);
+		for_each_possible_cpu(i) {
+			u64 *val;
+
+			bstat = per_cpu_ptr(pcbstat, i);
+			val = (void *)bstat + e->offset;
+			do_div(*val, NSEC_PER_USEC);
+			seq_printf(seq, " C%d=%llu", i, *val);
+		}
+		seq_putc(seq, '\n');
+	}
+
+	free_percpu(pcbstat);
+	return 0;
+}
