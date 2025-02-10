@@ -2304,7 +2304,7 @@ int dissolve_free_huge_pages(unsigned long start_pfn, unsigned long end_pfn)
 /*
  * Allocates a fresh surplus page from the page allocator.
  */
-static struct folio *alloc_surplus_hugetlb_folio(struct hstate *h,
+static struct folio *alloc_surplus_hugetlb_folio_nodemask(struct hstate *h,
 				gfp_t gfp_mask,	int nid, nodemask_t *nmask)
 {
 	struct folio *folio = NULL;
@@ -2371,9 +2371,9 @@ static struct folio *alloc_migrate_hugetlb_folio(struct hstate *h, gfp_t gfp_mas
 /*
  * Use the VMA's mpolicy to allocate a huge page from the buddy.
  */
-static
-struct folio *alloc_buddy_hugetlb_folio_with_mpol(struct hstate *h,
-		struct vm_area_struct *vma, unsigned long addr)
+static struct folio *alloc_surplus_hugetlb_folio(struct hstate *h,
+						 struct vm_area_struct *vma,
+						 unsigned long addr)
 {
 	struct folio *folio = NULL;
 	struct mempolicy *mpol;
@@ -2386,14 +2386,14 @@ struct folio *alloc_buddy_hugetlb_folio_with_mpol(struct hstate *h,
 		gfp_t gfp = gfp_mask | __GFP_NOWARN;
 
 		gfp &=  ~(__GFP_DIRECT_RECLAIM | __GFP_NOFAIL);
-		folio = alloc_surplus_hugetlb_folio(h, gfp, nid, nodemask);
+		folio = alloc_surplus_hugetlb_folio_nodemask(h, gfp, nid, nodemask);
 
 		/* Fallback to all nodes if page==NULL */
 		nodemask = NULL;
 	}
 
 	if (!folio)
-		folio = alloc_surplus_hugetlb_folio(h, gfp_mask, nid, nodemask);
+		folio = alloc_surplus_hugetlb_folio_nodemask(h, gfp_mask, nid, nodemask);
 	mpol_cond_put(mpol);
 	return folio;
 }
@@ -2493,8 +2493,8 @@ retry:
 		 * It is okay to use NUMA_NO_NODE because we use numa_mem_id()
 		 * down the road to pick the current node if that is the case.
 		 */
-		folio = alloc_surplus_hugetlb_folio(h, htlb_alloc_mask(h),
-						    NUMA_NO_NODE, &alloc_nodemask);
+		folio = alloc_surplus_hugetlb_folio_nodemask(h, htlb_alloc_mask(h),
+							     NUMA_NO_NODE, &alloc_nodemask);
 		if (!folio) {
 			alloc_ok = false;
 			break;
@@ -3072,7 +3072,7 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 
 	if (!folio) {
 		spin_unlock_irq(&hugetlb_lock);
-		folio = alloc_buddy_hugetlb_folio_with_mpol(h, vma, addr);
+		folio = alloc_surplus_hugetlb_folio(h, vma, addr);
 		if (!folio)
 			goto out_uncharge_cgroup;
 		spin_lock_irq(&hugetlb_lock);
@@ -3516,11 +3516,12 @@ static int set_max_huge_pages(struct hstate *h, unsigned long count, int nid,
 	 * First take pages out of surplus state.  Then make up the
 	 * remaining difference by allocating fresh huge pages.
 	 *
-	 * We might race with alloc_surplus_hugetlb_folio() here and be unable
-	 * to convert a surplus huge page to a normal huge page. That is
-	 * not critical, though, it just means the overall size of the
-	 * pool might be one hugepage larger than it needs to be, but
-	 * within all the constraints specified by the sysctls.
+	 * We might race with alloc_surplus_hugetlb_folio_nodemask()
+	 * here and be unable to convert a surplus huge page to a normal
+	 * huge page. That is not critical, though, it just means the
+	 * overall size of the pool might be one hugepage larger than it
+	 * needs to be, but within all the constraints specified by the
+	 * sysctls.
 	 */
 	while (h->surplus_huge_pages && count > persistent_huge_pages(h)) {
 		if (!adjust_pool_surplus(h, nodes_allowed, -1))
@@ -3559,10 +3560,11 @@ static int set_max_huge_pages(struct hstate *h, unsigned long count, int nid,
 	 * By placing pages into the surplus state independent of the
 	 * overcommit value, we are allowing the surplus pool size to
 	 * exceed overcommit. There are few sane options here. Since
-	 * alloc_surplus_hugetlb_folio() is checking the global counter,
-	 * though, we'll note that we're not allowed to exceed surplus
-	 * and won't grow the pool anywhere else. Not until one of the
-	 * sysctls are changed, or the surplus pages go out of use.
+	 * alloc_surplus_hugetlb_folio_nodemask() is checking the global
+	 * counter, though, we'll note that we're not allowed to exceed
+	 * surplus and won't grow the pool anywhere else. Not until one
+	 * of the sysctls are changed, or the surplus pages go out of
+	 * use.
 	 */
 	min_count = h->resv_huge_pages + h->nr_huge_pages - h->free_huge_pages;
 	min_count = max(count, min_count);
