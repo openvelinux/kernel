@@ -2998,9 +2998,11 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 {
 	struct hugepage_subpool *spool = subpool_vma(vma);
 	struct hstate *h = hstate_vma(vma);
+	bool subpool_reservation_exists;
+	bool reservation_exists;
 	struct folio *folio;
 	long nr_pages = pages_per_huge_page(h);
-	long retval, gbl_chg, gbl_reserve;
+	long retval, gbl_reserve;
 	map_chg_state map_chg;
 	int memcg_charge_ret, ret, idx;
 	struct hugetlb_cgroup *h_cg = NULL;
@@ -3048,17 +3050,16 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 	 * that the allocation will not exceed the subpool limit.
 	 * Or if it can get one from the pool reservation directly.
 	 */
+	subpool_reservation_exists = false;
 	if (map_chg) {
-		gbl_chg = hugepage_subpool_get_pages(spool, 1);
-		if (gbl_chg < 0)
+		int npages_req = hugepage_subpool_get_pages(spool, 1);
+
+		if (npages_req < 0)
 			goto out_end_reservation;
-	} else {
-		/*
-		 * If we have the vma reservation ready, no need for extra
-		 * global reservation.
-		 */
-		gbl_chg = 0;
+
+		subpool_reservation_exists = npages_req == 0;
 	}
+	reservation_exists = !map_chg || subpool_reservation_exists;
 
 	/*
 	 * If this allocation is not consuming a per-vma reservation,
@@ -3077,13 +3078,8 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 
 	spin_lock_irq(&hugetlb_lock);
 
-	/*
-	 * gbl_chg == 0 indicates a reservation exists for the allocation - so
-	 * try dequeuing a page. If there are available_huge_pages(), try using
-	 * them!
-	 */
 	folio = NULL;
-	if (!gbl_chg || available_huge_pages(h))
+	if (reservation_exists || available_huge_pages(h))
 		folio = dequeue_hugetlb_folio(h, vma, addr);
 
 	if (!folio) {
@@ -3101,7 +3097,7 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 	 * Either dequeued or buddy-allocated folio needs to add special
 	 * mark to the folio when it consumes a global reservation.
 	 */
-	if (!gbl_chg) {
+	if (reservation_exists) {
 		folio_set_hugetlb_restore_reserve(folio);
 		h->resv_huge_pages--;
 	}
@@ -3164,7 +3160,7 @@ out_subpool_put:
 	 * put page to subpool iff the quota of subpool's rsv_hpages is used
 	 * during hugepage_subpool_get_pages.
 	 */
-	if (map_chg && !gbl_chg) {
+	if (map_chg && subpool_reservation_exists) {
 		gbl_reserve = hugepage_subpool_put_pages(spool, 1);
 		hugetlb_acct_memory(h, -gbl_reserve);
 	}
