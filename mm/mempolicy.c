@@ -1959,27 +1959,6 @@ int policy_node_nodemask(struct mempolicy *mpol, gfp_t gfp_flags,
 }
 
 #ifdef CONFIG_HUGETLBFS
-/*
- * huge_node(@vma, @addr, @gfp_flags, @mpol)
- * @vma: virtual memory area whose policy is sought
- * @addr: address in @vma for shared policy lookup and interleave policy
- * @gfp_flags: for requested zone
- * @mpol: pointer to mempolicy pointer for reference counted mempolicy
- * @nodemask: pointer to nodemask pointer for 'bind' and 'prefer-many' policy
- *
- * Returns a nid suitable for a huge page allocation and a pointer
- * to the struct mempolicy for conditional unref after allocation.
- * If the effective policy is 'bind' or 'prefer-many', returns a pointer
- * to the mempolicy's @nodemask for filtering the zonelist.
- */
-int huge_node(struct vm_area_struct *vma, unsigned long addr, gfp_t gfp_flags,
-		struct mempolicy **mpol, nodemask_t **nodemask)
-{
-	pgoff_t ilx;
-
-	*mpol = get_vma_policy(vma, addr, hstate_vma(vma)->order, &ilx);
-	return policy_node_nodemask(*mpol, gfp_flags, ilx, nodemask);
-}
 
 /*
  * init_nodemask_of_mempolicy

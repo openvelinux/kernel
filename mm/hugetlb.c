@@ -1338,10 +1338,12 @@ static struct folio *dequeue_hugetlb_folio(struct hstate *h,
 	struct mempolicy *mpol;
 	gfp_t gfp_mask;
 	nodemask_t *nodemask;
+	pgoff_t ilx;
 	int nid;
 
 	gfp_mask = htlb_alloc_mask(h);
-	nid = huge_node(vma, address, gfp_mask, &mpol, &nodemask);
+	mpol = get_vma_policy(vma, address, h->order, &ilx);
+	nid = policy_node_nodemask(mpol, gfp_mask, ilx, &nodemask);
 
 	if (mpol_is_preferred_many(mpol)) {
 		folio = dequeue_hugetlb_folio_nodemask(h, gfp_mask,
@@ -2380,8 +2382,11 @@ static struct folio *alloc_surplus_hugetlb_folio(struct hstate *h,
 	gfp_t gfp_mask = htlb_alloc_mask(h);
 	int nid;
 	nodemask_t *nodemask;
+	pgoff_t ilx;
 
-	nid = huge_node(vma, addr, gfp_mask, &mpol, &nodemask);
+	mpol = get_vma_policy(vma, addr, h->order, &ilx);
+	nid = policy_node_nodemask(mpol, gfp_mask, ilx, &nodemask);
+
 	if (mpol_is_preferred_many(mpol)) {
 		gfp_t gfp = gfp_mask | __GFP_NOWARN;
 
@@ -6260,10 +6265,12 @@ static struct folio *alloc_hugetlb_folio_vma(struct hstate *h,
 	nodemask_t *nodemask;
 	struct folio *folio;
 	gfp_t gfp_mask;
+	pgoff_t ilx;
 	int node;
 
 	gfp_mask = htlb_alloc_mask(h);
-	node = huge_node(vma, address, gfp_mask, &mpol, &nodemask);
+	mpol = get_vma_policy(vma, address, h->order, &ilx);
+	node = policy_node_nodemask(mpol, gfp_mask, ilx, &nodemask);
 	folio = alloc_hugetlb_folio_nodemask(h, node, nodemask, gfp_mask);
 	mpol_cond_put(mpol);
 
