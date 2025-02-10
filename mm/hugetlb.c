@@ -1330,34 +1330,22 @@ static unsigned long available_huge_pages(struct hstate *h)
 	return h->free_huge_pages - h->resv_huge_pages;
 }
 
-static struct folio *dequeue_hugetlb_folio(struct hstate *h,
-					   struct vm_area_struct *vma,
-					   unsigned long address)
+static struct folio *dequeue_hugetlb_folio(struct hstate *h, gfp_t gfp_mask,
+					   struct mempolicy *mpol,
+					   int nid, nodemask_t *nodemask)
 {
 	struct folio *folio = NULL;
-	struct mempolicy *mpol;
-	gfp_t gfp_mask;
-	nodemask_t *nodemask;
-	pgoff_t ilx;
-	int nid;
-
-	gfp_mask = htlb_alloc_mask(h);
-	mpol = get_vma_policy(vma, address, h->order, &ilx);
-	nid = policy_node_nodemask(mpol, gfp_mask, ilx, &nodemask);
 
 	if (mpol_is_preferred_many(mpol)) {
-		folio = dequeue_hugetlb_folio_nodemask(h, gfp_mask,
-							nid, nodemask);
+		folio = dequeue_hugetlb_folio_nodemask(h, gfp_mask, nid, nodemask);
 
 		/* Fallback to all nodes if page==NULL */
 		nodemask = NULL;
 	}
 
 	if (!folio)
-		folio = dequeue_hugetlb_folio_nodemask(h, gfp_mask,
-							nid, nodemask);
+		folio = dequeue_hugetlb_folio_nodemask(h, gfp_mask, nid, nodemask);
 
-	mpol_cond_put(mpol);
 	return folio;
 }
 
@@ -2371,21 +2359,14 @@ static struct folio *alloc_migrate_hugetlb_folio(struct hstate *h, gfp_t gfp_mas
 }
 
 /*
- * Use the VMA's mpolicy to allocate a huge page from the buddy.
+ * Allocate a huge page from the buddy allocator given memory policy and node information.
  */
 static struct folio *alloc_surplus_hugetlb_folio(struct hstate *h,
-						 struct vm_area_struct *vma,
-						 unsigned long addr)
+						 gfp_t gfp_mask,
+						 struct mempolicy *mpol,
+						 int nid, nodemask_t *nodemask)
 {
 	struct folio *folio = NULL;
-	struct mempolicy *mpol;
-	gfp_t gfp_mask = htlb_alloc_mask(h);
-	int nid;
-	nodemask_t *nodemask;
-	pgoff_t ilx;
-
-	mpol = get_vma_policy(vma, addr, h->order, &ilx);
-	nid = policy_node_nodemask(mpol, gfp_mask, ilx, &nodemask);
 
 	if (mpol_is_preferred_many(mpol)) {
 		gfp_t gfp = gfp_mask | __GFP_NOWARN;
@@ -2399,7 +2380,7 @@ static struct folio *alloc_surplus_hugetlb_folio(struct hstate *h,
 
 	if (!folio)
 		folio = alloc_surplus_hugetlb_folio_nodemask(h, gfp_mask, nid, nodemask);
-	mpol_cond_put(mpol);
+
 	return folio;
 }
 
@@ -2981,6 +2962,11 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 	struct hugetlb_cgroup *h_cg = NULL;
 	struct mem_cgroup *memcg;
 	gfp_t gfp = htlb_alloc_mask(h) | __GFP_RETRY_MAYFAIL;
+	struct mempolicy *mpol;
+	nodemask_t *nodemask;
+	gfp_t gfp_mask;
+	pgoff_t ilx;
+	int nid;
 
 	memcg = get_mem_cgroup_from_current();
 	memcg_charge_ret = mem_cgroup_hugetlb_try_charge(memcg, gfp, nr_pages);
@@ -3031,7 +3017,6 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 
 		subpool_reservation_exists = npages_req == 0;
 	}
-
 	reservation_exists = vma_reservation_exists || subpool_reservation_exists;
 
 	/*
@@ -3047,21 +3032,30 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 			goto out_subpool_put;
 	}
 
+	mpol = get_vma_policy(vma, addr, h->order, &ilx);
+
 	ret = hugetlb_cgroup_charge_cgroup(idx, pages_per_huge_page(h), &h_cg);
-	if (ret)
+	if (ret) {
+		mpol_cond_put(mpol);
 		goto out_uncharge_cgroup_reservation;
+	}
+
+	gfp_mask = htlb_alloc_mask(h);
+	nid = policy_node_nodemask(mpol, gfp_mask, ilx, &nodemask);
 
 	spin_lock_irq(&hugetlb_lock);
 
 	folio = NULL;
 	if (reservation_exists || available_huge_pages(h))
-		folio = dequeue_hugetlb_folio(h, vma, addr);
+		folio = dequeue_hugetlb_folio(h, gfp_mask, mpol, nid, nodemask);
 
 	if (!folio) {
 		spin_unlock_irq(&hugetlb_lock);
-		folio = alloc_surplus_hugetlb_folio(h, vma, addr);
-		if (!folio)
+		folio = alloc_surplus_hugetlb_folio(h, gfp_mask, mpol, nid, nodemask);
+		if (!folio) {
+			mpol_cond_put(mpol);
 			goto out_uncharge_cgroup;
+		}
 		spin_lock_irq(&hugetlb_lock);
 		list_add(&folio->lru, &h->hugepage_activelist);
 		folio_ref_unfreeze(folio, 1);
@@ -3085,6 +3079,8 @@ struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 	}
 
 	spin_unlock_irq(&hugetlb_lock);
+
+	mpol_cond_put(mpol);
 
 	hugetlb_set_folio_subpool(folio, spool);
 
