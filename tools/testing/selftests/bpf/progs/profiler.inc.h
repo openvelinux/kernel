@@ -225,7 +225,7 @@ static INLINE void* read_full_cgroup_path(struct kernfs_node* cgroup_node,
 			barrier_var(filepart_length);
 			payload += filepart_length;
 		}
-		cgroup_node = BPF_CORE_READ(cgroup_node, parent);
+		cgroup_node = BPF_CORE_READ(cgroup_node, __parent);
 	}
 	return payload;
 }
