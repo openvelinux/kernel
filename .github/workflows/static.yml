@@ -23,11 +23,11 @@ jobs:
           ssh-key: ${{ secrets.ssh_key }}
           set-safe-directory: true
       - name: FetchRefs
-        uses: bytedance/kernel/.github/actions/fetch-refs@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/fetch-refs@5.4.143-velinux
         with:
           depth: 2000
       - name: PrepareCICode
-        uses: bytedance/kernel/.github/actions/prepare-ci-code@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/prepare-ci-code@5.4.143-velinux
       - name: CheckFormat
         run: |
           set -e
@@ -43,11 +43,11 @@ jobs:
           ssh-key: ${{ secrets.ssh_key }}
           set-safe-directory: true
       - name: FetchRefs
-        uses: bytedance/kernel/.github/actions/fetch-refs@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/fetch-refs@5.4.143-velinux
         with:
           depth: 2000
       - name: PrepareCICode
-        uses: bytedance/kernel/.github/actions/prepare-ci-code@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/prepare-ci-code@5.4.143-velinux
       - name: SearchFixes
         run: |
           set -e

@@ -24,14 +24,14 @@ jobs:
           ssh-key: ${{ secrets.ssh_key }}
           set-safe-directory: true
       - name: PrepareCICode
-        uses: bytedance/kernel/.github/actions/prepare-ci-code@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/prepare-ci-code@5.4.143-velinux
       - name: BuildKernel
-        uses: bytedance/kernel/.github/actions/build-kernel@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/build-kernel@5.4.143-velinux
         with:
           arch: ${{ matrix.arch }}
           distro-code: ${{ matrix.distro_code }}
       - name: TestKernel
-        uses: bytedance/kernel/.github/actions/test-kernel@5.4.143-velinux
+        uses: openvelinux/kernel/.github/actions/test-kernel@5.4.143-velinux
         with:
           arch: ${{ matrix.arch }}
           distro-code: ${{ matrix.distro_code }}

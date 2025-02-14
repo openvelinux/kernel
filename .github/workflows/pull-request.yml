@@ -11,10 +11,10 @@ on:
 
 jobs:
   StaticCheck:
-    uses: bytedance/kernel/.github/workflows/static.yml@5.4.143-velinux
+    uses: openvelinux/kernel/.github/workflows/static.yml@5.4.143-velinux
     secrets:
       ssh_key: ${{ secrets.SSH_KEY }}
   BuildAndTestKernel:
-    uses: bytedance/kernel/.github/workflows/build-and-test.yml@5.4.143-velinux
+    uses: openvelinux/kernel/.github/workflows/build-and-test.yml@5.4.143-velinux
     secrets:
       ssh_key: ${{ secrets.SSH_KEY }}
