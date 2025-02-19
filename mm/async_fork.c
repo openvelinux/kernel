@@ -459,14 +459,19 @@ static inline void clean_pmd_range(struct mm_struct *mm, pud_t *pud,
 			continue;
 
 		/*
-		 * In theory, there is no race here, so there is no need to
-		 * acquire the PTE lock to recheck this flag. But according to
-		 * the principle of modifying this flag, let's acquire the lock
-		 * to protect it.
+		 * In an extreme case, there may be a race here. If the parent
+		 * process is a multi-threaded process, when a thread fork fails
+		 * to clean up, other threads may actively copy the page table,
+		 * so pte_lock is used for synchronization.
 		 */
 		pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
 		/* check async copy flag again */
 		if (pmd_test_async_copy_flag(*pmd)) {
+			/*
+			 * There should be no race when modifying the pmd entry
+			 * in the 5.15 kernel. Race will exist in higher kernel
+			 * versions and requires holding the pmd lock.
+			 */
 			set_pmd_at(mm, addr, pmd, pmd_mkwrite(*pmd));
 			pmd_clear_async_copy_flag(*pmd);
 		}
@@ -526,7 +531,7 @@ static inline void clean_page_range(struct mm_struct *mm,
 		clean_p4d_range(mm, vma, pgd, addr, next);
 	} while (pgd++, addr = next, addr != end);
 
-	vma->child_vma = NULL;
+	WRITE_ONCE(vma->child_vma, NULL);
 }
 
 void clean_async_copy(struct mm_struct *child_mm)
@@ -543,8 +548,7 @@ void clean_async_copy(struct mm_struct *child_mm)
 	parent_mm = child_mm->async_copy_parent_mm;
 
 	for (vma = parent_mm->mmap; vma; vma = vma->vm_next) {
-		/* No concurrent modification, no need for READ_ONCE(). */
-		if (vma->child_vma) {
+		if (READ_ONCE(vma->child_vma)) {
 			clean_page_range(parent_mm, vma, vma->vm_start,
 					 vma->vm_end);
 		}
