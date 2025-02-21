@@ -7435,9 +7435,6 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	if (test_tsk_need_resched(curr))
 		return;
 
-	if (!sched_feat(WAKEUP_PREEMPTION))
-		return;
-
 	find_matching_se(&se, &pse);
 	BUG_ON(!pse);
 
@@ -7449,6 +7446,9 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	 */
 	if (cse_is_idle && !pse_is_idle)
 		goto preempt;
+
+	if (!sched_feat(WAKEUP_PREEMPTION))
+		return;
 
 	/*
 	 * IDLE entities do not preempt others.
