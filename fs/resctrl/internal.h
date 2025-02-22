@@ -68,20 +68,6 @@ static inline struct rdt_fs_context *rdt_fc2context(struct fs_context *fc)
 }
 
 /**
- * struct mon_evt - Entry in the event list of a resource
- * @evtid:		event id
- * @name:		name of the event
- * @configurable:	true if the event is configurable
- * @list:		entry in &rdt_resource->evt_list
- */
-struct mon_evt {
-	enum resctrl_event_id	evtid;
-	char			*name;
-	bool			configurable;
-	struct list_head	list;
-};
-
-/**
  * union mon_data_bits - Monitoring details for each event file
  * @priv:              Used to store monitoring event data in @u
  *                     as kernfs private data
@@ -303,7 +289,6 @@ void cqm_setup_limbo_handler(struct rdt_domain *dom, unsigned long delay_ms,
 void cqm_handle_limbo(struct work_struct *work);
 bool has_busy_rmid(struct rdt_domain *d);
 void __check_limbo(struct rdt_domain *d, bool force_free);
-void mbm_config_rftype_init(const char *config);
 void rdt_staged_configs_clear(void);
 int resctrl_find_cleanest_closid(void);
 
