@@ -257,6 +257,20 @@ struct resctrl_mon_config_info {
 	int                  err;
 };
 
+/**
+ * struct mon_evt - Entry in the event list of a resource
+ * @evtid:		event id
+ * @name:		name of the event
+ * @configurable:	true if the event is configurable
+ * @list:		entry in &rdt_resource->evt_list
+ */
+struct mon_evt {
+	enum resctrl_event_id	evtid;
+	char			*name;
+	bool			configurable;
+	struct list_head	list;
+};
+
 /*
  * Update and re-load this CPUs defaults. Called via IPI, takes a pointer to
  * struct resctrl_cpu_sync, or NULL.
@@ -407,5 +421,8 @@ extern unsigned int resctrl_rmid_realloc_limit;
 
 int resctrl_init(void);
 void resctrl_exit(void);
+
+int resctrl_arch_mon_resource_init(void);
+void mbm_config_rftype_init(const char *config);
 
 #endif /* _RESCTRL_H */
