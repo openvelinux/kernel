@@ -473,14 +473,6 @@ static bool class_has_usable_mbwu(struct mpam_class *class)
 	if (!mpam_has_feature(mpam_feat_msmon_mbwu, cprops))
 		return false;
 
-	/*
-	 * resctrl expects the bandwidth counters to be free running,
-	 * which means we need as many monitors as resctrl has
-	 * control/monitor groups.
-	 */
-	if (cprops->num_mbwu_mon < resctrl_arch_system_num_rmid_idx())
-		return false;
-
 	return (mpam_partid_max > 1) || (mpam_pmg_max != 0);
 }
 
