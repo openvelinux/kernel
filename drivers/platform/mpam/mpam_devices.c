@@ -939,6 +939,9 @@ static void __ris_msmon_read(void *arg)
 		  FIELD_PREP(MSMON_CFG_MON_SEL_RIS, ris->ris_idx);
 	mpam_write_monsel_reg(msc, CFG_MON_SEL, mon_sel);
 
+	/* Selects a monitor instance to configure PARTID. */
+	wmb();
+
 	if (m->type == mpam_feat_msmon_mbwu) {
 		mbwu_state = &ris->mbwu_state[ctx->mon];
 		if (mbwu_state) {
@@ -958,6 +961,12 @@ static void __ris_msmon_read(void *arg)
 
 	if (config_mismatch || reset_on_next_read)
 		write_msmon_ctl_flt_vals(m, ctl_val, flt_val);
+
+	/*
+	 * Selects the monitor instance associated to the specified PARTID
+	 * to read counter value.
+	 */
+	wmb();
 
 	switch (m->type) {
 	case mpam_feat_msmon_csu:
