@@ -536,21 +536,31 @@ static u32 mbw_pbm_to_percent(unsigned long mbw_pbm, struct mpam_props *cprops)
 	return result;
 }
 
-static u32 mbw_max_to_percent(u16 mbw_max, struct mpam_props *cprops)
+static int get_wd_precision(u8 wd)
+{
+	int ret = (1 << wd) / MAX_MBA_BW;
+
+	if (!ret)
+		return 1;
+
+	return ret;
+}
+
+static u32 mbw_max_to_percent(u16 mbw_max, u8 wd)
 {
 	u8 bit;
-	u32 divisor = 2, value = 0;
+	u32 divisor = 2, value = 0, precision = get_wd_precision(wd);
 
 	for (bit = 15; bit; bit--) {
 		if (mbw_max & BIT(bit))
-			value += MAX_MBA_BW / divisor;
+			value += MAX_MBA_BW * precision / divisor;
 		divisor <<= 1;
 	}
 
-	return value;
+	return DIV_ROUND_UP(value, precision);
 }
 
-static u32 percent_to_mbw_pbm(u8 pc, struct mpam_props *cprops)
+static u32 percent_to_mbw_pbm(u32 pc, struct mpam_props *cprops)
 {
 	u32 granularity = get_mba_granularity(cprops);
 	u8 num_bits = pc / granularity;
@@ -562,26 +572,28 @@ static u32 percent_to_mbw_pbm(u8 pc, struct mpam_props *cprops)
 	return (1 << num_bits) - 1;
 }
 
-static u16 percent_to_mbw_max(u8 pc, struct mpam_props *cprops)
+static u16 percent_to_mbw_max(u32 pc, u8 wd)
 {
 	u8 bit;
-	u32 divisor = 2, value = 0;
+	u32 divisor = 2, value = 0, precision = get_wd_precision(wd);
 
-	if (WARN_ON_ONCE(cprops->bwa_wd > 15))
+	if (WARN_ON_ONCE(wd > 15))
 		return MAX_MBA_BW;
 
+	pc *= precision;
+
 	for (bit = 15; bit; bit--) {
-		if (pc >= MAX_MBA_BW / divisor) {
-			pc -= MAX_MBA_BW / divisor;
+		if (pc >= MAX_MBA_BW * precision / divisor) {
+			pc -= MAX_MBA_BW * precision / divisor;
 			value |= BIT(bit);
 		}
 		divisor <<= 1;
 
-		if (!pc || !(MAX_MBA_BW / divisor))
+		if (!pc || !(MAX_MBA_BW * precision / divisor))
 			break;
 	}
 
-	value &= GENMASK(15, 15 - cprops->bwa_wd + 1);
+	value &= GENMASK(15, 15 - wd + 1);
 
 	return value;
 }
@@ -946,7 +958,7 @@ u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_domain *d,
 		/* TODO: Scaling is not yet supported */
 		return mbw_pbm_to_percent(cfg->mbw_pbm, cprops);
 	case mpam_feat_mbw_max:
-		return mbw_max_to_percent(cfg->mbw_max, cprops);
+		return mbw_max_to_percent(cfg->mbw_max, cprops->bwa_wd);
 	default:
 		return -EINVAL;
 	}
@@ -989,7 +1001,7 @@ int resctrl_arch_update_one(struct rdt_resource *r, struct rdt_domain *d,
 			mpam_set_feature(mpam_feat_mbw_part, &cfg);
 			break;
 		} else if (mpam_has_feature(mpam_feat_mbw_max, cprops)) {
-			cfg.mbw_max = percent_to_mbw_max(cfg_val, cprops);
+			cfg.mbw_max = percent_to_mbw_max(cfg_val, cprops->bwa_wd);
 			mpam_set_feature(mpam_feat_mbw_max, &cfg);
 			break;
 		}
