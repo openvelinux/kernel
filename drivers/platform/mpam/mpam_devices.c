@@ -913,6 +913,11 @@ static u64 mpam_msmon_overflow_val(struct mpam_msc_ris *ris)
 		return GENMASK_ULL(30, 0);
 }
 
+static bool resctrl_arch_would_mbm_overflow(void)
+{
+	return read_cpuid_implementor() != ARM_CPU_IMP_HISI;
+}
+
 static void __ris_msmon_read(void *arg)
 {
 	bool nrdy = false;
@@ -983,6 +988,18 @@ static void __ris_msmon_read(void *arg)
 
 		if (!mbwu_state)
 			break;
+
+		/*
+		 * Following the definition of the DDI0598 version,
+		 * the value field of MPAM Memory Bandwidth Usage Monitor Register
+		 * indicates the memory bandwidth usage in bytes per second,
+		 * instead the scaled count of bytes transferred since the monitor
+		 * was last reset in the latest version (DDI0598D_b).
+		 */
+		if (ris->comp->class->type == MPAM_CLASS_MEMORY) {
+			if (!resctrl_arch_would_mbm_overflow())
+				break;
+		}
 
 		/* Add any pre-overflow value to the mbwu_state->val */
 		if (mbwu_state->prev_val > now)
