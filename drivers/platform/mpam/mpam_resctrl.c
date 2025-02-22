@@ -581,7 +581,7 @@ static u16 percent_to_mbw_max(u8 pc, struct mpam_props *cprops)
 			break;
 	}
 
-	value &= GENMASK(15, 15 - cprops->bwa_wd);
+	value &= GENMASK(15, 15 - cprops->bwa_wd + 1);
 
 	return value;
 }
