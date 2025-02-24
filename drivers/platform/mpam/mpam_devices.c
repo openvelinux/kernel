@@ -1031,11 +1031,14 @@ static void __ris_msmon_read(void *arg)
 	}
 
 	*(m->val) += now;
+	m->err = 0;
 }
 
 static int _msmon_read(struct mpam_component *comp, struct mon_read *arg)
 {
 	int err, idx;
+	bool read_again;
+	u64 wait_jiffies;
 	struct mpam_msc *msc;
 	struct mpam_msc_ris *ris;
 
@@ -1044,10 +1047,23 @@ static int _msmon_read(struct mpam_component *comp, struct mon_read *arg)
 		arg->ris = ris;
 
 		msc = ris->msc;
+		read_again = false;
+again:
 		mutex_lock(&msc->lock);
 		err = smp_call_function_any(&msc->accessibility,
 					    __ris_msmon_read, arg, true);
 		mutex_unlock(&msc->lock);
+
+		if (arg->err == -EBUSY && !read_again) {
+			read_again = true;
+
+			wait_jiffies = usecs_to_jiffies(comp->class->nrdy_usec);
+			while (wait_jiffies)
+				wait_jiffies = schedule_timeout_uninterruptible(wait_jiffies);
+
+			goto again;
+		}
+
 		if (!err && arg->err)
 			err = arg->err;
 		if (err)
@@ -1061,9 +1077,7 @@ static int _msmon_read(struct mpam_component *comp, struct mon_read *arg)
 int mpam_msmon_read(struct mpam_component *comp, struct mon_cfg *ctx,
 		    enum mpam_device_features type, u64 *val)
 {
-	int err;
 	struct mon_read arg;
-	u64 wait_jiffies = 0;
 	struct mpam_props *cprops = &comp->class->props;
 
 	might_sleep();
@@ -1080,24 +1094,7 @@ int mpam_msmon_read(struct mpam_component *comp, struct mon_cfg *ctx,
 	arg.val = val;
 	*val = 0;
 
-	err = _msmon_read(comp, &arg);
-	if (err == -EBUSY)
-		wait_jiffies = usecs_to_jiffies(comp->class->nrdy_usec);
-
-	while (wait_jiffies)
-		wait_jiffies = schedule_timeout_uninterruptible(wait_jiffies);
-
-	if (err == -EBUSY) {
-		memset(&arg, 0, sizeof(arg));
-		arg.ctx = ctx;
-		arg.type = type;
-		arg.val = val;
-		*val = 0;
-
-		err = _msmon_read(comp, &arg);
-	}
-
-	return err;
+	return _msmon_read(comp, &arg);
 }
 
 void mpam_msmon_reset_all_mbwu(struct mpam_component *comp)
