@@ -381,12 +381,41 @@ static ssize_t hisi_ptt_filter_show(struct device *dev, struct device_attribute 
 	return sysfs_emit(buf, "0x%05lx\n", filter_val);
 }
 
+static int hisi_ptt_check_duplicated_filters(struct hisi_ptt *hisi_ptt, u16 devid, bool is_port)
+{
+	struct hisi_ptt_filter_desc *filter;
+	struct list_head *target_list;
+	u8 devfn = devid & 0xff;
+
+	if (is_port)
+		target_list = &hisi_ptt->port_filters;
+	else
+		target_list = &hisi_ptt->req_filters;
+
+	list_for_each_entry(filter, target_list, list) {
+		if (filter->devid == devid) {
+			pci_warn(hisi_ptt->pdev,
+				 "ignore duplicated filter %04x:%02x:%02x.%d\n",
+				 pci_domain_nr(hisi_ptt->pdev->bus),
+				 PCI_BUS_NUM(devid), PCI_SLOT(devfn),
+				 PCI_FUNC(devfn));
+
+			return -EEXIST;
+		}
+	}
+
+	return 0;
+}
+
 static struct hisi_ptt_filter_desc *
 hisi_ptt_alloc_add_filter(struct hisi_ptt *hisi_ptt, u16 devid, bool is_port)
 {
 	struct hisi_ptt_filter_desc *filter;
 	u8 devfn = devid & 0xff;
 	char *filter_name;
+
+	if (hisi_ptt_check_duplicated_filters(hisi_ptt, devid, is_port))
+		return NULL;
 
 	filter_name = kasprintf(GFP_KERNEL, "%04x:%02x:%02x.%d", pci_domain_nr(hisi_ptt->pdev->bus),
 				 PCI_BUS_NUM(devid), PCI_SLOT(devfn), PCI_FUNC(devfn));
