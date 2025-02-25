@@ -332,7 +332,7 @@ static inline void async_copy_finish(struct mm_struct *parent_mm,
 	WRITE_ONCE(child_mm->async_copy_parent_mm, NULL);
 
 	/* Let lockdep record that we hold a read lock and then release it. */
-	rwsem_acquire_read(&parent_mm->mmap_sem.dep_map, 0, 0, _RET_IP_);
+	rwsem_acquire_read(&parent_mm->mmap_lock.dep_map, 0, 0, _RET_IP_);
 	mmap_read_unlock(parent_mm);
 	/*
 	 * We only acquire the mmap_sem semaphore in read mode, which means the
@@ -356,10 +356,10 @@ static inline void async_copy_finish(struct mm_struct *parent_mm,
 	 * Change the owner of the lock, otherwise releasing it will case a
 	 * warning.
 	 */
-	atomic_long_set(&child_mm->mmap_sem.owner, (long)current);
+	atomic_long_set(&child_mm->mmap_lock.owner, (long)current);
 #endif
 	/* Let lockdep record that we hold a write lock and then release it. */
-	rwsem_acquire(&child_mm->mmap_sem.dep_map, 0, 0, _RET_IP_);
+	rwsem_acquire(&child_mm->mmap_lock.dep_map, 0, 0, _RET_IP_);
 	mmap_write_unlock(child_mm);
 	mmput(parent_mm);
 }
