@@ -634,8 +634,8 @@ out:
 		 * workaround way we invoke rwsem_release directly to trick
 		 * lockdep into thinking that the two locks have been realeased.
 		 */
-		rwsem_release(&oldmm->mmap_sem.dep_map, _RET_IP_);
-		rwsem_release(&mm->mmap_sem.dep_map, _RET_IP_);
+		rwsem_release(&oldmm->mmap_lock.dep_map, _RET_IP_);
+		rwsem_release(&mm->mmap_lock.dep_map, _RET_IP_);
 	} else {
 		mmap_write_unlock(mm);
 		mmap_write_unlock(oldmm);
