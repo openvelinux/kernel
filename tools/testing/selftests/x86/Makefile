@@ -118,3 +118,5 @@ $(eval $(call extra-files,test_syscall_vdso_32,thunks_32.S))
 # state.
 $(OUTPUT)/check_initial_reg_state_32: CFLAGS += -Wl,-ereal_start -static
 $(OUTPUT)/check_initial_reg_state_64: CFLAGS += -Wl,-ereal_start -static
+
+$(OUTPUT)/amx_64: EXTRA_FILES += xstate.c
