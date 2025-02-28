@@ -19,6 +19,8 @@ enum {
 
 #ifdef CONFIG_HAVE_BOOTMEM_INFO_NODE
 void __init register_page_bootmem_info_node(struct pglist_data *pgdat);
+void register_page_bootmem_memmap(unsigned long section_nr, struct page *map,
+				  unsigned long nr_pages);
 
 void get_page_bootmem(unsigned long info, struct page *page,
 		      unsigned long type);
@@ -46,6 +48,11 @@ static inline void free_bootmem_page(struct page *page)
 }
 #else
 static inline void register_page_bootmem_info_node(struct pglist_data *pgdat)
+{
+}
+
+static inline void register_page_bootmem_memmap(unsigned long section_nr,
+		struct page *map, unsigned long nr_pages)
 {
 }
 
