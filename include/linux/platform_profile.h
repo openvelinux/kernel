@@ -30,8 +30,21 @@ enum platform_profile_option {
 
 struct platform_profile_handler;
 
+/**
+ * struct platform_profile_ops - platform profile operations
+ * @probe: Callback to setup choices available to the new class device. These
+ *	   choices will only be enforced when setting a new profile, not when
+ *	   getting the current one.
+ * @hidden_choices: Callback to setup choices that are not visible to the user
+ *		    but can be set by the driver.
+ * @profile_get: Callback that will be called when showing the current platform
+ *		 profile in sysfs.
+ * @profile_set: Callback that will be called when storing a new platform
+ *		 profile in sysfs.
+ */
 struct platform_profile_ops {
 	int (*probe)(void *drvdata, unsigned long *choices);
+	int (*hidden_choices)(void *drvdata, unsigned long *choices);
 	int (*profile_get)(struct device *dev, enum platform_profile_option *profile);
 	int (*profile_set)(struct device *dev, enum platform_profile_option profile);
 };
@@ -42,6 +55,7 @@ struct platform_profile_handler {
 	struct device class_dev;
 	int minor;
 	unsigned long choices[BITS_TO_LONGS(PLATFORM_PROFILE_LAST)];
+	unsigned long hidden_choices[BITS_TO_LONGS(PLATFORM_PROFILE_LAST)];
 	const struct platform_profile_ops *ops;
 };
 
