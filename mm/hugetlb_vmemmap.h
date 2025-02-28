@@ -47,7 +47,7 @@ static inline int hugetlb_vmemmap_restore(const struct hstate *h, struct page *h
 	return 0;
 }
 
-static long hugetlb_vmemmap_restore_pages(const struct hstate *h,
+static inline long hugetlb_vmemmap_restore_pages(const struct hstate *h,
 				   struct list_head *page_list,
 				   struct list_head *non_hvo_pages)
 {
