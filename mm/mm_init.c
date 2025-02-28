@@ -1910,6 +1910,9 @@ void __init free_area_init(unsigned long *max_zone_pfn)
 		check_for_memory(pgdat);
 	}
 
+	for_each_node_state(nid, N_MEMORY)
+		sparse_vmemmap_init_nid_late(nid);
+
 	memmap_init();
 
 	/* disable hash distribution for systems with a single node */
