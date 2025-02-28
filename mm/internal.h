@@ -1152,6 +1152,8 @@ static inline int vma_iter_prealloc(struct vma_iterator *vmi,
 	return mas_preallocate(&vmi->mas, vma, GFP_KERNEL);
 }
 
+void __meminit __init_reserved_page_zone(unsigned long pfn, int nid);
+
 static inline void vma_iter_clear(struct vma_iterator *vmi)
 {
 	mas_store_prealloc(&vmi->mas, NULL);
