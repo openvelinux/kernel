@@ -277,8 +277,6 @@ extern struct paravirt_patch_template pv_ops;
 
 unsigned int paravirt_patch(u8 type, void *insn_buff, unsigned long addr, unsigned int len);
 
-int paravirt_disable_iospace(void);
-
 /*
  * This generates an indirect call based on the operation type number.
  * The type number, computed in PARAVIRT_PATCH, is derived from the
