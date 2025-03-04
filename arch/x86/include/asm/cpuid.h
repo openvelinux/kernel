@@ -6,6 +6,7 @@
 #ifndef _ASM_X86_CPUID_H
 #define _ASM_X86_CPUID_H
 
+#include <linux/build_bug.h>
 #include <asm/string.h>
 
 struct cpuid_regs {
