@@ -230,7 +230,7 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	 * bitmask based on the appraise/audit/measurement policy.
 	 * Included is the appraise submask.
 	 */
-	action = ima_get_action(file_mnt_idmap(file), inode, cred, secid,
+	action = ima_get_action(file, file_mnt_idmap(file), inode, cred, secid,
 				mask, func, &pcr, &template_desc, NULL,
 				&allowed_algos);
 	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK ||
@@ -490,10 +490,10 @@ int ima_file_mprotect(struct vm_area_struct *vma, unsigned long prot)
 
 	security_current_getsecid_subj(&secid);
 	inode = file_inode(vma->vm_file);
-	action = ima_get_action(file_mnt_idmap(vma->vm_file), inode,
+	action = ima_get_action(vma->vm_file, file_mnt_idmap(vma->vm_file), inode,
 				current_cred(), secid, MAY_EXEC, MMAP_CHECK,
 				&pcr, &template, NULL, NULL);
-	action |= ima_get_action(file_mnt_idmap(vma->vm_file), inode,
+	action |= ima_get_action(vma->vm_file, file_mnt_idmap(vma->vm_file), inode,
 				 current_cred(), secid, MAY_EXEC,
 				 MMAP_CHECK_REQPROT, &pcr, &template, NULL,
 				 NULL);
@@ -974,7 +974,7 @@ int process_buffer_measurement(struct mnt_idmap *idmap,
 	 */
 	if (func) {
 		security_current_getsecid_subj(&secid);
-		action = ima_get_action(idmap, inode, current_cred(),
+		action = ima_get_action(NULL, idmap, inode, current_cred(),
 					secid, 0, func, &pcr, &template,
 					func_data, NULL);
 		if (!(action & IMA_MEASURE) && !digest)
