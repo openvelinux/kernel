@@ -271,6 +271,13 @@ struct resctrl_cpu_defaults {
 	u32 rmid;
 };
 
+struct resctrl_mon_config_info {
+	struct rdt_resource	*r;
+	struct rdt_mon_domain	*d;
+	u32			evtid;
+	u32			mon_config;
+};
+
 void resctrl_arch_sync_cpu_closid_rmid(void *info);
 
 /* The number of closid supported by this resource regardless of CDP */
