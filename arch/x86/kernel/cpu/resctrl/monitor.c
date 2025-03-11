@@ -1254,11 +1254,11 @@ int __init rdt_get_mon_l3_config(struct rdt_resource *r)
 		cpuid_count(0x80000020, 3, &eax, &ebx, &ecx, &edx);
 		hw_res->mbm_cfg_mask = ecx & MAX_EVT_CONFIG_BITS;
 
-		if (rdt_cpu_has(X86_FEATURE_CQM_MBM_TOTAL)) {
+		if (resctrl_arch_is_evt_configurable(QOS_L3_MBM_TOTAL_EVENT_ID)) {
 			mbm_total_event.configurable = true;
 			mbm_config_rftype_init("mbm_total_bytes_config");
 		}
-		if (rdt_cpu_has(X86_FEATURE_CQM_MBM_LOCAL)) {
+		if (resctrl_arch_is_evt_configurable(QOS_L3_MBM_LOCAL_EVENT_ID)) {
 			mbm_local_event.configurable = true;
 			mbm_config_rftype_init("mbm_local_bytes_config");
 		}
