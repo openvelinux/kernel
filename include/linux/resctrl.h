@@ -217,7 +217,6 @@ enum resctrl_schema_fmt {
  * @mon_domains:	RCU list of all monitor domains for this resource
  * @name:		Name to use in "schemata" file.
  * @data_width:		Character width of data when displaying
- * @default_ctrl:	Specifies default cache cbm or memory B/W percent.
  * @format_str:		Per resource format string to show domain value
  * @schema_fmt:		Which format string and parser is used for this schema.
  * @evt_list:		List of monitoring events
@@ -237,7 +236,6 @@ struct rdt_resource {
 	struct list_head	mon_domains;
 	char			*name;
 	int			data_width;
-	u32			default_ctrl;
 	const char		*format_str;
 	enum resctrl_schema_fmt	schema_fmt;
 	struct list_head	evt_list;
@@ -271,6 +269,22 @@ struct resctrl_schema {
 	struct rdt_resource		*res;
 	u32				num_closid;
 };
+
+/**
+ * resctrl_get_default_ctrl() - Return the default control value for a resource
+ * @r:		The resource whose default control value is queried.
+ */
+static inline u32 resctrl_get_default_ctrl(struct rdt_resource *r)
+{
+	switch (r->schema_fmt) {
+	case RESCTRL_SCHEMA_BITMAP:
+		return BIT_MASK(r->cache.cbm_len) - 1;
+	case RESCTRL_SCHEMA_RANGE:
+		return r->membw.max_bw;
+	}
+
+	return WARN_ON_ONCE(1);
+}
 
 /* The number of closid supported by this resource regardless of CDP */
 u32 resctrl_arch_get_num_closid(struct rdt_resource *r);
