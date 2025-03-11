@@ -4,8 +4,9 @@
 
 #ifdef CONFIG_X86_CPU_RESCTRL
 
-#include <linux/sched.h>
 #include <linux/jump_label.h>
+#include <linux/percpu.h>
+#include <linux/sched.h>
 
 /*
  * This value can never be a valid CLOSID, and is used when mapping a
@@ -130,6 +131,13 @@ static inline unsigned int resctrl_arch_round_mon_val(unsigned int val)
 	/* h/w works in units of "boot_cpu_data.x86_cache_occ_scale" */
 	val /= scale;
 	return val * scale;
+}
+
+static inline void resctrl_arch_set_cpu_default_closid_rmid(int cpu, u32 closid,
+						     u32 rmid)
+{
+	WRITE_ONCE(per_cpu(pqr_state.default_closid, cpu), closid);
+	WRITE_ONCE(per_cpu(pqr_state.default_rmid, cpu), rmid);
 }
 
 static inline void resctrl_arch_set_closid_rmid(struct task_struct *tsk,
