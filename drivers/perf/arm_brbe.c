@@ -476,6 +476,16 @@ void armv8pmu_branch_enable(struct perf_event *event)
 	brbcr &= ~BRBCR_ELx_CONFIG_MASK;
 	brbcr |= branch_type_to_brbcr(cpuc->brbe_sample_type);
 	write_sysreg_s(brbcr, SYS_BRBCR_EL1);
+
+	/*
+	 * In VHE mode with MDCR_EL2.HPMN set to PMCR_EL0.N, the counters are
+	 * controlled by BRBCR_EL1 rather than BRBCR_EL2 (which writes to
+	 * BRBCR_EL1 are redirected to). Use the same value for both register
+	 * except keep EL1 and EL0 recording disabled in guests.
+	 */
+	if (is_kernel_in_hyp_mode())
+		write_sysreg_s(brbcr & ~(BRBCR_ELx_ExBRE | BRBCR_ELx_E0BRE), SYS_BRBCR_EL12);
+
 	isb();
 }
 
@@ -494,6 +504,11 @@ void armv8pmu_branch_disable(struct perf_event *event)
 	brbcr &= ~(BRBCR_ELx_E0BRE | BRBCR_ELx_ExBRE);
 	brbfcr |= BRBFCR_EL1_PAUSED;
 	write_sysreg_s(brbcr, SYS_BRBCR_EL1);
+
+	/* See the comment in armv8pmu_branch_enable() */
+	if (is_kernel_in_hyp_mode())
+		write_sysreg_s(brbcr, SYS_BRBCR_EL12);
+
 	write_sysreg_s(brbfcr, SYS_BRBFCR_EL1);
 	isb();
 }
