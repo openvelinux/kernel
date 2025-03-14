@@ -20,6 +20,7 @@
 
 #include <drm/drm_edid.h>
 #include <drm/drm_framebuffer.h>
+#include "dp/dp_hw.h"
 
 struct hibmc_vdac {
 	struct drm_device *dev;
@@ -38,6 +39,7 @@ struct hibmc_drm_private {
 	struct drm_plane primary_plane;
 	struct drm_crtc crtc;
 	struct hibmc_vdac vdac;
+	struct hibmc_dp dp;
 };
 
 static inline struct hibmc_vdac *to_hibmc_vdac(struct drm_connector *connector)
@@ -60,5 +62,6 @@ int hibmc_vdac_init(struct hibmc_drm_private *priv);
 
 int hibmc_mm_init(struct hibmc_drm_private *hibmc);
 int hibmc_ddc_create(struct drm_device *drm_dev, struct hibmc_vdac *connector);
+int hibmc_dp_init(struct hibmc_drm_private *priv);
 
 #endif
