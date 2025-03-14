@@ -6268,6 +6268,15 @@ guest_memfd has the GUEST_MEMFD_FLAG_MMAP set, then the fault will always be
 consumed from guest_memfd, regardless of whether it is a shared or a private
 fault.
 
+For these memslots, userspace_addr is checked to be the mmap()-ed view of the
+same range specified using gmem.pgoff.  Other accesses by KVM, e.g., instruction
+emulation, go via slot->userspace_addr.  The slot->userspace_addr field can be
+set to 0 to skip this check, which indicates that KVM would not access memory
+belonging to the slot via its userspace_addr.
+
+The use of GUEST_MEMFD_FLAG_MMAP will not be allowed for CoCo VMs.
+This is validated when the guest_memfd instance is bound to the VM.
+
 See KVM_SET_USER_MEMORY_REGION2 for additional details.
 
 

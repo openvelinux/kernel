@@ -5,6 +5,8 @@
 #include <linux/fs.h>
 #include <linux/kvm_host.h>
 #include <linux/mempolicy.h>
+#include <linux/maple_tree.h>
+#include <linux/pseudo_fs.h>
 #include <linux/pagemap.h>
 #include <linux/pseudo_fs.h>
 
@@ -21,6 +23,12 @@ struct kvm_gmem {
 struct kvm_gmem_inode_info {
 	struct shared_policy policy;
 	struct inode vfs_inode;
+	struct maple_tree shareability;
+};
+
+enum shareability {
+	SHAREABILITY_GUEST = 1,	/* Only the guest can map (fault) folios in this range. */
+	SHAREABILITY_ALL = 2,	/* Both guest and host can fault folios in this range. */
 };
 
 static inline struct kvm_gmem_inode_info *KVM_GMEM_I(struct inode *inode)
@@ -30,6 +38,8 @@ static inline struct kvm_gmem_inode_info *KVM_GMEM_I(struct inode *inode)
 
 static struct mempolicy *kvm_gmem_get_pgoff_policy(struct kvm_gmem_inode_info *info,
 						   pgoff_t index);
+
+static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index);
 
 /**
  * folio_file_pfn - like folio_file_page, but return a pfn.
@@ -41,6 +51,41 @@ static struct mempolicy *kvm_gmem_get_pgoff_policy(struct kvm_gmem_inode_info *i
 static inline kvm_pfn_t folio_file_pfn(struct folio *folio, pgoff_t index)
 {
 	return folio_pfn(folio) + (index & (folio_nr_pages(folio) - 1));
+}
+
+static int kvm_gmem_shareability_setup(struct kvm_gmem_inode_info *info,
+				       loff_t size, u64 flags)
+{
+	enum shareability m;
+	pgoff_t last;
+
+	last = (size >> PAGE_SHIFT) - 1;
+	m = flags & GUEST_MEMFD_FLAG_INIT_PRIVATE ? SHAREABILITY_GUEST :
+						    SHAREABILITY_ALL;
+	return mtree_store_range(&info->shareability, 0, last, xa_mk_value(m),
+				 GFP_KERNEL);
+}
+
+static enum shareability kvm_gmem_shareability_get(struct inode *inode,
+						   pgoff_t index)
+{
+	struct maple_tree *mt;
+	void *entry;
+
+	mt = &KVM_GMEM_I(inode)->shareability;
+	entry = mtree_load(mt, index);
+	WARN(!entry,
+	     "Shareability should always be defined for all indices in inode.");
+
+	return xa_to_value(entry);
+}
+
+static struct folio *kvm_gmem_get_shared_folio(struct inode *inode, pgoff_t index)
+{
+	if (kvm_gmem_shareability_get(inode, index) != SHAREABILITY_ALL)
+		return ERR_PTR(-EACCES);
+
+	return kvm_gmem_get_folio(inode, index);
 }
 
 static int __kvm_gmem_prepare_folio(struct kvm *kvm, struct kvm_memory_slot *slot,
@@ -344,7 +389,7 @@ static vm_fault_t kvm_gmem_fault_user_mapping(struct vm_fault *vmf)
 	if (((loff_t)vmf->pgoff << PAGE_SHIFT) >= i_size_read(inode))
 		return VM_FAULT_SIGBUS;
 
-	folio = kvm_gmem_get_folio(inode, vmf->pgoff);
+	folio = kvm_gmem_get_shared_folio(inode, vmf->pgoff);
 	if (IS_ERR(folio)) {
 		int err = PTR_ERR(folio);
 
@@ -458,14 +503,22 @@ static struct inode *kvm_gmem_alloc_inode(struct super_block *sb)
 	return &info->vfs_inode;
 }
 
+static void kvm_gmem_free_inode(struct inode *inode)
+{
+	struct kvm_gmem_inode_info *info = KVM_GMEM_I(inode);
+
+	/*
+	 * mtree_destroy() can't be used within rcu callback, hence can't be
+	 * done in ->free_inode().
+	 */
+	mtree_destroy(&info->shareability);
+
+	kmem_cache_free(kvm_gmem_inode_cachep, info);
+}
+
 static void kvm_gmem_destroy_inode(struct inode *inode)
 {
 	mpol_free_shared_policy(&KVM_GMEM_I(inode)->policy);
-}
-
-static void kvm_gmem_free_inode(struct inode *inode)
-{
-	kmem_cache_free(kvm_gmem_inode_cachep, KVM_GMEM_I(inode));
 }
 
 static const struct super_operations kvm_gmem_super_operations = {
@@ -632,11 +685,24 @@ bool __weak kvm_arch_supports_gmem_mmap(struct kvm *kvm)
 static struct inode *kvm_gmem_inode_create(const char *name, loff_t size,
 					   u64 flags)
 {
+	struct kvm_gmem_inode_info *info;
 	struct inode *inode;
+	int err;
 
 	inode = anon_inode_make_secure_inode(kvm_gmem_mnt->mnt_sb, name, NULL);
 	if (IS_ERR(inode))
 		return inode;
+
+	err = -ENOMEM;
+	info = KVM_GMEM_I(inode);
+	if (WARN_ON_ONCE(!info))
+		goto out;
+
+	mt_init(&info->shareability);
+
+	err = kvm_gmem_shareability_setup(info, size, flags);
+	if (err)
+		goto out;
 
 	inode->i_private = (void *)(unsigned long)flags;
 	inode->i_op = &kvm_gmem_iops;
@@ -649,6 +715,11 @@ static struct inode *kvm_gmem_inode_create(const char *name, loff_t size,
 	WARN_ON_ONCE(!mapping_unevictable(inode->i_mapping));
 
 	return inode;
+
+out:
+	iput(inode);
+
+	return ERR_PTR(err);
 }
 
 static struct file *kvm_gmem_inode_create_getfile(void *priv, loff_t size,
@@ -735,6 +806,9 @@ int kvm_gmem_create(struct kvm *kvm, struct kvm_create_guest_memfd *args)
 
 	if (kvm_arch_supports_gmem_mmap(kvm))
 		valid_flags |= GUEST_MEMFD_FLAG_MMAP;
+
+	if (flags & GUEST_MEMFD_FLAG_MMAP)
+		valid_flags |= GUEST_MEMFD_FLAG_INIT_PRIVATE;
 
 	if (flags & ~valid_flags)
 		return -EINVAL;
@@ -884,6 +958,8 @@ int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 	if (!file)
 		return -EFAULT;
 
+	filemap_invalidate_lock_shared(file_inode(file)->i_mapping);
+
 	folio = __kvm_gmem_get_pfn(file, slot, index, pfn, max_order);
 	if (IS_ERR(folio)) {
 		r = PTR_ERR(folio);
@@ -903,8 +979,8 @@ int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 	folio_unlock(folio);
 	if (r < 0)
 		folio_put(folio);
-
 out:
+	filemap_invalidate_unlock_shared(file_inode(file)->i_mapping);
 	fput(file);
 	return r;
 }
