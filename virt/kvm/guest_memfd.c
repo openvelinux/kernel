@@ -9,6 +9,7 @@
 #include <linux/pseudo_fs.h>
 #include <linux/pagemap.h>
 #include <linux/pseudo_fs.h>
+#include <linux/memcontrol.h>
 
 #include "kvm_mm.h"
 
@@ -136,6 +137,38 @@ static int kvm_gmem_prepare_folio(struct kvm *kvm, struct kvm_memory_slot *slot,
 	return __kvm_gmem_prepare_folio(kvm, slot, index, folio);
 }
 
+static int __kvm_gmem_filemap_add_folio(struct address_space *mapping,
+					struct folio *folio, pgoff_t index)
+{
+	void *shadow = NULL;
+	gfp_t gfp;
+	int ret;
+
+	gfp = mapping_gfp_mask(mapping);
+
+	__folio_set_locked(folio);
+	ret = __filemap_add_folio(mapping, folio, index, gfp, &shadow);
+	__folio_clear_locked(folio);
+
+	return ret;
+}
+
+/*
+ * Adds a folio to the filemap for guest_memfd. Skips adding the folio to any
+ * LRU list.
+ */
+static int kvm_gmem_filemap_add_folio(struct address_space *mapping,
+					     struct folio *folio, pgoff_t index)
+{
+	int ret;
+
+	ret = __kvm_gmem_filemap_add_folio(mapping, folio, index);
+	if (!ret)
+		folio_set_unevictable(folio);
+
+	return ret;
+}
+
 /*
  * Returns a locked folio on success.  The caller is responsible for
  * setting the up-to-date flag before the memory is mapped into the guest.
@@ -147,25 +180,48 @@ static int kvm_gmem_prepare_folio(struct kvm *kvm, struct kvm_memory_slot *slot,
  */
 static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index)
 {
-	/* TODO: Support huge pages. */
 	struct mempolicy *policy;
 	struct folio *folio;
+	gfp_t gfp;
+	int ret;
 
-	/*
-	 * Fast-path: See if folio is already present in mapping to avoid
-	 * policy_lookup.
-	 */
-	folio = __filemap_get_folio(inode->i_mapping, index,
-				    FGP_LOCK | FGP_ACCESSED, 0);
+repeat:
+	folio = filemap_lock_folio(inode->i_mapping, index);
 	if (!IS_ERR(folio))
 		return folio;
 
+	gfp = mapping_gfp_mask(inode->i_mapping);
 	policy = kvm_gmem_get_pgoff_policy(KVM_GMEM_I(inode), index);
-	folio = __filemap_get_folio_mpol(inode->i_mapping, index,
-					 FGP_LOCK | FGP_ACCESSED | FGP_CREAT,
-					 mapping_gfp_mask(inode->i_mapping), policy);
-	mpol_cond_put(policy);
 
+	/* TODO: Support huge pages. */
+	folio = filemap_alloc_folio(gfp, 0, policy);
+	mpol_cond_put(policy);
+	if (!folio)
+		return ERR_PTR(-ENOMEM);
+
+	ret = mem_cgroup_charge(folio, NULL, gfp);
+	if (ret) {
+		folio_put(folio);
+		return ERR_PTR(ret);
+	}
+
+	ret = kvm_gmem_filemap_add_folio(inode->i_mapping, folio, index);
+	if (ret) {
+		folio_put(folio);
+
+		/*
+		 * There was a race, two threads tried to get a folio indexing
+		 * to the same location in the filemap. The losing thread should
+		 * free the allocated folio, then lock the folio added to the
+		 * filemap by the winning thread.
+		 */
+		if (ret == -EEXIST)
+			goto repeat;
+
+		return ERR_PTR(ret);
+	}
+
+	__folio_set_locked(folio);
 	return folio;
 }
 
@@ -636,23 +692,28 @@ static int kvm_gmem_error_page(struct address_space *mapping, struct page *page)
 }
 
 #ifdef CONFIG_HAVE_KVM_ARCH_GMEM_INVALIDATE
+static void kvm_gmem_invalidate(struct folio *folio)
+{
+	kvm_pfn_t pfn = folio_pfn(folio);
+
+	kvm_arch_gmem_invalidate(pfn, pfn + folio_nr_pages(folio));
+}
+#else
+static inline void kvm_gmem_invalidate(struct folio *folio) {}
+#endif
+
 static void kvm_gmem_free_folio(struct folio *folio)
 {
-	struct page *page = folio_page(folio, 0);
-	kvm_pfn_t pfn = page_to_pfn(page);
-	int order = folio_order(folio);
+	folio_clear_unevictable(folio);
 
-	kvm_arch_gmem_invalidate(pfn, pfn + (1ul << order));
+	kvm_gmem_invalidate(folio);
 }
-#endif
 
 static const struct address_space_operations kvm_gmem_aops = {
 	.dirty_folio = noop_dirty_folio,
 	.migrate_folio	= kvm_gmem_migrate_folio,
 	.error_remove_page = kvm_gmem_error_page,
-#ifdef CONFIG_HAVE_KVM_ARCH_GMEM_INVALIDATE
 	.free_folio = kvm_gmem_free_folio,
-#endif
 };
 
 static int kvm_gmem_getattr(struct mnt_idmap *idmap, const struct path *path,
