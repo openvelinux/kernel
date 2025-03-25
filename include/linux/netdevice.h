@@ -4731,6 +4731,7 @@ extern int		netdev_max_backlog;
 extern int		dev_rx_weight;
 extern int		dev_tx_weight;
 extern int		gro_normal_batch;
+extern int		net_rx_action_nested;
 
 enum {
 	NESTED_SYNC_IMM_BIT,
