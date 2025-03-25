@@ -646,6 +646,15 @@ static struct ctl_table net_core_table[] = {
 		.extra1		= SYSCTL_ONE,
 	},
 	{
+		.procname	= "net_rx_action_nested",
+		.data		= &net_rx_action_nested,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+	{
 		.procname	= "netdev_unregister_timeout_secs",
 		.data		= &netdev_unregister_timeout_secs,
 		.maxlen		= sizeof(unsigned int),

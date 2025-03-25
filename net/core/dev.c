@@ -4446,6 +4446,9 @@ drop:
 }
 EXPORT_SYMBOL(__dev_direct_xmit);
 
+int net_rx_action_nested __read_mostly = 1;
+EXPORT_SYMBOL(net_rx_action_nested);
+
 /*************************************************************************
  *			Receiver routines
  *************************************************************************/
@@ -4498,7 +4501,7 @@ static inline void ____napi_schedule(struct softnet_data *sd,
 	/* If not called from net_rx_action()
 	 * we have to raise NET_RX_SOFTIRQ.
 	 */
-	if (!sd->in_net_rx_action)
+	if (READ_ONCE(net_rx_action_nested) || !sd->in_net_rx_action)
 		__raise_softirq_irqoff(NET_RX_SOFTIRQ);
 }
 
@@ -4744,7 +4747,8 @@ static void napi_schedule_rps(struct softnet_data *sd)
 		/* If not called from net_rx_action() or napi_threaded_poll()
 		 * we have to raise NET_RX_SOFTIRQ.
 		 */
-		if (!mysd->in_net_rx_action && !mysd->in_napi_threaded_poll)
+		if ((READ_ONCE(net_rx_action_nested) || !mysd->in_net_rx_action) &&
+		    !mysd->in_napi_threaded_poll)
 			__raise_softirq_irqoff(NET_RX_SOFTIRQ);
 		return;
 	}
@@ -6758,7 +6762,7 @@ start:
 				 * had refilled poll_list while
 				 * sd->in_net_rx_action was true.
 				 */
-				if (!list_empty(&sd->poll_list))
+				if (!READ_ONCE(net_rx_action_nested) && !list_empty(&sd->poll_list))
 					goto start;
 				if (!sd_has_rps_ipi_waiting(sd))
 					goto end;
