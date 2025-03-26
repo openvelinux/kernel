@@ -34,6 +34,64 @@ struct rtmr_event {
 
 static LIST_HEAD(rtmr_event_log_head);
 
+static ssize_t
+tdx_rtmr_ccel_read(struct file *file, struct kobject *kobj,
+		   struct bin_attribute *bin_attr, char *buf,
+		   loff_t off, size_t len)
+{
+	size_t idx = 0;
+	size_t event_size;
+	size_t copied = 0;
+	struct rtmr_event *pos;
+
+	/* Traverse the event log list */
+	list_for_each_entry(pos, &rtmr_event_log_head, list) {
+		event_size = sizeof(pos->event) + pos->event.data.size;
+
+		/* Skip events before the offset */
+		if (idx + event_size <= off) {
+			idx += event_size;
+			continue;
+		}
+
+		/* Calculate how much to copy from this event */
+		size_t event_offset = (off > idx) ? (off - idx) : 0;
+		size_t to_copy = min(len - copied, event_size - event_offset);
+
+		/* Copy event data to user buffer */
+		memcpy(buf + copied, (char *)&pos->event + event_offset,
+		       to_copy);
+		copied += to_copy;
+		idx += event_size;
+
+		/* Stop if we've filled the buffer */
+		if (copied >= len)
+			break;
+	}
+
+	return copied;
+}
+
+static struct bin_attribute bin_attr_tdx_rtmr_ccel __ro_after_init = {
+	.attr = { .name = "ccel", .mode = 0400, },
+	.read = tdx_rtmr_ccel_read,
+};
+
+struct kobject *tdx_rtmr_kobj;
+
+static int __init tdx_rtmr_ccel_init(void)
+{
+	bin_attr_tdx_rtmr_ccel.size = 0;
+
+	tdx_rtmr_kobj = kobject_create_and_add("tdx_rtmr", kernel_kobj);
+	if (!tdx_rtmr_kobj)
+		return -ENOMEM;
+
+	return sysfs_create_bin_file(tdx_rtmr_kobj, &bin_attr_tdx_rtmr_ccel);
+}
+
+subsys_initcall(tdx_rtmr_ccel_init);
+
 static void ccel_record_eventlog(struct rtmr_event *rtmr_event, void *digests,
 				 const void *event_data, size_t event_data_len,
 				 u8 mr_idx)
