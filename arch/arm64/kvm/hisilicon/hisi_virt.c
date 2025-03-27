@@ -20,6 +20,7 @@ static const char * const hisi_cpu_type_str[] = {
 	"HIP09",
 	"HIP10",
 	"HIP10C",
+	"HIP12",
 	"Unknown"
 };
 
@@ -30,7 +31,8 @@ static const char * const oem_str[] = {
 	"HIP08   ",	/* Hisi 1620 */
 	"HIP09   ",	/* HIP09 */
 	"HIP10   ",	/* HIP10 */
-	"HIP10C  "	/* HIP10C */
+	"HIP10C  ",	/* HIP10C */
+	"HIP12   "	/* HIP12 */
 };
 
 /*
@@ -396,6 +398,56 @@ out_update:
 	kvm->arch.tlbi_dvmbm = val;
 }
 
+static void kvm_update_vm_lsudvmbm_hip12(struct kvm *kvm)
+{
+	u64 mpidr, aff3, aff2;
+	u64 vm_aff3s[DVMBM_MAX_DIES_HIP12];
+	u64 val;
+	int cpu, nr_dies;
+
+	nr_dies = kvm_dvmbm_get_dies_info(kvm, vm_aff3s, DVMBM_MAX_DIES_HIP12);
+	if (nr_dies > 2) {
+		val = DVMBM_RANGE_ALL_DIES << DVMBM_RANGE_SHIFT;
+		goto out_update;
+	}
+
+	if (nr_dies == 1) {
+		val = DVMBM_RANGE_ONE_DIE << DVMBM_RANGE_SHIFT	|
+		      vm_aff3s[0] << DVMBM_DIE1_VDIE_SHIFT_HIP12;
+
+		/* fulfill bits [11:6] */
+		for_each_cpu(cpu, kvm->arch.sched_cpus) {
+			mpidr = cpu_logical_map(cpu);
+			aff2 = MPIDR_AFFINITY_LEVEL(mpidr, 2);
+
+			val |= 1ULL << (aff2 + DVMBM_DIE1_CLUSTER_SHIFT_HIP12);
+		}
+
+		goto out_update;
+	}
+
+	/* nr_dies == 2 */
+	val = DVMBM_RANGE_TWO_DIES << DVMBM_RANGE_SHIFT	|
+	      DVMBM_GRAN_CLUSTER << DVMBM_GRAN_SHIFT	|
+	      vm_aff3s[0] << DVMBM_DIE1_VDIE_SHIFT_HIP12    |
+	      vm_aff3s[1] << DVMBM_DIE2_VDIE_SHIFT_HIP12;
+
+	/* and fulfill bits [11:0] */
+	for_each_cpu(cpu, kvm->arch.sched_cpus) {
+		mpidr = cpu_logical_map(cpu);
+		aff3 = MPIDR_AFFINITY_LEVEL(mpidr, 3);
+		aff2 = MPIDR_AFFINITY_LEVEL(mpidr, 2);
+
+		if (aff3 == vm_aff3s[0])
+			val |= 1ULL << (aff2 + DVMBM_DIE1_CLUSTER_SHIFT_HIP12);
+		else
+			val |= 1ULL << (aff2 + DVMBM_DIE2_CLUSTER_SHIFT_HIP12);
+	}
+
+out_update:
+	kvm->arch.tlbi_dvmbm = val;
+}
+
 void kvm_tlbi_dvmbm_vcpu_load(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
@@ -440,7 +492,10 @@ void kvm_tlbi_dvmbm_vcpu_load(struct kvm_vcpu *vcpu)
 	 * Re-calculate LSUDVMBM_EL2 for this VM and kick all vcpus
 	 * out to reload the LSUDVMBM configuration.
 	 */
-	kvm_update_vm_lsudvmbm(kvm);
+	if (cpu_type == HI_IP12)
+		kvm_update_vm_lsudvmbm_hip12(kvm);
+	else
+		kvm_update_vm_lsudvmbm(kvm);
 	kvm_make_all_cpus_request(kvm, KVM_REQ_RELOAD_TLBI_DVMBM);
 
 out_unlock:
