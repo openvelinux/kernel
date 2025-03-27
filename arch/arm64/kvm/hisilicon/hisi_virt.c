@@ -160,12 +160,17 @@ bool hisi_dvmbm_supported(void)
 	if (cpu_type != HI_IP10 && cpu_type != HI_IP10C)
 		return false;
 
+	if (!is_kernel_in_hyp_mode()) {
+		kvm_info("Hisi dvmbm not supported by KVM nVHE mode\n");
+		return false;
+	}
+
 	/* Determine whether DVMBM is supported by the hardware */
 	if (!(read_sysreg(aidr_el1) & AIDR_EL1_DVMBM_MASK))
 		return false;
 
 	/* User provided kernel command-line parameter */
-	if (!dvmbm_enabled || !is_kernel_in_hyp_mode()) {
+	if (!dvmbm_enabled) {
 		on_each_cpu(hardware_disable_dvmbm, NULL, 1);
 		return false;
 	}
