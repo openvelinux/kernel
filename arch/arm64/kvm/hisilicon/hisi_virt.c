@@ -159,7 +159,8 @@ static void hardware_disable_dvmbm(void *data)
 
 bool hisi_dvmbm_supported(void)
 {
-	if (cpu_type != HI_IP10 && cpu_type != HI_IP10C)
+	if (cpu_type != HI_IP10 && cpu_type != HI_IP10C &&
+	    cpu_type != HI_IP12)
 		return false;
 
 	if (!is_kernel_in_hyp_mode()) {
@@ -518,6 +519,9 @@ void kvm_get_pg_cfg(void)
 	u32 pg_cfgs[MAX_PG_CFG_SOCKETS * MAX_DIES_PER_SOCKET];
 	u64 mn_phy_base;
 	u32 val;
+
+	if (cpu_type == HI_IP12)
+		return;
 
 	socket_num = kvm_get_socket_num();
 	die_num = kvm_get_die_num();
