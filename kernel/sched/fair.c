@@ -7445,12 +7445,15 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	pse_is_idle = se_is_idle(pse);
 
 	/*
-	 * Preempt an idle entity in favor of a non-idle entity (and don't preempt
-	 * in the inverse case).
+	 * Preempt an idle entity in favor of a non-idle entity.
 	 */
 	if (cse_is_idle && !pse_is_idle)
 		goto preempt;
-	if (cse_is_idle != pse_is_idle)
+
+	/*
+	 * IDLE entities do not preempt others.
+	 */
+	if (unlikely(pse_is_idle))
 		return;
 
 	/*
