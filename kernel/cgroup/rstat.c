@@ -246,10 +246,11 @@ void cgroup_rstat_flush(struct cgroup *cgrp)
 
 	might_sleep();
 	for_each_possible_cpu(cpu) {
-		struct cgroup *pos = cgroup_rstat_updated_list(cgrp, cpu);
+		struct cgroup *pos;
 
 		/* Reacquire for each CPU to avoid disabling IRQs too long */
 		__cgroup_rstat_lock(cgrp, cpu);
+		pos = cgroup_rstat_updated_list(cgrp, cpu);
 		for (; pos; pos = pos->rstat_flush_next) {
 			struct cgroup_subsys_state *css;
 
