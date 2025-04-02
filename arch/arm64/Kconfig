@@ -2230,6 +2230,18 @@ config ARM64_HAFT
 	  support this feature. If unsure, say Y.
 
 endmenu # "ARMv8.8 architectural features"
+menu "ARMv9.5 architectural features"
+
+config ARM64_HDBSS
+	bool "Enable support for Hardware Dirty state tracking Structure (HDBSS)"
+	default y
+	help
+	  Hardware Dirty state tracking Structure(HDBSS) enhances tracking
+	  translation table descriptors’ dirty state to reduce the cost of
+	  surveying for dirtied granules.
+
+endmenu # "ARMv9.5 architectural features"
+
 
 config ARM64_SVE
 	bool "ARM Scalable Vector Extension support"

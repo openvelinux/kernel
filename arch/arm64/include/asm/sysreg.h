@@ -1025,6 +1025,7 @@
 
 #define PIRx_ELx_PERM(idx, perm)	((perm) << ((idx) * 4))
 
+#ifdef CONFIG_ARM64_HDBSS
 /*
  * Definitions for the HDBSS feature
  */
@@ -1036,6 +1037,7 @@
 #define HDBSSBR_SZ(br)		(((br) & HDBSSBR_EL2_SZ_MASK) >> HDBSSBR_EL2_SZ_SHIFT)
 
 #define HDBSSPROD_IDX(prod)	(((prod) & HDBSSPROD_EL2_INDEX_MASK) >> HDBSSPROD_EL2_INDEX_SHIFT)
+#endif
 
 #define ARM64_FEATURE_FIELD_BITS	4
 

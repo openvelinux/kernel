@@ -310,6 +310,7 @@ static __always_inline void __load_stage2(struct kvm_s2_mmu *mmu,
 	asm(ALTERNATIVE("nop", "isb", ARM64_WORKAROUND_SPECULATIVE_AT));
 }
 
+#ifdef CONFIG_ARM64_HDBSS
 static __always_inline void __load_hdbss(struct kvm_vcpu *vcpu)
 {
 	if (!vcpu->kvm->enable_hdbss)
@@ -321,6 +322,7 @@ static __always_inline void __load_hdbss(struct kvm_vcpu *vcpu)
 	dsb(sy);
 	isb();
 }
+#endif
 
 static inline struct kvm *kvm_s2_mmu_to_kvm(struct kvm_s2_mmu *mmu)
 {
