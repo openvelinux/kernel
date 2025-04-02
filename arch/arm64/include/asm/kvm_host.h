@@ -620,6 +620,11 @@ struct kvm_vcpu_arch {
 	cpumask_var_t sched_cpus;
 	cpumask_var_t pre_sched_cpus;
 #endif
+	/* HDBSS registers info */
+	struct {
+		u64 br_el2;
+		u64 prod_el2;
+	} hdbss;
 };
 
 /*
