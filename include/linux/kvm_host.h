@@ -820,7 +820,7 @@ struct kvm {
 #endif
 	char stats_id[KVM_STATS_NAME_SIZE];
 #ifdef CONFIG_ARM64_HDBSS
-	bool enable_hdbss;
+	KABI_EXTEND(bool enable_hdbss)
 #endif
 };
 
