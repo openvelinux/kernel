@@ -288,6 +288,7 @@ static exit_handle_fn kvm_get_exit_handler(struct kvm_vcpu *vcpu)
 	return arm_exit_handlers[esr_ec];
 }
 
+#ifdef CONFIG_ARM64_HDBSS
 #define HDBSS_ENTRY_VALID_SHIFT 0
 #define HDBSS_ENTRY_VALID_MASK (1UL << HDBSS_ENTRY_VALID_SHIFT)
 #define HDBSS_ENTRY_IPA_SHIFT 12
@@ -331,6 +332,7 @@ static void kvm_flush_hdbss_buffer(struct kvm_vcpu *vcpu)
 	dsb(sy);
 	isb();
 }
+#endif
 
 /*
  * We may be single-stepping an emulated instruction. If the emulation
@@ -367,9 +369,10 @@ int handle_exit(struct kvm_vcpu *vcpu, int exception_index)
 {
 	struct kvm_run *run = vcpu->run;
 
+#ifdef CONFIG_ARM64_HDBSS
 	if (vcpu->kvm->enable_hdbss)
 		kvm_flush_hdbss_buffer(vcpu);
-
+#endif
 	if (ARM_SERROR_PENDING(exception_index)) {
 		/*
 		 * The SError is handled by handle_exit_early(). If the guest

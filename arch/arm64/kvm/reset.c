@@ -163,11 +163,14 @@ void kvm_arm_vcpu_destroy(struct kvm_vcpu *vcpu)
 		kvm_unshare_hyp(sve_state, sve_state + vcpu_sve_state_size(vcpu));
 	kfree(sve_state);
 	kfree(vcpu->arch.ccsidr);
+
+#ifdef CONFIG_ARM64_HDBSS
 	if (vcpu->arch.hdbss.br_el2) {
 		hdbss_pg = phys_to_page(HDBSSBR_BADDR(vcpu->arch.hdbss.br_el2));
 		if (hdbss_pg)
 			__free_pages(hdbss_pg, HDBSSBR_SZ(vcpu->arch.hdbss.br_el2));
 	}
+#endif
 }
 
 static void kvm_vcpu_reset_sve(struct kvm_vcpu *vcpu)

@@ -729,6 +729,7 @@ static __always_inline bool system_supports_fpsimd(void)
 	return alternative_has_cap_likely(ARM64_HAS_FPSIMD);
 }
 
+#ifdef CONFIG_ARM64_HDBSS
 static inline bool system_supports_hdbss(void)
 {
 	u64 mmfr1;
@@ -740,6 +741,7 @@ static inline bool system_supports_hdbss(void)
 
 	return val == ID_AA64MMFR1_EL1_HAFDBS_HDBSS;
 }
+#endif
 
 static inline bool system_uses_hw_pan(void)
 {
