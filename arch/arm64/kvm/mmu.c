@@ -1645,7 +1645,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 	unsigned long fault_status;
 	phys_addr_t fault_ipa;
 	struct kvm_memory_slot *memslot;
-	unsigned long hva;
+	unsigned long hva, iss2;
 	bool is_iabt, write_fault, writable;
 	gfn_t gfn;
 	int ret, idx;
@@ -1654,6 +1654,14 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 
 	fault_ipa = kvm_vcpu_get_fault_ipa(vcpu);
 	is_iabt = kvm_vcpu_trap_is_iabt(vcpu);
+
+	/*
+	 * HDBSS buffer already flushed when enter handle_trap_exceptions().
+	 * Nothing to do here.
+	 */
+	iss2 = ESR_ELx_ISS2(kvm_vcpu_get_esr(vcpu));
+	if (fault_status == ESR_ELx_FSC_PERM && (iss2 & ESR_ELx_HDBSSF))
+		return 1;
 
 	if (fault_status == ESR_ELx_FSC_FAULT) {
 		/* Beyond sanitised PARange (which is the IPA limit) */

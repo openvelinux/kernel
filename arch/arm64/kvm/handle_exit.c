@@ -288,6 +288,50 @@ static exit_handle_fn kvm_get_exit_handler(struct kvm_vcpu *vcpu)
 	return arm_exit_handlers[esr_ec];
 }
 
+#define HDBSS_ENTRY_VALID_SHIFT 0
+#define HDBSS_ENTRY_VALID_MASK (1UL << HDBSS_ENTRY_VALID_SHIFT)
+#define HDBSS_ENTRY_IPA_SHIFT 12
+#define HDBSS_ENTRY_IPA_MASK GENMASK_ULL(55, HDBSS_ENTRY_IPA_SHIFT)
+
+static void kvm_flush_hdbss_buffer(struct kvm_vcpu *vcpu)
+{
+	int idx, curr_idx;
+	u64 *hdbss_buf;
+
+	if (!vcpu->kvm->enable_hdbss)
+		return;
+
+	dsb(sy);
+	isb();
+	curr_idx = HDBSSPROD_IDX(read_sysreg_s(SYS_HDBSSPROD_EL2));
+
+	/* Do nothing if HDBSS buffer is empty or br_el2 is NULL */
+	if (curr_idx == 0 || vcpu->arch.hdbss.br_el2 == 0)
+		return;
+
+	hdbss_buf = page_address(phys_to_page(HDBSSBR_BADDR(vcpu->arch.hdbss.br_el2)));
+	if (!hdbss_buf) {
+		kvm_err("Enter flush hdbss buffer with buffer == NULL!");
+		return;
+	}
+
+	for (idx = 0; idx < curr_idx; idx++) {
+		u64 gpa;
+
+		gpa = hdbss_buf[idx];
+		if (!(gpa & HDBSS_ENTRY_VALID_MASK))
+			continue;
+
+		gpa = gpa & HDBSS_ENTRY_IPA_MASK;
+		kvm_vcpu_mark_page_dirty(vcpu, gpa >> PAGE_SHIFT);
+	}
+
+	/* reset HDBSS index */
+	write_sysreg_s(0, SYS_HDBSSPROD_EL2);
+	dsb(sy);
+	isb();
+}
+
 /*
  * We may be single-stepping an emulated instruction. If the emulation
  * has been completed in the kernel, we can return to userspace with a
@@ -322,6 +366,9 @@ static int handle_trap_exceptions(struct kvm_vcpu *vcpu)
 int handle_exit(struct kvm_vcpu *vcpu, int exception_index)
 {
 	struct kvm_run *run = vcpu->run;
+
+	if (vcpu->kvm->enable_hdbss)
+		kvm_flush_hdbss_buffer(vcpu);
 
 	if (ARM_SERROR_PENDING(exception_index)) {
 		/*
