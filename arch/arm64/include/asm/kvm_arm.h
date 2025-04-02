@@ -129,6 +129,7 @@
 
 /* VTCR_EL2 Registers bits */
 #define VTCR_EL2_DS		TCR_EL2_DS
+#define VTCR_EL2_HDBSS		(1UL << 45)
 #define VTCR_EL2_RES1		(1U << 31)
 #define VTCR_EL2_HD		(1 << 22)
 #define VTCR_EL2_HA		(1 << 21)
