@@ -819,6 +819,7 @@ struct kvm {
 	struct notifier_block pm_notifier;
 #endif
 	char stats_id[KVM_STATS_NAME_SIZE];
+	bool enable_hdbss;
 };
 
 #define kvm_err(fmt, ...) \

@@ -225,6 +225,7 @@ static int __kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu)
 	 * __activate_traps clear HCR_EL2.TGE (among other things).
 	 */
 	__load_stage2(vcpu->arch.hw_mmu, vcpu->arch.hw_mmu->arch);
+	__load_hdbss(vcpu);
 	__activate_traps(vcpu);
 
 	__kvm_adjust_pc(vcpu);

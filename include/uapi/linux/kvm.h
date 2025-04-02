@@ -1195,6 +1195,8 @@ struct kvm_ppc_resize_hpt {
 
 #define KVM_CAP_ARM_VIRT_MSI_BYPASS 799
 
+#define KVM_CAP_ARM_HW_DIRTY_STATE_TRACK 502
+
 #ifdef KVM_CAP_IRQ_ROUTING
 
 struct kvm_irq_routing_irqchip {
