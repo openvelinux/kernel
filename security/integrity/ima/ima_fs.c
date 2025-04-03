@@ -43,8 +43,15 @@ static ssize_t ima_show_htable_value(char __user *buf, size_t count,
 {
 	char tmpbuf[32];	/* greater than largest 'long' string value */
 	ssize_t len;
+	long measurements_count;
+	/* Synchronization ensures that when returning the value to user,
+	 * it is not in a series of steps of extend rtmr.
+	 */
+	mutex_lock(&ima_extend_list_mutex);
+	measurements_count = atomic_long_read(val);
+	mutex_unlock(&ima_extend_list_mutex);
 
-	len = scnprintf(tmpbuf, sizeof(tmpbuf), "%li\n", atomic_long_read(val));
+	len = scnprintf(tmpbuf, sizeof(tmpbuf), "%li\n", measurements_count);
 	return simple_read_from_buffer(buf, count, ppos, tmpbuf, len);
 }
 
