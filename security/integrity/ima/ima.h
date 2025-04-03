@@ -65,6 +65,9 @@ extern struct tpm_chip *ima_tdx_device;
 extern struct tpm_chip *ima_tpm_chip;
 extern const char boot_aggregate_name[];
 
+/* used in ima_show_measurements_count for synchronization. */
+extern struct mutex ima_extend_list_mutex;
+
 /* IMA event related data */
 struct ima_event_data {
 	struct integrity_iint_cache *iint;
