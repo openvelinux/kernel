@@ -906,9 +906,9 @@ static DEFINE_SPINLOCK(scx_tasks_lock);
 static LIST_HEAD(scx_tasks);
 
 /* ops enable/disable */
-static struct kthread_worker *scx_ops_helper;
-static DEFINE_MUTEX(scx_ops_enable_mutex);
-DEFINE_STATIC_KEY_FALSE(__scx_ops_enabled);
+static struct kthread_worker *scx_helper;
+static DEFINE_MUTEX(scx_enable_mutex);
+DEFINE_STATIC_KEY_FALSE(__scx_enabled);
 DEFINE_STATIC_PERCPU_RWSEM(scx_fork_rwsem);
 static atomic_t scx_enable_state_var = ATOMIC_INIT(SCX_DISABLED);
 static unsigned long scx_in_softlockup;
@@ -4708,7 +4708,7 @@ static void scx_ops_disable_workfn(struct kthread_work *work)
 	 * we can safely use blocking synchronization constructs. Actually
 	 * disable ops.
 	 */
-	mutex_lock(&scx_ops_enable_mutex);
+	mutex_lock(&scx_enable_mutex);
 
 	static_branch_disable(&__scx_switched_all);
 	WRITE_ONCE(scx_switching_all, false);
@@ -4757,7 +4757,7 @@ static void scx_ops_disable_workfn(struct kthread_work *work)
 	}
 
 	/* no task is on scx, turn off all the switches and flush in-progress calls */
-	static_branch_disable(&__scx_ops_enabled);
+	static_branch_disable(&__scx_enabled);
 	for (i = SCX_OPI_BEGIN; i < SCX_OPI_END; i++)
 		static_branch_disable(&scx_has_op[i]);
 	static_branch_disable(&scx_ops_allow_queued_wakeup);
@@ -4817,7 +4817,7 @@ static void scx_ops_disable_workfn(struct kthread_work *work)
 	free_exit_info(scx_exit_info);
 	scx_exit_info = NULL;
 
-	mutex_unlock(&scx_ops_enable_mutex);
+	mutex_unlock(&scx_enable_mutex);
 
 	WARN_ON_ONCE(scx_set_enable_state(SCX_DISABLED) != SCX_DISABLING);
 done:
@@ -4828,11 +4828,11 @@ static DEFINE_KTHREAD_WORK(scx_ops_disable_work, scx_ops_disable_workfn);
 
 static void schedule_scx_ops_disable_work(void)
 {
-	struct kthread_worker *helper = READ_ONCE(scx_ops_helper);
+	struct kthread_worker *helper = READ_ONCE(scx_helper);
 
 	/*
 	 * We may be called spuriously before the first bpf_sched_ext_reg(). If
-	 * scx_ops_helper isn't set up yet, there's nothing to do.
+	 * scx_helper isn't set up yet, there's nothing to do.
 	 */
 	if (helper)
 		kthread_queue_work(helper, &scx_ops_disable_work);
@@ -5253,7 +5253,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 		return -EINVAL;
 	}
 
-	mutex_lock(&scx_ops_enable_mutex);
+	mutex_lock(&scx_enable_mutex);
 
 	/*
 	 * Clear event counters so a new scx scheduler gets
@@ -5264,10 +5264,9 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 		memset(e, 0, sizeof(*e));
 	}
 
-	if (!scx_ops_helper) {
-		WRITE_ONCE(scx_ops_helper,
-			   scx_create_rt_helper("sched_ext_ops_helper"));
-		if (!scx_ops_helper) {
+	if (!scx_helper) {
+		WRITE_ONCE(scx_helper, scx_create_rt_helper("sched_ext_helper"));
+		if (!scx_helper) {
 			ret = -ENOMEM;
 			goto err_unlock;
 		}
@@ -5391,10 +5390,10 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 			   scx_watchdog_timeout / 2);
 
 	/*
-	 * Once __scx_ops_enabled is set, %current can be switched to SCX
-	 * anytime. This can lead to stalls as some BPF schedulers (e.g.
-	 * userspace scheduling) may not function correctly before all tasks are
-	 * switched. Init in bypass mode to guarantee forward progress.
+	 * Once __scx_enabled is set, %current can be switched to SCX anytime.
+	 * This can lead to stalls as some BPF schedulers (e.g. userspace
+	 * scheduling) may not function correctly before all tasks are switched.
+	 * Init in bypass mode to guarantee forward progress.
 	 */
 	scx_ops_bypass(true);
 
@@ -5476,7 +5475,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	 * all eligible tasks.
 	 */
 	WRITE_ONCE(scx_switching_all, !(ops->flags & SCX_OPS_SWITCH_PARTIAL));
-	static_branch_enable(&__scx_ops_enabled);
+	static_branch_enable(&__scx_enabled);
 
 	/*
 	 * We're fully committed and can't fail. The task READY -> ENABLED
@@ -5519,7 +5518,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	pr_info("sched_ext: BPF scheduler \"%s\" enabled%s\n",
 		scx_ops.name, scx_switched_all() ? "" : " (partial)");
 	kobject_uevent(scx_root_kobj, KOBJ_ADD);
-	mutex_unlock(&scx_ops_enable_mutex);
+	mutex_unlock(&scx_enable_mutex);
 
 	atomic_long_inc(&scx_enable_seq);
 
@@ -5535,7 +5534,7 @@ err:
 		scx_exit_info = NULL;
 	}
 err_unlock:
-	mutex_unlock(&scx_ops_enable_mutex);
+	mutex_unlock(&scx_enable_mutex);
 	return ret;
 
 err_disable_unlock_all:
@@ -5543,7 +5542,7 @@ err_disable_unlock_all:
 	percpu_up_write(&scx_fork_rwsem);
 	scx_ops_bypass(false);
 err_disable:
-	mutex_unlock(&scx_ops_enable_mutex);
+	mutex_unlock(&scx_enable_mutex);
 	/*
 	 * Returning an error code here would not pass all the error information
 	 * to userspace. Record errno using scx_ops_error() for cases
@@ -5751,7 +5750,7 @@ static struct bpf_struct_ops bpf_sched_ext_ops = {
 
 static void sysrq_handle_sched_ext_reset(u8 key)
 {
-	if (scx_ops_helper)
+	if (scx_helper)
 		scx_ops_disable(SCX_EXIT_SYSRQ);
 	else
 		pr_info("sched_ext: BPF scheduler not yet used\n");
