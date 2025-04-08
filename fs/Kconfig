@@ -266,6 +266,15 @@ config HUGETLB_PAGE_OPTIMIZE_VMEMMAP_DEFAULT_ON
 	  enable HVO by default. It can be disabled via hugetlb_free_vmemmap=off
 	  (boot command line) or hugetlb_optimize_vmemmap (sysctl).
 
+config BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+	bool "Background zeroing for huge page managed in HugeTLB file system"
+	default n
+	depends on HUGETLBFS && BYTEDANCE
+	help
+	  This feature zero huge page managed in HugeTLB file system in the background.
+
+	  If unsure, say N.
+
 config MEMFD_CREATE
 	def_bool TMPFS || HUGETLBFS
 
