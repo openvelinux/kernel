@@ -43,6 +43,7 @@
 #include <linux/page_owner.h>
 #include "internal.h"
 #include "hugetlb_vmemmap.h"
+#include "hugetlb_background_clean.h"
 
 int hugetlb_max_hstate __read_mostly;
 unsigned int default_hstate_idx;
@@ -1078,10 +1079,17 @@ static void enqueue_huge_page(struct hstate *h, struct page *page)
 	lockdep_assert_held(&hugetlb_lock);
 	VM_BUG_ON_PAGE(page_count(page), page);
 
+#ifdef CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+	list_move_tail(&page->lru, &h->hugepage_freelists[nid]);
+#else
 	list_move(&page->lru, &h->hugepage_freelists[nid]);
+#endif
 	h->free_huge_pages++;
 	h->free_huge_pages_node[nid]++;
+	prep_clear_prezero(page);
 	SetHPageFreed(page);
+
+	khzerod_wakeup_node(h, nid);
 }
 
 static struct page *dequeue_huge_page_node_exact(struct hstate *h, int nid)
@@ -1102,6 +1110,8 @@ static struct page *dequeue_huge_page_node_exact(struct hstate *h, int nid)
 		ClearHPageFreed(page);
 		h->free_huge_pages--;
 		h->free_huge_pages_node[nid]--;
+		if (HPagePreZeroed(page) || HPageZeroBusy(page))
+			pages_zero_statistic_dec(h, nid);
 		return page;
 	}
 
@@ -1384,6 +1394,8 @@ static void remove_hugetlb_page(struct hstate *h, struct page *page,
 		h->surplus_huge_pages--;
 		h->surplus_huge_pages_node[nid]--;
 	}
+	if (HPagePreZeroed(page) || HPageZeroBusy(page))
+		pages_zero_statistic_dec(h, nid);
 
 	/*
 	 * Very subtle
@@ -1408,6 +1420,9 @@ static void remove_hugetlb_page(struct hstate *h, struct page *page,
 	else
 		set_compound_page_dtor(page, COMPOUND_PAGE_DTOR);
 
+#ifdef CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+	ClearHPageFreed(page);
+#endif
 	h->nr_huge_pages--;
 	h->nr_huge_pages_node[nid]--;
 }
@@ -1666,6 +1681,7 @@ static void prep_new_huge_page(struct hstate *h, struct page *page, int nid)
 	__prep_new_huge_page(h, page);
 	spin_lock_irq(&hugetlb_lock);
 	__prep_account_new_huge_page(h, nid);
+	prep_clear_prezero(page);
 	spin_unlock_irq(&hugetlb_lock);
 }
 
@@ -2021,6 +2037,7 @@ retry:
 		remove_hugetlb_page(h, head, false);
 		h->max_huge_pages--;
 		spin_unlock_irq(&hugetlb_lock);
+		hpage_wait_zerobusy(h, head); /* hzerod may clearing this page now */
 
 		/*
 		 * Normally update_and_free_page will allocate required vmemmmap
@@ -2350,6 +2367,7 @@ static void return_unused_surplus_pages(struct hstate *h,
 			goto out;
 
 		list_add(&page->lru, &page_list);
+		__hpage_wait_zerobusy(h, page); /* hzerod may clearing this page now */
 	}
 
 out:
@@ -2671,6 +2689,7 @@ retry:
 		 * Pages have been replaced, we can safely free the old one.
 		 */
 		spin_unlock_irq(&hugetlb_lock);
+		hpage_wait_zerobusy(h, old_page); /* hzerod may clearing this page now */
 		update_and_free_page(h, old_page, false);
 	}
 
@@ -2678,6 +2697,7 @@ retry:
 
 free_new:
 	spin_unlock_irq(&hugetlb_lock);
+	hpage_wait_zerobusy(h, new_page); /* hzerod may clearing this page now */
 	/* Page has a zero ref count, but needs a ref to be freed */
 	set_page_refcounted(new_page);
 	update_and_free_page(h, new_page, false);
@@ -3022,6 +3042,7 @@ static void try_to_free_low(struct hstate *h, unsigned long count,
 				continue;
 			remove_hugetlb_page(h, page, false);
 			list_add(&page->lru, &page_list);
+			__hpage_wait_zerobusy(h, page); /* hzerod may clearing this page now */
 		}
 	}
 
@@ -3200,6 +3221,7 @@ static int set_max_huge_pages(struct hstate *h, unsigned long count, int nid,
 			break;
 
 		list_add(&page->lru, &page_list);
+		__hpage_wait_zerobusy(h, page); /* hzerod may clearing this page now */
 	}
 	/* free the pages after dropping lock */
 	spin_unlock_irq(&hugetlb_lock);
@@ -3705,8 +3727,13 @@ void __init hugetlb_add_hstate(unsigned int order)
 	mutex_init(&h->resize_lock);
 	h->order = order;
 	h->mask = ~(huge_page_size(h) - 1);
-	for (i = 0; i < MAX_NUMNODES; ++i)
+	for (i = 0; i < MAX_NUMNODES; ++i) {
 		INIT_LIST_HEAD(&h->hugepage_freelists[i]);
+#ifdef CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+		init_waitqueue_head(&h->bc.hzerod_wait[i]);
+		init_waitqueue_head(&h->bc.dqzero_wait[i]);
+#endif
+	}
 	INIT_LIST_HEAD(&h->hugepage_activelist);
 	h->next_nid_to_alloc = first_memory_node;
 	h->next_nid_to_free = first_memory_node;
@@ -4966,7 +4993,7 @@ retry:
 			spin_unlock(ptl);
 			goto out;
 		}
-		clear_huge_page(page, address, pages_per_huge_page(h));
+		hugetlb_clear_huge_page(page, address, pages_per_huge_page(h));
 		__SetPageUptodate(page);
 		new_page = true;
 
