@@ -542,6 +542,17 @@ unsigned long hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
  * HPG_freed - Set when page is on the free lists.
  *	Synchronization: hugetlb_lock held for examination and modification.
  * HPG_vmemmap_optimized - Set when the vmemmap pages of the page are freed.
+ * HPG_pre_zeroed - page was pre-zeroed, clear_huge_page not needed.
+ * Synchronization: hugetlb_lock held when set by pre-zero kthread.
+ * Only valid to read outside hugetlb_lock once the page is off
+ * the freelist, and HPG_zero_busy is clear. Always cleared when a
+ * page is put (back) on the freelist.
+ * HPG_zero_busy - page is being zeroed by the pre-zero kthread.
+ * Synchronization: set and cleared by the pre-zero kthread with
+ * hugetlb_lock held. Access by others is read-only. Once the page
+ * is off the freelist, this can only change from set -> clear,
+ * which the new page owner must wait for. Always cleared
+ * when a page is put (back) on the freelist.
  */
 enum hugetlb_page_flags {
 	HPG_restore_reserve = 0,
@@ -549,6 +560,10 @@ enum hugetlb_page_flags {
 	HPG_temporary,
 	HPG_freed,
 	HPG_vmemmap_optimized,
+#ifdef CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+	HPG_pre_zeroed,
+	HPG_zero_busy,
+#endif
 	__NR_HPAGEFLAGS,
 };
 
@@ -595,8 +610,25 @@ HPAGEFLAG(Migratable, migratable)
 HPAGEFLAG(Temporary, temporary)
 HPAGEFLAG(Freed, freed)
 HPAGEFLAG(VmemmapOptimized, vmemmap_optimized)
+#ifdef CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+HPAGEFLAG(PreZeroed, pre_zeroed)
+HPAGEFLAG(ZeroBusy, zero_busy)
+#endif
 
 #ifdef CONFIG_HUGETLB_PAGE
+
+/* state of hugetlb background cleaning */
+struct bc_state {
+	unsigned long free_huge_pages_zero;
+	unsigned int free_huge_pages_zero_node[MAX_NUMNODES];
+
+	/* Wait queue for the prezero thread */
+	wait_queue_head_t hzerod_wait[MAX_NUMNODES];
+	/* Queue to wait for a hugetlb folio that is being prezeroed */
+	wait_queue_head_t dqzero_wait[MAX_NUMNODES];
+	/* Prezero threads (one per node) */
+	struct task_struct *hzerod[MAX_NUMNODES];
+};
 
 #define HSTATE_NAME_LEN 32
 /* Defines one hugetlb page size */
@@ -617,6 +649,11 @@ struct hstate {
 	unsigned int nr_huge_pages_node[MAX_NUMNODES];
 	unsigned int free_huge_pages_node[MAX_NUMNODES];
 	unsigned int surplus_huge_pages_node[MAX_NUMNODES];
+
+#ifdef CONFIG_BYTEDANCE_HUGETLB_BACKGROUND_CLEAN
+	struct bc_state bc;
+#endif
+
 #ifdef CONFIG_CGROUP_HUGETLB
 	/* cgroup control files */
 	struct cftype cgroup_files_dfl[7];
