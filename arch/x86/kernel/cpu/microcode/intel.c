@@ -628,7 +628,7 @@ static void stage_microcode(void)
 
 		pkg_id = topology_logical_package_id(cpu);
 
-		err = rdmsrl_on_cpu(cpu, MSR_IA32_MCU_STAGING_MBOX_ADDR, &mmio_pa);
+		err = rdmsrq_on_cpu(cpu, MSR_IA32_MCU_STAGING_MBOX_ADDR, &mmio_pa);
 		if (WARN_ON_ONCE(err))
 			return;
 
