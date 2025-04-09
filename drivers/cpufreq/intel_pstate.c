@@ -665,7 +665,7 @@ static int intel_pstate_set_epb(int cpu, s16 pref)
 		return ret;
 
 	epb = (epb & ~0x0f) | pref;
-	wrmsrl_on_cpu(cpu, MSR_IA32_ENERGY_PERF_BIAS, epb);
+	wrmsrq_on_cpu(cpu, MSR_IA32_ENERGY_PERF_BIAS, epb);
 
 	return 0;
 }
@@ -763,7 +763,7 @@ static int intel_pstate_set_epp(struct cpudata *cpu, u32 epp)
 	 * function, so it cannot run in parallel with the update below.
 	 */
 	WRITE_ONCE(cpu->hwp_req_cached, value);
-	ret = wrmsrl_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
+	ret = wrmsrq_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
 	if (!ret)
 		cpu->epp_cached = epp;
 
@@ -1195,7 +1195,7 @@ static void intel_pstate_hwp_set(unsigned int cpu)
 	}
 skip_epp:
 	WRITE_ONCE(cpu_data->hwp_req_cached, value);
-	wrmsrl_on_cpu(cpu, MSR_HWP_REQUEST, value);
+	wrmsrq_on_cpu(cpu, MSR_HWP_REQUEST, value);
 }
 
 static void intel_pstate_disable_hwp_interrupt(struct cpudata *cpudata);
@@ -1242,7 +1242,7 @@ static void intel_pstate_hwp_offline(struct cpudata *cpu)
 	if (boot_cpu_has(X86_FEATURE_HWP_EPP))
 		value |= HWP_ENERGY_PERF_PREFERENCE(HWP_EPP_POWERSAVE);
 
-	wrmsrl_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
+	wrmsrq_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
 
 	mutex_lock(&hybrid_capacity_lock);
 
@@ -1288,7 +1288,7 @@ static void intel_pstate_hwp_enable(struct cpudata *cpudata);
 static void intel_pstate_hwp_reenable(struct cpudata *cpu)
 {
 	intel_pstate_hwp_enable(cpu);
-	wrmsrl_on_cpu(cpu->cpu, MSR_HWP_REQUEST, READ_ONCE(cpu->hwp_req_cached));
+	wrmsrq_on_cpu(cpu->cpu, MSR_HWP_REQUEST, READ_ONCE(cpu->hwp_req_cached));
 }
 
 static int intel_pstate_suspend(struct cpufreq_policy *policy)
@@ -1832,7 +1832,7 @@ static void intel_pstate_notify_work(struct work_struct *work)
 		hybrid_update_capacity(cpudata);
 	}
 
-	wrmsrl_on_cpu(cpudata->cpu, MSR_HWP_STATUS, 0);
+	wrmsrq_on_cpu(cpudata->cpu, MSR_HWP_STATUS, 0);
 }
 
 static DEFINE_RAW_SPINLOCK(hwp_notify_lock);
@@ -1882,8 +1882,8 @@ static void intel_pstate_disable_hwp_interrupt(struct cpudata *cpudata)
 	if (!cpu_feature_enabled(X86_FEATURE_HWP_NOTIFY))
 		return;
 
-	/* wrmsrl_on_cpu has to be outside spinlock as this can result in IPC */
-	wrmsrl_on_cpu(cpudata->cpu, MSR_HWP_INTERRUPT, 0x00);
+	/* wrmsrq_on_cpu has to be outside spinlock as this can result in IPC */
+	wrmsrq_on_cpu(cpudata->cpu, MSR_HWP_INTERRUPT, 0x00);
 
 	raw_spin_lock_irq(&hwp_notify_lock);
 	cancel_work = cpumask_test_and_clear_cpu(cpudata->cpu, &hwp_intr_enable_mask);
@@ -1910,9 +1910,9 @@ static void intel_pstate_enable_hwp_interrupt(struct cpudata *cpudata)
 		if (cpu_feature_enabled(X86_FEATURE_HWP_HIGHEST_PERF_CHANGE))
 			interrupt_mask |= HWP_HIGHEST_PERF_CHANGE_REQ;
 
-		/* wrmsrl_on_cpu has to be outside spinlock as this can result in IPC */
-		wrmsrl_on_cpu(cpudata->cpu, MSR_HWP_INTERRUPT, interrupt_mask);
-		wrmsrl_on_cpu(cpudata->cpu, MSR_HWP_STATUS, 0);
+		/* wrmsrq_on_cpu has to be outside spinlock as this can result in IPC */
+		wrmsrq_on_cpu(cpudata->cpu, MSR_HWP_INTERRUPT, interrupt_mask);
+		wrmsrq_on_cpu(cpudata->cpu, MSR_HWP_STATUS, 0);
 	}
 }
 
@@ -1951,9 +1951,9 @@ static void intel_pstate_hwp_enable(struct cpudata *cpudata)
 {
 	/* First disable HWP notification interrupt till we activate again */
 	if (boot_cpu_has(X86_FEATURE_HWP_NOTIFY))
-		wrmsrl_on_cpu(cpudata->cpu, MSR_HWP_INTERRUPT, 0x00);
+		wrmsrq_on_cpu(cpudata->cpu, MSR_HWP_INTERRUPT, 0x00);
 
-	wrmsrl_on_cpu(cpudata->cpu, MSR_PM_ENABLE, 0x1);
+	wrmsrq_on_cpu(cpudata->cpu, MSR_PM_ENABLE, 0x1);
 
 	intel_pstate_enable_hwp_interrupt(cpudata);
 
@@ -2223,7 +2223,7 @@ static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate)
 	 * the CPU being updated, so force the register update to run on the
 	 * right CPU.
 	 */
-	wrmsrl_on_cpu(cpu->cpu, MSR_IA32_PERF_CTL,
+	wrmsrq_on_cpu(cpu->cpu, MSR_IA32_PERF_CTL,
 		      pstate_funcs.get_val(cpu, pstate));
 }
 
@@ -3072,7 +3072,7 @@ static void intel_cpufreq_hwp_update(struct cpudata *cpu, u32 min, u32 max,
 	if (fast_switch)
 		wrmsrl(MSR_HWP_REQUEST, value);
 	else
-		wrmsrl_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
+		wrmsrq_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
 }
 
 static void intel_cpufreq_perf_ctl_update(struct cpudata *cpu,
@@ -3082,7 +3082,7 @@ static void intel_cpufreq_perf_ctl_update(struct cpudata *cpu,
 		wrmsrl(MSR_IA32_PERF_CTL,
 		       pstate_funcs.get_val(cpu, target_pstate));
 	else
-		wrmsrl_on_cpu(cpu->cpu, MSR_IA32_PERF_CTL,
+		wrmsrq_on_cpu(cpu->cpu, MSR_IA32_PERF_CTL,
 			      pstate_funcs.get_val(cpu, target_pstate));
 }
 
@@ -3293,7 +3293,7 @@ static int intel_cpufreq_suspend(struct cpufreq_policy *policy)
 		 * written by it may not be suitable.
 		 */
 		value &= ~HWP_DESIRED_PERF(~0L);
-		wrmsrl_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
+		wrmsrq_on_cpu(cpu->cpu, MSR_HWP_REQUEST, value);
 		WRITE_ONCE(cpu->hwp_req_cached, value);
 	}
 
