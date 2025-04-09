@@ -927,8 +927,6 @@ DEFINE_STATIC_KEY_FALSE(__scx_switched_all);
 static struct sched_ext_ops scx_ops;
 static bool scx_warned_zero_slice;
 
-DEFINE_STATIC_KEY_FALSE(scx_ops_allow_queued_wakeup);
-
 static struct static_key_false scx_has_op[SCX_OPI_END] =
 	{ [0 ... SCX_OPI_END-1] = STATIC_KEY_FALSE_INIT };
 
@@ -4410,6 +4408,13 @@ bool task_should_scx(struct task_struct *p)
 	return p->policy == SCHED_EXT;
 }
 
+bool scx_allow_ttwu_queue(const struct task_struct *p)
+{
+	return !scx_enabled() ||
+		(scx_ops.flags & SCX_OPS_ALLOW_QUEUED_WAKEUP) ||
+		p->sched_class != &ext_sched_class;
+}
+
 /**
  * scx_softlockup - sched_ext softlockup handler
  * @dur_s: number of seconds of CPU stuck due to soft lockup
@@ -4719,7 +4724,6 @@ static void scx_disable_workfn(struct kthread_work *work)
 	static_branch_disable(&__scx_enabled);
 	for (i = SCX_OPI_BEGIN; i < SCX_OPI_END; i++)
 		static_branch_disable(&scx_has_op[i]);
-	static_branch_disable(&scx_ops_allow_queued_wakeup);
 	scx_idle_disable();
 	synchronize_rcu();
 
@@ -5358,8 +5362,6 @@ static int scx_enable(struct sched_ext_ops *ops)
 		if (((void (**)(void))ops)[i])
 			static_branch_enable(&scx_has_op[i]);
 
-	if (ops->flags & SCX_OPS_ALLOW_QUEUED_WAKEUP)
-		static_branch_enable(&scx_ops_allow_queued_wakeup);
 	if (scx_ops.cpu_acquire || scx_ops.cpu_release)
 		scx_ops.flags |= SCX_OPS_HAS_CPU_PREEMPT;
 
