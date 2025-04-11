@@ -279,18 +279,18 @@ static int hisi_ddrc_pmu_init_data(struct platform_device *pdev,
 	 * DDRC PMU, while SCCL_ID is in MPIDR[aff2].
 	 */
 	if (device_property_read_u32(&pdev->dev, "hisilicon,ch-id",
-				     &ddrc_pmu->index_id)) {
+				     &ddrc_pmu->topo.index_id)) {
 		dev_err(&pdev->dev, "Can not read ddrc channel-id!\n");
 		return -EINVAL;
 	}
 
 	if (device_property_read_u32(&pdev->dev, "hisilicon,scl-id",
-				     &ddrc_pmu->sccl_id)) {
+				     &ddrc_pmu->topo.sccl_id)) {
 		dev_err(&pdev->dev, "Can not read ddrc sccl-id!\n");
 		return -EINVAL;
 	}
 	/* DDRC PMUs only share the same SCCL */
-	ddrc_pmu->ccl_id = -1;
+	ddrc_pmu->topo.ccl_id = -1;
 
 	ddrc_pmu->dev_info = device_get_match_data(&pdev->dev);
 	if (!ddrc_pmu->dev_info)
@@ -305,7 +305,7 @@ static int hisi_ddrc_pmu_init_data(struct platform_device *pdev,
 	ddrc_pmu->identifier = readl(ddrc_pmu->base + DDRC_VERSION);
 	if (ddrc_pmu->identifier >= HISI_PMU_V2) {
 		if (device_property_read_u32(&pdev->dev, "hisilicon,sub-id",
-					     &ddrc_pmu->sub_id)) {
+					     &ddrc_pmu->topo.sub_id)) {
 			dev_err(&pdev->dev, "Can not read sub-id!\n");
 			return -EINVAL;
 		}
@@ -481,13 +481,13 @@ static int hisi_ddrc_pmu_probe(struct platform_device *pdev)
 
 	if (ddrc_pmu->identifier >= HISI_PMU_V2)
 		name = devm_kasprintf(&pdev->dev, GFP_KERNEL,
-				      "hisi_sccl%u_ddrc%u_%u",
-				      ddrc_pmu->sccl_id, ddrc_pmu->index_id,
-				      ddrc_pmu->sub_id);
+				      "hisi_sccl%d_ddrc%d_%d",
+				      ddrc_pmu->topo.sccl_id, ddrc_pmu->topo.index_id,
+				      ddrc_pmu->topo.sub_id);
 	else
 		name = devm_kasprintf(&pdev->dev, GFP_KERNEL,
-				      "hisi_sccl%u_ddrc%u", ddrc_pmu->sccl_id,
-				      ddrc_pmu->index_id);
+				      "hisi_sccl%d_ddrc%d", ddrc_pmu->topo.sccl_id,
+				      ddrc_pmu->topo.index_id);
 
 	if (!name)
 		return -ENOMEM;
