@@ -524,6 +524,10 @@ int hisi_uncore_pmu_offline_cpu(unsigned int cpu, struct hlist_node *node)
 	cpumask_and(&pmu_online_cpus, &hisi_pmu->associated_cpus,
 		    cpu_online_mask);
 	target = cpumask_any_but(&pmu_online_cpus, cpu);
+
+	if (target >= nr_cpu_ids)
+		target = cpumask_any_but(cpu_online_mask, cpu);
+
 	if (target >= nr_cpu_ids)
 		return 0;
 
