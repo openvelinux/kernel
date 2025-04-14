@@ -321,6 +321,11 @@ static const struct midr_range neoverse_spe[] = {
 	{},
 };
 
+static const struct midr_range hisi_hip_ds_encoding_cpus[] = {
+	MIDR_ALL_VERSIONS(MIDR_HISI_HIP12),
+	{},
+};
+
 static void arm_spe__synth_data_source_neoverse(const struct arm_spe_record *record,
 						union perf_mem_data_src *data_src)
 {
@@ -420,10 +425,106 @@ static void arm_spe__synth_data_source_generic(const struct arm_spe_record *reco
 		data_src->mem_lvl |= PERF_MEM_LVL_REM_CCE1;
 }
 
+static void arm_spe__synth_data_source_hisi_hip(const struct arm_spe_record *record,
+						union perf_mem_data_src *data_src)
+{
+	/* Use common synthesis method to handle store operations */
+	if (record->op & ARM_SPE_OP_ST) {
+		arm_spe__synth_data_source_generic(record, data_src);
+		return;
+	}
+
+	switch (record->source) {
+	case ARM_SPE_HISI_HIP_PEER_CPU:
+		data_src->mem_lvl = PERF_MEM_LVL_L3 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_PEER_CPU_HITM:
+		data_src->mem_lvl = PERF_MEM_LVL_L3 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_HITM;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_L3:
+		data_src->mem_lvl = PERF_MEM_LVL_L3 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	case ARM_SPE_HISI_HIP_L3_HITM:
+		data_src->mem_lvl = PERF_MEM_LVL_L3 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_HITM;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_PEER_CLUSTER:
+		data_src->mem_lvl = PERF_MEM_LVL_REM_CCE1 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_PEER_CLUSTER_HITM:
+		data_src->mem_lvl = PERF_MEM_LVL_REM_CCE1 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_HITM;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_REMOTE_SOCKET:
+		data_src->mem_lvl = PERF_MEM_LVL_REM_CCE2;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_ANY_CACHE;
+		data_src->mem_remote = PERF_MEM_REMOTE_REMOTE;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_REMOTE_SOCKET_HITM:
+		data_src->mem_lvl = PERF_MEM_LVL_REM_CCE2;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_ANY_CACHE;
+		data_src->mem_snoop = PERF_MEM_SNOOP_HITM;
+		data_src->mem_remote = PERF_MEM_REMOTE_REMOTE;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_LOCAL:
+		data_src->mem_lvl = PERF_MEM_LVL_LOC_RAM | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_RAM;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	case ARM_SPE_HISI_HIP_REMOTE:
+		data_src->mem_lvl = PERF_MEM_LVL_REM_RAM1 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_RAM;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		data_src->mem_remote = PERF_MEM_REMOTE_REMOTE;
+		break;
+	case ARM_SPE_HISI_HIP_NC_DEV:
+		data_src->mem_lvl = PERF_MEM_LVL_IO | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_IO;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	case ARM_SPE_HISI_HIP_L2:
+		data_src->mem_lvl = PERF_MEM_LVL_L2 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L2;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	case ARM_SPE_HISI_HIP_L2_HITM:
+		data_src->mem_lvl = PERF_MEM_LVL_L2 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L2;
+		data_src->mem_snoop = PERF_MEM_SNOOP_HITM;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_HISI_HIP_L1:
+		data_src->mem_lvl = PERF_MEM_LVL_L1 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L1;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	default:
+		break;
+	}
+}
+
 static u64 arm_spe__synth_data_source(const struct arm_spe_record *record, u64 midr)
 {
 	union perf_mem_data_src	data_src = { 0 };
 	bool is_neoverse = is_midr_in_range(midr, neoverse_spe);
+	bool is_hisilicon = is_midr_in_range_list(midr, hisi_hip_ds_encoding_cpus);
 
 	if (record->op == ARM_SPE_LD)
 		data_src.mem_op = PERF_MEM_OP_LOAD;
@@ -434,6 +535,8 @@ static u64 arm_spe__synth_data_source(const struct arm_spe_record *record, u64 m
 
 	if (is_neoverse)
 		arm_spe__synth_data_source_neoverse(record, &data_src);
+	else if (is_hisilicon)
+		arm_spe__synth_data_source_hisi_hip(record, &data_src);
 	else
 		arm_spe__synth_data_source_generic(record, &data_src);
 
