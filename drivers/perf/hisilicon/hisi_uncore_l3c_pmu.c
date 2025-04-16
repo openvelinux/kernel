@@ -55,24 +55,73 @@
 #define L3C_V1_NR_EVENTS	0x59
 #define L3C_V2_NR_EVENTS	0xFF
 
+HISI_PMU_EVENT_ATTR_EXTRACTOR(ext, config, 16, 16);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(tt_req, config1, 10, 8);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(datasrc_cfg, config1, 15, 11);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(datasrc_skt, config1, 16, 16);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(tt_core, config2, 15, 0);
+
+struct hisi_l3c_pmu {
+	struct hisi_pmu l3c_pmu;
+	unsigned long feature;
+#define L3C_PMU_FEAT_EXT	0x1
+
+	/* MMIO and IRQ resources for extension events */
+	void __iomem *ext_base;
+	int ext_irq;
+};
+
+#define to_hisi_l3c_pmu(_l3c_pmu) \
+	container_of(_l3c_pmu, struct hisi_l3c_pmu, l3c_pmu)
+
+/*
+ * The hardware counter idx used in counter enable/disable,
+ * interrupt enable/disable and status check, etc.
+ */
+#define L3C_HW_IDX(_idx)		((_idx) % L3C_NR_COUNTERS)
 
 static int hisi_l3c_pmu_get_event_idx(struct perf_event *event)
 {
 	struct hisi_pmu *l3c_pmu = to_hisi_pmu(event->pmu);
 	unsigned long *used_mask = l3c_pmu->pmu_events.used_mask;
 	u32 num_counters = l3c_pmu->num_counters;
+	struct hisi_l3c_pmu *hisi_l3c_pmu;
 	int idx;
 
-	idx = find_first_zero_bit(used_mask, num_counters);
+	hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+
+	/*
+	 * For an L3C PMU that supports extension events, we can monitor
+	 * maximum 2 * num_counters events. Thus use bit [0, num_counters - 1]
+	 * for normal events and bit [num_counters, 2 * num_counters - 1] for
+	 * extension events. The idx allocation will keep unchanged for normal
+	 * events and we can also use the idx to distinguish whether it's an
+	 * extension event or not.
+	 *
+	 * Since normal events and extension events locates on the different
+	 * address space, save the base address to the event->hw.event_base.
+	 */
+	if (hisi_get_ext(event)) {
+		if (!(hisi_l3c_pmu->feature & L3C_PMU_FEAT_EXT))
+			return -EOPNOTSUPP;
+
+		event->hw.event_base = (unsigned long)hisi_l3c_pmu->ext_base;
+		idx = find_next_zero_bit(used_mask, num_counters, L3C_NR_COUNTERS);
+	} else {
+		event->hw.event_base = (unsigned long)l3c_pmu->base;
+		idx = find_next_zero_bit(used_mask, L3C_NR_COUNTERS, 0);
+		if (idx == L3C_NR_COUNTERS)
+			idx = num_counters;
+	}
+
 	if (idx == num_counters)
 		return -EAGAIN;
 
 	set_bit(idx, used_mask);
-	event->hw.event_base = (unsigned long)l3c_pmu->base;
+
+	WARN_ON(hisi_get_ext(event) && idx < L3C_NR_COUNTERS);
+	WARN_ON(!hisi_get_ext(event) && idx >= L3C_NR_COUNTERS);
+
 	return idx;
 }
 
@@ -142,7 +191,7 @@ static void hisi_l3c_pmu_write_ds(struct perf_event *event, u32 ds_cfg)
 {
 	struct hw_perf_event *hwc = &event->hw;
 	u32 reg, reg_idx, shift, val;
-	int idx = hwc->idx;
+	int idx = L3C_HW_IDX(hwc->idx);
 
 	/*
 	 * Select the appropriate datasource register(L3C_DATSRC_TYPE0/1).
@@ -268,7 +317,7 @@ static void hisi_l3c_pmu_disable_filter(struct perf_event *event)
  */
 static u32 hisi_l3c_pmu_get_counter_offset(int cntr_idx)
 {
-	return (L3C_CNTR0_LOWER + (cntr_idx * 8));
+	return (L3C_CNTR0_LOWER + (L3C_HW_IDX(cntr_idx) * 8));
 }
 
 static u64 hisi_l3c_pmu_read_counter(struct hisi_pmu *l3c_pmu,
@@ -288,6 +337,8 @@ static void hisi_l3c_pmu_write_evtype(struct hisi_pmu *l3c_pmu, int idx,
 {
 	struct hw_perf_event *hwc = &l3c_pmu->pmu_events.hw_events[idx]->hw;
 	u32 reg, reg_idx, shift, val;
+
+	idx = L3C_HW_IDX(idx);
 
 	/*
 	 * Select the appropriate event select register(L3C_EVENT_TYPE0/1).
@@ -309,28 +360,50 @@ static void hisi_l3c_pmu_write_evtype(struct hisi_pmu *l3c_pmu, int idx,
 
 static void hisi_l3c_pmu_start_counters(struct hisi_pmu *l3c_pmu)
 {
+	struct hisi_l3c_pmu *hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+	unsigned long *used_mask = l3c_pmu->pmu_events.used_mask;
 	u32 val;
 
 	/*
 	 * Set perf_enable bit in L3C_PERF_CTRL register to start counting
 	 * for all enabled counters.
 	 */
-	val = readl(l3c_pmu->base + L3C_PERF_CTRL);
-	val |= L3C_PERF_CTRL_EN;
-	writel(val, l3c_pmu->base + L3C_PERF_CTRL);
+	if (find_first_bit(used_mask, l3c_pmu->num_counters) < L3C_NR_COUNTERS) {
+		val = readl(l3c_pmu->base + L3C_PERF_CTRL);
+		val |= L3C_PERF_CTRL_EN;
+		writel(val, l3c_pmu->base + L3C_PERF_CTRL);
+	}
+
+	if (find_next_bit(used_mask, l3c_pmu->num_counters, L3C_NR_COUNTERS) !=
+		l3c_pmu->num_counters) {
+		val = readl(hisi_l3c_pmu->ext_base + L3C_PERF_CTRL);
+		val |= L3C_PERF_CTRL_EN;
+		writel(val, hisi_l3c_pmu->ext_base + L3C_PERF_CTRL);
+	}
 }
 
 static void hisi_l3c_pmu_stop_counters(struct hisi_pmu *l3c_pmu)
 {
+	struct hisi_l3c_pmu *hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+	unsigned long *used_mask = l3c_pmu->pmu_events.used_mask;
 	u32 val;
 
 	/*
 	 * Clear perf_enable bit in L3C_PERF_CTRL register to stop counting
 	 * for all enabled counters.
 	 */
-	val = readl(l3c_pmu->base + L3C_PERF_CTRL);
-	val &= ~(L3C_PERF_CTRL_EN);
-	writel(val, l3c_pmu->base + L3C_PERF_CTRL);
+	if (find_first_bit(used_mask, l3c_pmu->num_counters) < L3C_NR_COUNTERS) {
+		val = readl(l3c_pmu->base + L3C_PERF_CTRL);
+		val &= ~(L3C_PERF_CTRL_EN);
+		writel(val, l3c_pmu->base + L3C_PERF_CTRL);
+	}
+
+	if (find_next_bit(used_mask, l3c_pmu->num_counters, L3C_NR_COUNTERS) !=
+		l3c_pmu->num_counters) {
+		val = readl(hisi_l3c_pmu->ext_base + L3C_PERF_CTRL);
+		val &= ~(L3C_PERF_CTRL_EN);
+		writel(val, hisi_l3c_pmu->ext_base + L3C_PERF_CTRL);
+	}
 }
 
 static void hisi_l3c_pmu_enable_counter(struct hisi_pmu *l3c_pmu,
@@ -340,7 +413,7 @@ static void hisi_l3c_pmu_enable_counter(struct hisi_pmu *l3c_pmu,
 
 	/* Enable counter index in L3C_EVENT_CTRL register */
 	val = hisi_l3c_pmu_event_readl(hwc, L3C_EVENT_CTRL);
-	val |= (1 << hwc->idx);
+	val |= (1 << L3C_HW_IDX(hwc->idx));
 	hisi_l3c_pmu_event_writel(hwc, L3C_EVENT_CTRL, val);
 }
 
@@ -351,7 +424,7 @@ static void hisi_l3c_pmu_disable_counter(struct hisi_pmu *l3c_pmu,
 
 	/* Clear counter index in L3C_EVENT_CTRL register */
 	val = hisi_l3c_pmu_event_readl(hwc, L3C_EVENT_CTRL);
-	val &= ~(1 << hwc->idx);
+	val &= ~(1 << L3C_HW_IDX(hwc->idx));
 	hisi_l3c_pmu_event_writel(hwc, L3C_EVENT_CTRL, val);
 }
 
@@ -362,7 +435,7 @@ static void hisi_l3c_pmu_enable_counter_int(struct hisi_pmu *l3c_pmu,
 
 	val = hisi_l3c_pmu_event_readl(hwc, L3C_INT_MASK);
 	/* Write 0 to enable interrupt */
-	val &= ~(1 << hwc->idx);
+	val &= ~(1 << L3C_HW_IDX(hwc->idx));
 	hisi_l3c_pmu_event_writel(hwc, L3C_INT_MASK, val);
 }
 
@@ -373,20 +446,27 @@ static void hisi_l3c_pmu_disable_counter_int(struct hisi_pmu *l3c_pmu,
 
 	val = hisi_l3c_pmu_event_readl(hwc, L3C_INT_MASK);
 	/* Write 1 to mask interrupt */
-	val |= (1 << hwc->idx);
+	val |= (1 << L3C_HW_IDX(hwc->idx));
 	hisi_l3c_pmu_event_writel(hwc, L3C_INT_MASK, val);
 }
 
 static u32 hisi_l3c_pmu_get_int_status(struct hisi_pmu *l3c_pmu)
 {
-	return readl(l3c_pmu->base + L3C_INT_STATUS);
+	struct hisi_l3c_pmu *hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+	u32 status, status_ext = 0;
+
+	status = readl(l3c_pmu->base + L3C_INT_STATUS);
+	if (hisi_l3c_pmu->feature & L3C_PMU_FEAT_EXT)
+		status_ext = readl(hisi_l3c_pmu->ext_base + L3C_INT_STATUS);
+
+	return status | (status_ext << L3C_NR_COUNTERS);
 }
 
 static void hisi_l3c_pmu_clear_int_status(struct hisi_pmu *l3c_pmu, int idx)
 {
 	struct hw_perf_event *hwc = &l3c_pmu->pmu_events.hw_events[idx]->hw;
 
-	hisi_l3c_pmu_event_writel(hwc, L3C_INT_CLEAR, 1 << idx);
+	hisi_l3c_pmu_event_writel(hwc, L3C_INT_CLEAR, 1 << L3C_HW_IDX(idx));
 }
 
 static int hisi_l3c_pmu_init_data(struct platform_device *pdev,
@@ -423,6 +503,41 @@ static int hisi_l3c_pmu_init_data(struct platform_device *pdev,
 	return 0;
 }
 
+static int hisi_l3c_pmu_init_ext(struct hisi_pmu *l3c_pmu, struct platform_device *pdev)
+{
+	struct hisi_l3c_pmu *hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+	char *irqname;
+	int ret, irq;
+
+	hisi_l3c_pmu->ext_base = devm_platform_ioremap_resource(pdev, 1);
+	if (IS_ERR(hisi_l3c_pmu->ext_base))
+		return PTR_ERR(hisi_l3c_pmu->ext_base);
+
+	irq = platform_get_irq(pdev, 1);
+	/*
+	 * We may don't need to handle -EPROBDEFER since we should have already
+	 * handle it when probling irq[0].
+	 */
+	if (irq < 0)
+		return irq;
+
+	irqname = devm_kasprintf(&pdev->dev, GFP_KERNEL, "%s ext", dev_name(&pdev->dev));
+	if (!irqname)
+		return -ENOMEM;
+
+	ret = devm_request_irq(&pdev->dev, irq, hisi_uncore_pmu_isr,
+			       IRQF_NOBALANCING | IRQF_NO_THREAD,
+			       irqname, l3c_pmu);
+	if (ret < 0) {
+		dev_err(&pdev->dev,
+			"Fail to request EXT IRQ: %d ret: %d.\n", irq, ret);
+		return ret;
+	}
+
+	hisi_l3c_pmu->ext_irq = irq;
+	return 0;
+}
+
 static struct attribute *hisi_l3c_pmu_v1_format_attr[] = {
 	HISI_PMU_FORMAT_ATTR(event, "config:0-7"),
 	NULL,
@@ -445,6 +560,19 @@ static struct attribute *hisi_l3c_pmu_v2_format_attr[] = {
 static const struct attribute_group hisi_l3c_pmu_v2_format_group = {
 	.name = "format",
 	.attrs = hisi_l3c_pmu_v2_format_attr,
+};
+
+static struct attribute *hisi_l3c_pmu_v3_format_attr[] = {
+	HISI_PMU_FORMAT_ATTR(event, "config:0-7"),
+	HISI_PMU_FORMAT_ATTR(ext, "config:16"),
+	HISI_PMU_FORMAT_ATTR(tt_req, "config1:8-10"),
+	HISI_PMU_FORMAT_ATTR(tt_core, "config2:0-15"),
+	NULL
+};
+
+static const struct attribute_group hisi_l3c_pmu_v3_format_group = {
+	.name = "format",
+	.attrs = hisi_l3c_pmu_v3_format_attr,
 };
 
 static struct attribute *hisi_l3c_pmu_v1_events_attr[] = {
@@ -482,6 +610,105 @@ static const struct attribute_group hisi_l3c_pmu_v2_events_group = {
 	.attrs = hisi_l3c_pmu_v2_events_attr,
 };
 
+struct hisi_l3c_pmu_v3_event {
+	unsigned long event_id;
+	bool ext;
+};
+
+static ssize_t hisi_l3c_pmu_event_show(struct device *dev,
+			      struct device_attribute *attr, char *page)
+{
+	struct hisi_l3c_pmu_v3_event *event;
+	struct dev_ext_attribute *eattr;
+
+	eattr = container_of(attr, struct dev_ext_attribute, attr);
+	event = eattr->var;
+
+	if (!event->ext)
+		return sysfs_emit(page, "event=0x%lx\n", event->event_id);
+	else
+		return sysfs_emit(page, "event=0x%lx,ext=1\n", event->event_id);
+}
+
+#define HISI_L3C_PMU_EVENT_ATTR(_name, _event, _ext)			\
+static struct hisi_l3c_pmu_v3_event hisi_l3c_##_name = { _event, _ext }; \
+static struct dev_ext_attribute hisi_l3c_##_name##_attr =		\
+	{ __ATTR(_name, 0444, hisi_l3c_pmu_event_show, NULL), (void *) &hisi_l3c_##_name }
+
+HISI_L3C_PMU_EVENT_ATTR(rd_cpipe,	 0x00, true);
+HISI_L3C_PMU_EVENT_ATTR(rd_hit_cpipe,	 0x01, true);
+HISI_L3C_PMU_EVENT_ATTR(wr_cpipe,	 0x02, true);
+HISI_L3C_PMU_EVENT_ATTR(wr_hit_cpipe,	 0x03, true);
+HISI_L3C_PMU_EVENT_ATTR(io_rd_cpipe,	 0x04, true);
+HISI_L3C_PMU_EVENT_ATTR(io_rd_hit_cpipe, 0x05, true);
+HISI_L3C_PMU_EVENT_ATTR(io_wr_cpipe,	 0x06, true);
+HISI_L3C_PMU_EVENT_ATTR(io_wr_hit_cpipe, 0x07, true);
+HISI_L3C_PMU_EVENT_ATTR(victim_num,	 0x0c, true);
+HISI_L3C_PMU_EVENT_ATTR(rd_spipe,	 0x18, false);
+HISI_L3C_PMU_EVENT_ATTR(rd_hit_spipe,	 0x19, false);
+HISI_L3C_PMU_EVENT_ATTR(wr_spipe,	 0x1a, false);
+HISI_L3C_PMU_EVENT_ATTR(wr_hit_spipe,	 0x1b, false);
+HISI_L3C_PMU_EVENT_ATTR(io_rd_spipe,	 0x1c, false);
+HISI_L3C_PMU_EVENT_ATTR(io_rd_hit_spipe, 0x1d, false);
+HISI_L3C_PMU_EVENT_ATTR(io_wr_spipe,	 0x1e, false);
+HISI_L3C_PMU_EVENT_ATTR(io_wr_hit_spipe, 0x1f, false);
+HISI_L3C_PMU_EVENT_ATTR(cycles,		 0x7f, false);
+HISI_L3C_PMU_EVENT_ATTR(l3t_comp_sum,	 0x80, false);
+HISI_L3C_PMU_EVENT_ATTR(l3t_rdnotram,	 0x83, true);
+HISI_L3C_PMU_EVENT_ATTR(l3c_ref,	 0xbc, false);
+HISI_L3C_PMU_EVENT_ATTR(l3c2ring,	 0xbd, true);
+
+static struct attribute *hisi_l3c_pmu_v3_events_attr[] = {
+	&hisi_l3c_rd_cpipe_attr.attr.attr,
+	&hisi_l3c_rd_hit_cpipe_attr.attr.attr,
+	&hisi_l3c_wr_cpipe_attr.attr.attr,
+	&hisi_l3c_wr_hit_cpipe_attr.attr.attr,
+	&hisi_l3c_io_rd_cpipe_attr.attr.attr,
+	&hisi_l3c_io_rd_hit_cpipe_attr.attr.attr,
+	&hisi_l3c_io_wr_cpipe_attr.attr.attr,
+	&hisi_l3c_io_wr_hit_cpipe_attr.attr.attr,
+	&hisi_l3c_victim_num_attr.attr.attr,
+	&hisi_l3c_rd_spipe_attr.attr.attr,
+	&hisi_l3c_rd_hit_spipe_attr.attr.attr,
+	&hisi_l3c_wr_spipe_attr.attr.attr,
+	&hisi_l3c_wr_hit_spipe_attr.attr.attr,
+	&hisi_l3c_io_rd_spipe_attr.attr.attr,
+	&hisi_l3c_io_rd_hit_spipe_attr.attr.attr,
+	&hisi_l3c_io_wr_spipe_attr.attr.attr,
+	&hisi_l3c_io_wr_hit_spipe_attr.attr.attr,
+	&hisi_l3c_cycles_attr.attr.attr,
+	&hisi_l3c_l3t_comp_sum_attr.attr.attr,
+	&hisi_l3c_l3t_rdnotram_attr.attr.attr,
+	&hisi_l3c_l3c_ref_attr.attr.attr,
+	&hisi_l3c_l3c2ring_attr.attr.attr,
+	NULL
+};
+
+static umode_t hisi_l3c_pmu_v3_events_visible(struct kobject *kobj,
+				struct attribute *attr, int unused)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct pmu *pmu = dev_get_drvdata(dev);
+	struct hisi_pmu *l3c_pmu = to_hisi_pmu(pmu);
+	struct hisi_l3c_pmu *hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+	struct hisi_l3c_pmu_v3_event *event;
+	struct dev_ext_attribute *ext_attr;
+
+	ext_attr = container_of(attr, struct dev_ext_attribute, attr.attr);
+	event = ext_attr->var;
+
+	if (!event->ext || (hisi_l3c_pmu->feature & L3C_PMU_FEAT_EXT))
+		return attr->mode;
+
+	return 0;
+}
+
+static const struct attribute_group hisi_l3c_pmu_v3_events_group = {
+	.name = "events",
+	.is_visible = hisi_l3c_pmu_v3_events_visible,
+	.attrs = hisi_l3c_pmu_v3_events_attr,
+};
+
 static const struct attribute_group *hisi_l3c_pmu_v1_attr_groups[] = {
 	&hisi_l3c_pmu_v1_format_group,
 	&hisi_l3c_pmu_v1_events_group,
@@ -498,6 +725,14 @@ static const struct attribute_group *hisi_l3c_pmu_v2_attr_groups[] = {
 	NULL
 };
 
+static const struct attribute_group *hisi_l3c_pmu_v3_attr_groups[] = {
+	&hisi_l3c_pmu_v3_format_group,
+	&hisi_l3c_pmu_v3_events_group,
+	&hisi_pmu_cpumask_attr_group,
+	&hisi_pmu_identifier_group,
+	NULL
+};
+
 static const struct hisi_pmu_dev_info hisi_l3c_pmu_v1 = {
 	.attr_groups = hisi_l3c_pmu_v1_attr_groups,
 	.counter_bits = 48,
@@ -508,6 +743,13 @@ static const struct hisi_pmu_dev_info hisi_l3c_pmu_v2 = {
 	.attr_groups = hisi_l3c_pmu_v2_attr_groups,
 	.counter_bits = 64,
 	.check_event = L3C_V2_NR_EVENTS,
+};
+
+static const struct hisi_pmu_dev_info hisi_l3c_pmu_v3 = {
+	.attr_groups = hisi_l3c_pmu_v3_attr_groups,
+	.counter_bits = 64,
+	.check_event = L3C_V2_NR_EVENTS,
+	.private = (void *) L3C_PMU_FEAT_EXT,
 };
 
 static const struct hisi_uncore_ops hisi_uncore_l3c_ops = {
@@ -530,6 +772,7 @@ static const struct hisi_uncore_ops hisi_uncore_l3c_ops = {
 static int hisi_l3c_pmu_dev_probe(struct platform_device *pdev,
 				  struct hisi_pmu *l3c_pmu)
 {
+	struct hisi_l3c_pmu *hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
 	int ret;
 
 	ret = hisi_l3c_pmu_init_data(pdev, l3c_pmu);
@@ -548,27 +791,50 @@ static int hisi_l3c_pmu_dev_probe(struct platform_device *pdev,
 	l3c_pmu->dev = &pdev->dev;
 	l3c_pmu->on_cpu = -1;
 
+	if ((unsigned long)l3c_pmu->dev_info->private & L3C_PMU_FEAT_EXT) {
+		ret = hisi_l3c_pmu_init_ext(l3c_pmu, pdev);
+		if (ret) {
+			dev_warn(&pdev->dev, "ext event is unavailable, ret = %d\n", ret);
+		} else {
+			/*
+			 * The extension events have their own counters with the
+			 * same number of the normal events counters. So we can
+			 * have at maximum num_counters * 2 events monitored.
+			 */
+			l3c_pmu->num_counters <<= 1;
+
+			hisi_l3c_pmu->feature |= L3C_PMU_FEAT_EXT;
+		}
+	}
+
 	return 0;
 }
 
 static int hisi_l3c_pmu_probe(struct platform_device *pdev)
 {
+	struct hisi_l3c_pmu *hisi_l3c_pmu;
 	struct hisi_pmu *l3c_pmu;
 	char *name;
 	int ret;
 
-	l3c_pmu = devm_kzalloc(&pdev->dev, sizeof(*l3c_pmu), GFP_KERNEL);
-	if (!l3c_pmu)
+	hisi_l3c_pmu = devm_kzalloc(&pdev->dev, sizeof(*hisi_l3c_pmu), GFP_KERNEL);
+	if (!hisi_l3c_pmu)
 		return -ENOMEM;
 
+	l3c_pmu = &hisi_l3c_pmu->l3c_pmu;
 	platform_set_drvdata(pdev, l3c_pmu);
 
 	ret = hisi_l3c_pmu_dev_probe(pdev, l3c_pmu);
 	if (ret)
 		return ret;
 
-	name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "hisi_sccl%d_l3c%d",
-			      l3c_pmu->topo.sccl_id, l3c_pmu->topo.ccl_id);
+	if (l3c_pmu->topo.sub_id >= 0)
+		name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "hisi_sccl%d_l3c%d_%d",
+				      l3c_pmu->topo.sccl_id, l3c_pmu->topo.ccl_id,
+				      l3c_pmu->topo.sub_id);
+	else
+		name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "hisi_sccl%d_l3c%d",
+				      l3c_pmu->topo.sccl_id, l3c_pmu->topo.ccl_id);
 	if (!name)
 		return -ENOMEM;
 
@@ -604,6 +870,7 @@ static int hisi_l3c_pmu_remove(struct platform_device *pdev)
 static const struct acpi_device_id hisi_l3c_pmu_acpi_match[] = {
 	{ "HISI0213", (kernel_ulong_t)&hisi_l3c_pmu_v1 },
 	{ "HISI0214", (kernel_ulong_t)&hisi_l3c_pmu_v2 },
+	{ "HISI0215", (kernel_ulong_t)&hisi_l3c_pmu_v3 },
 	{}
 };
 MODULE_DEVICE_TABLE(acpi, hisi_l3c_pmu_acpi_match);
@@ -618,14 +885,55 @@ static struct platform_driver hisi_l3c_pmu_driver = {
 	.remove = hisi_l3c_pmu_remove,
 };
 
+static int hisi_l3c_pmu_online_cpu(unsigned int cpu, struct hlist_node *node)
+{
+	struct hisi_pmu *l3c_pmu = hlist_entry_safe(node, struct hisi_pmu, node);
+	struct hisi_l3c_pmu *hisi_l3c_pmu;
+	int ret;
+
+	hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+
+	/*
+	 * Invoking the framework's online function for doing the core logic
+	 * of CPU, interrupt and perf context migrating. Then return directly
+	 * if we don't support L3C_PMU_FEAT_EXT. Otherwise migrate the ext_irq
+	 * using the migrated CPU.
+	 *
+	 * Same logic for CPU offline.
+	 */
+	ret = hisi_uncore_pmu_online_cpu(cpu, node);
+	if (!(hisi_l3c_pmu->feature & L3C_PMU_FEAT_EXT) ||
+	    l3c_pmu->on_cpu >= nr_cpu_ids)
+		return ret;
+
+	WARN_ON(irq_set_affinity(hisi_l3c_pmu->ext_irq, cpumask_of(l3c_pmu->on_cpu)));
+	return ret;
+}
+
+static int hisi_l3c_pmu_offline_cpu(unsigned int cpu, struct hlist_node *node)
+{
+	struct hisi_pmu *l3c_pmu = hlist_entry_safe(node, struct hisi_pmu, node);
+	struct hisi_l3c_pmu *hisi_l3c_pmu;
+	int ret;
+
+	hisi_l3c_pmu = to_hisi_l3c_pmu(l3c_pmu);
+	ret = hisi_uncore_pmu_offline_cpu(cpu, node);
+	if (!(hisi_l3c_pmu->feature & L3C_PMU_FEAT_EXT) ||
+	    l3c_pmu->on_cpu >= nr_cpu_ids)
+		return ret;
+
+	WARN_ON(irq_set_affinity(hisi_l3c_pmu->ext_irq, cpumask_of(l3c_pmu->on_cpu)));
+	return ret;
+}
+
 static int __init hisi_l3c_pmu_module_init(void)
 {
 	int ret;
 
 	ret = cpuhp_setup_state_multi(CPUHP_AP_PERF_ARM_HISI_L3_ONLINE,
 				      "AP_PERF_ARM_HISI_L3_ONLINE",
-				      hisi_uncore_pmu_online_cpu,
-				      hisi_uncore_pmu_offline_cpu);
+				      hisi_l3c_pmu_online_cpu,
+				      hisi_l3c_pmu_offline_cpu);
 	if (ret) {
 		pr_err("L3C PMU: Error setup hotplug, ret = %d\n", ret);
 		return ret;
