@@ -75,4 +75,6 @@ int hibmc_dp_init(struct hibmc_drm_private *priv);
 
 void hibmc_debugfs_init(struct drm_connector *connector);
 
+irqreturn_t hibmc_dp_hpd_isr(int irq, void *arg);
+
 #endif
