@@ -131,6 +131,15 @@ static inline void try_clean_async_copy(struct mm_struct *mm)
 	clean_async_copy(mm);
 }
 
+int async_fork_rollback(struct mm_struct *parent_mm);
+
+static inline int try_async_fork_rollback(struct task_struct *parent)
+{
+	if (parent->mm && is_parent_mm_in_async_copy(parent->mm))
+		return async_fork_rollback(parent->mm);
+	return 0;
+}
+
 static inline bool mm_has_userfaultfd(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
@@ -233,6 +242,11 @@ static inline void try_clean_async_copy(struct mm_struct *mm) {}
 static inline void try_enable_async_copy(struct mm_struct *parent_mm,
 					 struct mm_struct *child_mm,
 					 struct task_struct *p) {}
+
+static inline int try_async_fork_rollback(struct task_struct *parent)
+{
+	return 0;
+}
 
 #endif /* CONFIG_BYTEDANCE_ASYNC_FORK */
 #endif /* _ASYNC_FORK_H */
