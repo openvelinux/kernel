@@ -409,6 +409,28 @@ void async_copy_fn(struct callback_head *work)
 		put_user(task_pid_vnr(current), current->set_child_tid);
 }
 
+int async_fork_rollback(struct mm_struct *parent_mm)
+{
+	struct mm_struct *child_mm;
+	struct vm_area_struct *vma, *child_vma;
+	int rc;
+
+	child_mm = parent_mm->async_copy_child_mm;
+
+	for (vma = parent_mm->mmap; vma; vma = vma->vm_next) {
+		child_vma = READ_ONCE(vma->child_vma);
+		if (child_vma)
+			copy_page_range_async(child_vma, vma,
+					      vma->vm_start, vma->vm_end);
+	}
+
+	async_copy_finish(parent_mm, child_mm);
+	rc = child_mm->async_copy_err;
+	if (child_mm->async_copy_err)
+		child_mm->async_copy_err = 0;
+	return rc;
+}
+
 static inline pmd_t *get_pmd(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd = pgd_offset(mm, addr);
