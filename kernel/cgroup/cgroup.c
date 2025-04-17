@@ -59,6 +59,7 @@
 #include <linux/sched/cputime.h>
 #include <linux/sched/deadline.h>
 #include <linux/psi.h>
+#include <linux/async_fork.h>
 #include <net/sock.h>
 
 #define CREATE_TRACE_POINTS
@@ -6287,10 +6288,31 @@ static int cgroup_css_set_fork(struct kernel_clone_args *kargs)
 	struct super_block *sb;
 	struct file *f;
 
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+	if (kargs->flags & CLONE_INTO_CGROUP) {
+		if (!mutex_trylock(&cgroup_mutex)) {
+			ret = try_async_fork_rollback(current);
+			if (ret)
+				return ret;
+			mutex_lock(&cgroup_mutex);
+		}
+	}
+
+	if (!cgroup_threadgroup_change_try_begin(current)) {
+		ret = try_async_fork_rollback(current);
+		if (ret) {
+			if (kargs->flags & CLONE_INTO_CGROUP)
+				mutex_unlock(&cgroup_mutex);
+			return ret;
+		}
+		cgroup_threadgroup_change_begin(current);
+	}
+#else
 	if (kargs->flags & CLONE_INTO_CGROUP)
 		mutex_lock(&cgroup_mutex);
 
 	cgroup_threadgroup_change_begin(current);
+#endif
 
 	spin_lock_irq(&css_set_lock);
 	cset = task_css_set(current);
