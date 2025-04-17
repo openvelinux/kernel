@@ -753,6 +753,13 @@ static inline void cgroup_threadgroup_change_begin(struct task_struct *tsk)
 	percpu_down_read(&cgroup_threadgroup_rwsem);
 }
 
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+static inline bool cgroup_threadgroup_change_try_begin(struct task_struct *tsk)
+{
+	return percpu_down_read_trylock(&cgroup_threadgroup_rwsem);
+}
+#endif
+
 /**
  * cgroup_threadgroup_change_end - threadgroup exclusion for cgroups
  * @tsk: target task
@@ -772,6 +779,13 @@ static inline void cgroup_threadgroup_change_begin(struct task_struct *tsk)
 {
 	might_sleep();
 }
+
+#ifdef CONFIG_BYTEDANCE_ASYNC_FORK
+static inline bool cgroup_threadgroup_change_try_begin(struct task_struct *tsk)
+{
+	return true;
+}
+#endif
 
 static inline void cgroup_threadgroup_change_end(struct task_struct *tsk) {}
 
