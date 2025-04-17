@@ -13,7 +13,8 @@
 #include "hibmc_drm_drv.h"
 #include "dp/dp_hw.h"
 
-#define DP_MASKED_SINK_HPD_PLUG_INT	BIT(2)
+#define HIBMC_DP_MASKED_SINK_HPD_PLUG_INT	BIT(2)
+#define HIBMC_DP_MASKED_SINK_HPD_UNPLUG_INT	BIT(3)
 
 static int hibmc_dp_connector_get_modes(struct drm_connector *connector)
 {
@@ -30,9 +31,12 @@ static int hibmc_dp_connector_get_modes(struct drm_connector *connector)
 static int hibmc_dp_detect(struct drm_connector *connector,
 			   struct drm_modeset_acquire_ctx *ctx, bool force)
 {
-	mdelay(200);
+	struct hibmc_dp *dp = to_hibmc_dp(connector);
 
-	return drm_connector_helper_detect_from_ddc(connector, ctx, force);
+	if (dp->hpd_status)
+		return connector_status_connected;
+	else
+		return connector_status_disconnected;
 }
 
 static const struct drm_connector_helper_funcs hibmc_dp_conn_helper_funcs = {
@@ -110,21 +114,29 @@ irqreturn_t hibmc_dp_hpd_isr(int irq, void *arg)
 {
 	struct drm_device *dev = (struct drm_device *)arg;
 	struct hibmc_drm_private *priv = to_hibmc_drm_private(dev);
+	struct hibmc_dp *dp = &priv->dp;
 	int idx;
 
 	if (!drm_dev_enter(dev, &idx))
 		return -ENODEV;
 
-	if (priv->dp.irq_status & DP_MASKED_SINK_HPD_PLUG_INT) {
-		drm_dbg_dp(&priv->dev, "HPD IN isr occur!\n");
-		hibmc_dp_hpd_cfg(&priv->dp);
+	if (dp->hpd_status) { /* only check unplug int when the last status is HPD in */
+		if ((dp->irq_status & HIBMC_DP_MASKED_SINK_HPD_UNPLUG_INT)) {
+			drm_dbg_dp(dev, "HPD OUT isr occur!\n");
+			hibmc_dp_reset_link(dp);
+			dp->hpd_status = 0;
+			if (dev->registered)
+				drm_helper_hpd_irq_event(dev);
+		}
 	} else {
-		drm_dbg_dp(&priv->dev, "HPD OUT isr occur!\n");
-		hibmc_dp_reset_link(&priv->dp);
+		if (dp->irq_status & HIBMC_DP_MASKED_SINK_HPD_PLUG_INT) {
+			drm_dbg_dp(&priv->dev, "HPD IN isr occur!\n");
+			hibmc_dp_hpd_cfg(dp);
+			dp->hpd_status = 1;
+			if (dev->registered)
+				drm_helper_hpd_irq_event(dev);
+		}
 	}
-
-	if (dev->registered)
-		drm_helper_hpd_irq_event(dev);
 
 	drm_dev_exit(idx);
 
