@@ -71,15 +71,15 @@ static bool bw_validate(char *buf, u32 *data, struct rdt_resource *r)
 	return true;
 }
 
-static int parse_bw(struct rdt_parse_data *data, struct resctrl_schema *s,
-		    struct rdt_domain *d)
+static int parse_bw_conf_type(struct rdt_parse_data *data, struct resctrl_schema *s,
+			      struct rdt_domain *d, enum resctrl_conf_type conf_type)
 {
 	struct resctrl_staged_config *cfg;
 	u32 closid = data->rdtgrp->closid;
 	struct rdt_resource *r = s->res;
 	u32 bw_val;
 
-	cfg = &d->staged_config[s->conf_type];
+	cfg = &d->staged_config[conf_type];
 	if (cfg->have_new_ctrl) {
 		rdt_last_cmd_printf("Duplicate domain %d\n", d->id);
 		return -EINVAL;
@@ -97,6 +97,28 @@ static int parse_bw(struct rdt_parse_data *data, struct resctrl_schema *s,
 	cfg->have_new_ctrl = true;
 
 	return 0;
+}
+
+static int parse_bw(struct rdt_parse_data *data, struct resctrl_schema *s,
+		    struct rdt_domain *d)
+{
+	struct rdt_resource *r = s->res;
+	int err;
+
+	/*
+	 * When CDP is enabled, but the resource doesn't support it, we
+	 * need to apply the same configuration to both of the CDP_CODE
+	 * and CDP_DATA resctrl_conf_type.
+	 */
+	if (resctrl_arch_hide_cdp(r->rid)) {
+		err = parse_bw_conf_type(data, s, d, CDP_CODE);
+		if (err)
+			return err;
+
+		return parse_bw_conf_type(data, s, d, CDP_DATA);
+	}
+
+	return parse_bw_conf_type(data, s, d, s->conf_type);
 }
 
 /*
