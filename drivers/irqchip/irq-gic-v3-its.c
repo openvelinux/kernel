@@ -4818,6 +4818,10 @@ static void its_vpe_irq_domain_free(struct irq_domain *domain,
 	if (bitmap_empty(vm->db_bitmap, vm->nr_db_lpis)) {
 		its_lpi_free(vm->db_bitmap, vm->db_lpi_base, vm->nr_db_lpis);
 		its_free_prop_table(vm->vprop_page);
+		if (static_branch_unlikely(&ipiv_enable)) {
+			free_pages((unsigned long)page_address(vm->vpeid_page),
+				    get_order(nr_irqs * 2));
+		}
 	}
 }
 
@@ -4827,8 +4831,10 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 	struct irq_chip *irqchip = &its_vpe_irq_chip;
 	struct its_vm *vm = args;
 	unsigned long *bitmap;
-	struct page *vprop_page;
+	struct page *vprop_page, *vpeid_page;
 	int base, nr_ids, i, err = 0;
+	void *vpeid_table_va;
+	u16 *vpeid_entry;
 
 	bitmap = its_lpi_alloc(roundup_pow_of_two(nr_irqs), &base, &nr_ids);
 	if (!bitmap)
@@ -4851,14 +4857,33 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 	vm->vprop_page = vprop_page;
 	raw_spin_lock_init(&vm->vmapp_lock);
 
-	if (gic_rdists->has_rvpeid)
+	if (gic_rdists->has_rvpeid) {
 		irqchip = &its_vpe_4_1_irq_chip;
+		if (static_branch_unlikely(&ipiv_enable)) {
+			/*
+			 * The vpeid's size is 2 bytes, so we need to allocate 2 *
+			 * (num of vcpus). nr_irqs is equal to the number of vCPUs.
+			 */
+			vpeid_page = alloc_pages(GFP_KERNEL, get_order(nr_irqs * 2));
+			if (!vpeid_page) {
+				its_lpi_free(bitmap, base, nr_ids);
+				its_free_prop_table(vprop_page);
+				return -ENOMEM;
+			}
+			vm->vpeid_page = vpeid_page;
+			vpeid_table_va = page_address(vpeid_page);
+		}
+	}
 
 	for (i = 0; i < nr_irqs; i++) {
 		vm->vpes[i]->vpe_db_lpi = base + i;
 		err = its_vpe_init(vm->vpes[i]);
 		if (err)
 			break;
+		if (static_branch_unlikely(&ipiv_enable)) {
+			vpeid_entry = (u16 *)vpeid_table_va + i;
+			*vpeid_entry = vm->vpes[i]->vpe_id;
+		}
 		err = its_irq_gic_domain_alloc(domain, virq + i,
 					       vm->vpes[i]->vpe_db_lpi);
 		if (err)
