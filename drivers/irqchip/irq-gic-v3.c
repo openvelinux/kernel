@@ -105,6 +105,9 @@ static DEFINE_STATIC_KEY_FALSE(supports_pseudo_nmis);
 DEFINE_STATIC_KEY_FALSE(gic_nonsecure_priorities);
 EXPORT_SYMBOL(gic_nonsecure_priorities);
 
+DEFINE_STATIC_KEY_FALSE(ipiv_enable);
+EXPORT_SYMBOL(ipiv_enable);
+
 /*
  * When the Non-secure world has access to group 0 interrupts (as a
  * consequence of SCR_EL3.FIQ == 0), reading the ICC_RPR_EL1 register will
