@@ -35,6 +35,7 @@ struct its_vm {
 	 */
 	raw_spinlock_t		vmapp_lock;
 	u32			vlpi_count[GICv4_ITS_LIST_MAX];
+	bool			nassgireq;
 };
 
 /* Embedded in kvm_vcpu.arch */
