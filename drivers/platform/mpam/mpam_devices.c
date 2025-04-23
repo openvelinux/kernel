@@ -918,6 +918,14 @@ static bool resctrl_arch_would_mbm_overflow(void)
 	return read_cpuid_implementor() != ARM_CPU_IMP_HISI;
 }
 
+bool resctrl_arch_would_mbm_overflow(void)
+{
+	if (is_midr_in_range_list(read_cpuid_id(), mbwu_flowrate_list))
+		return false;
+
+	return true;
+}
+
 static void __ris_msmon_read(void *arg)
 {
 	bool nrdy = false;
