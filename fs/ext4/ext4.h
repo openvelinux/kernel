@@ -655,9 +655,6 @@ enum {
 #define EXT4_GET_BLOCKS_CONVERT			0x0010
 #define EXT4_GET_BLOCKS_IO_CREATE_EXT		(EXT4_GET_BLOCKS_PRE_IO|\
 					 EXT4_GET_BLOCKS_CREATE_UNWRIT_EXT)
-	/* Convert extent to initialized after IO complete */
-#define EXT4_GET_BLOCKS_IO_CONVERT_EXT		(EXT4_GET_BLOCKS_CONVERT|\
-					 EXT4_GET_BLOCKS_CREATE_UNWRIT_EXT)
 	/* Eventual metadata allocation (due to growing extent tree)
 	 * should not fail, so try to use reserved blocks for that.*/
 #define EXT4_GET_BLOCKS_METADATA_NOFAIL		0x0020
@@ -669,9 +666,15 @@ enum {
 #define EXT4_GET_BLOCKS_ZERO			0x0200
 #define EXT4_GET_BLOCKS_CREATE_ZERO		(EXT4_GET_BLOCKS_CREATE |\
 					EXT4_GET_BLOCKS_ZERO)
-	/* Caller will submit data before dropping transaction handle. This
-	 * allows jbd2 to avoid submitting data before commit. */
+	/* Caller is in the context of data submission, such as writeback,
+	 * fsync, etc. Especially, in the generic writeback path, caller will
+	 * submit data before dropping transaction handle. This allows jbd2
+	 * to avoid submitting data before commit. */
 #define EXT4_GET_BLOCKS_IO_SUBMIT		0x0400
+	/* Convert extent to initialized after IO complete */
+#define EXT4_GET_BLOCKS_IO_CONVERT_EXT		(EXT4_GET_BLOCKS_CONVERT |\
+					 EXT4_GET_BLOCKS_CREATE_UNWRIT_EXT |\
+					 EXT4_GET_BLOCKS_IO_SUBMIT)
 
 /*
  * The bit position of these flags must not overlap with any of the
