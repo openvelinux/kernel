@@ -162,6 +162,11 @@ static void closid_init(void)
 	closid_free_map_len = rdt_min_closid;
 }
 
+static void closid_exit(void)
+{
+	bitmap_free(closid_free_map);
+}
+
 static int closid_alloc(void)
 {
 	int cleanest_closid;
@@ -2512,10 +2517,8 @@ static int rdt_get_tree(struct fs_context *fc)
 		goto out_root;
 
 	ret = schemata_list_create();
-	if (ret) {
-		schemata_list_destroy();
-		goto out_ctx;
-	}
+	if (ret)
+		goto out_schemata_free;
 
 	closid_init();
 
@@ -2524,13 +2527,13 @@ static int rdt_get_tree(struct fs_context *fc)
 
 	ret = rdtgroup_add_files(rdtgroup_default.kn, flags);
 	if (ret)
-		goto out_schemata_free;
+		goto out_closid;
 
 	kernfs_activate(rdtgroup_default.kn);
 
 	ret = rdtgroup_create_info_dir(rdtgroup_default.kn);
 	if (ret < 0)
-		goto out_schemata_free;
+		goto out_closid;
 
 	if (resctrl_arch_mon_capable()) {
 		ret = mongroup_create_dir(rdtgroup_default.kn,
@@ -2583,9 +2586,10 @@ out_mongrp:
 		kernfs_remove(kn_mongrp);
 out_info:
 	kernfs_remove(kn_info);
+out_closid:
+	closid_exit();
 out_schemata_free:
 	schemata_list_destroy();
-out_ctx:
 	rdt_disable_ctx();
 out_root:
 	rdtgroup_destroy_root();
@@ -2794,6 +2798,7 @@ static void rdt_kill_sb(struct super_block *sb)
 	if (IS_ENABLED(CONFIG_RESCTRL_FS_PSEUDO_LOCK))
 		rdt_pseudo_lock_release();
 	rdtgroup_default.mode = RDT_MODE_SHAREABLE;
+	closid_exit();
 	schemata_list_destroy();
 	rdtgroup_destroy_root();
 	if (resctrl_arch_alloc_capable())
