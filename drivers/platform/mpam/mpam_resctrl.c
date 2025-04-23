@@ -749,6 +749,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->fflags = RFTYPE_RES_CACHE;
 		r->default_ctrl = BIT_MASK(class->props.cpbm_wd) - 1;
 		r->data_width = (class->props.cpbm_wd + 3) / 4;
+		r->cache_level = class->level;
 
 		/*
 		 * Which bits are shared with other ...things...
