@@ -2648,6 +2648,9 @@
 			[KVM,ARM] Allow use of GICv4 for direct injection of
 			LPIs.
 
+	kvm-arm.ipiv_enabled=
+			[KVM,ARM] Allow use of HiSilicon ipiv on GICv4.1
+
 	kvm-arm.dvmbm_enabled=
 			[KVM,ARM] Allow use of HiSilicon DVMBM capability.
 			Default: 0
