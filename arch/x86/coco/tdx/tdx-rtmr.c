@@ -5,6 +5,54 @@
 
 #include <asm/tdx-rtmr.h>
 #include <asm/tdx.h>
+#include <linux/list.h>
+
+#define EV_EVENT_TAG		0x00000006U
+
+struct cc_event_head {
+	u32 mr_idx;
+	u32 event_type;
+	u32 count;
+};
+
+struct cc_event_data {
+	u32 size;
+	u8 data[];
+} __packed;
+
+struct cc_sha384_event {
+	struct cc_event_head head;
+	u16 algo_id;
+	u8 digest[SHA384_DIGEST_SIZE];
+	struct cc_event_data data;
+} __packed;
+
+struct rtmr_event {
+	struct list_head list;
+	struct cc_sha384_event event;
+};
+
+static LIST_HEAD(rtmr_event_log_head);
+
+static void ccel_record_eventlog(struct rtmr_event *rtmr_event, void *digests,
+				 const void *event_data, size_t event_data_len,
+				 u8 mr_idx)
+{
+	struct cc_sha384_event *event = &rtmr_event->event;
+
+	/* Setup Evenlog header */
+	event->head.mr_idx = mr_idx + 1;
+	event->head.event_type = EV_EVENT_TAG;
+	event->head.count = 1;
+	event->algo_id = TPM_ALG_SHA384;
+	memcpy(event->digest, digests, SHA384_DIGEST_SIZE);
+
+	event->data.size = event_data_len;
+	memcpy(event->data.data, event_data, event->data.size);
+
+	list_add_tail(&rtmr_event->list, &rtmr_event_log_head);
+}
+
 /**
  * tdx_rtmr_device() - construct a fake TPM device for IMA usage
  * in RTMR
@@ -53,6 +101,9 @@ int ima_extend_rtmr(struct tpm_chip *chip, u32 rtmr_idx,
 {
 	int rc, i;
 	u8 *data;
+	void *rtmr_event;
+	static const char event_data[] = "Runtime RTMR event log extend success";
+	static size_t event_data_len = sizeof(event_data);
 
 	/*
 	 * RTMR index 2 mapping to PCR[10] and is
@@ -71,12 +122,22 @@ int ima_extend_rtmr(struct tpm_chip *chip, u32 rtmr_idx,
 		       GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
+	rtmr_event = kmalloc(sizeof(struct rtmr_event) + event_data_len, GFP_KERNEL);
+	if (!rtmr_event) {
+		kfree(data);
+		return -ENOMEM;
+	}
 
 	memcpy(data, digests[DEFAULT_SHA384_IDX].digest,
 	       sizeof(digests[DEFAULT_SHA384_IDX].digest));
 
 	/* Extend RTMR registers using "TDG.MR.RTMR.EXTEND" TDCALL */
 	rc = tdx_mcall_extend_rtmr((u8)rtmr_idx, data);
+	if (!rc)
+		ccel_record_eventlog(rtmr_event, data, event_data,
+				     event_data_len, (u8)rtmr_idx);
+	else
+		kfree(rtmr_event);
 	kfree(data);
 
 	return rc;
