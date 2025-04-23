@@ -222,6 +222,10 @@ void resctrl_cpu_detect(struct cpuinfo_x86 *c);
 
 bool resctrl_arch_get_cdp_enabled(enum resctrl_res_level l);
 int resctrl_arch_set_cdp_enabled(enum resctrl_res_level l, bool enable);
+static inline bool resctrl_arch_hide_cdp(enum resctrl_res_level rid)
+{
+	return false;
+};
 
 #else
 
