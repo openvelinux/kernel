@@ -4378,11 +4378,69 @@ static void its_vpe_4_1_unmask_irq(struct irq_data *d)
 	its_vpe_4_1_send_inv(d);
 }
 
+/* IPIV private register */
+#define CPU_SYS_TRAP_EL2		sys_reg(3, 4, 15, 7, 2)
+#define CPU_SYS_TRAP_EL2_IPIV_ENABLE_SHIFT	0
+#define CPU_SYS_TRAP_EL2_IPIV_ENABLE		\
+	(1ULL << CPU_SYS_TRAP_EL2_IPIV_ENABLE_SHIFT)
+
+/*
+ * ipiv_disable_vsgi_trap and ipiv_enable_vsgi_trap run only
+ * in VHE mode and in EL2.
+ */
+static void ipiv_disable_vsgi_trap(void)
+{
+#ifdef CONFIG_ARM64
+	u64 val;
+
+	/* disable guest access ICC_SGI1R_EL1 trap, enable ipiv */
+	val = read_sysreg_s(CPU_SYS_TRAP_EL2);
+	val |= CPU_SYS_TRAP_EL2_IPIV_ENABLE;
+	write_sysreg_s(val, CPU_SYS_TRAP_EL2);
+#endif
+}
+
+static void ipiv_enable_vsgi_trap(void)
+{
+#ifdef CONFIG_ARM64
+	u64 val;
+
+	/* enable guest access ICC_SGI1R_EL1 trap, disable ipiv */
+	val = read_sysreg_s(CPU_SYS_TRAP_EL2);
+	val &= ~CPU_SYS_TRAP_EL2_IPIV_ENABLE;
+	write_sysreg_s(val, CPU_SYS_TRAP_EL2);
+#endif
+}
+
 static void its_vpe_4_1_schedule(struct its_vpe *vpe,
 				 struct its_cmd_info *info)
 {
 	void __iomem *vlpi_base = gic_data_rdist_vlpi_base();
+	struct its_vm *vm = vpe->its_vm;
+	unsigned long vpeid_page_addr;
+	u64 ipiv_val = 0;
 	u64 val = 0;
+	u32 nr_vpes;
+
+	if (static_branch_unlikely(&ipiv_enable) &&
+	    vm->nassgireq) {
+		/* wait gicr_ipiv_busy */
+		WARN_ON_ONCE(readl_relaxed_poll_timeout_atomic(vlpi_base + GICR_IPIV_ST,
+					ipiv_val, !(ipiv_val & GICR_IPIV_ST_IPIV_BUSY), 1, 500));
+		vpeid_page_addr = virt_to_phys(page_address(vm->vpeid_page));
+		writel_relaxed(lower_32_bits(vpeid_page_addr),
+					vlpi_base + GICR_VM_TABLE_BAR_L);
+		writel_relaxed(upper_32_bits(vpeid_page_addr),
+					vlpi_base + GICR_VM_TABLE_BAR_H);
+
+		/* setup gicr_vcpu_entry_num_max and gicr_ipiv_its_ta_sel */
+		nr_vpes = vpe->its_vm->nr_vpes;
+		ipiv_val = ((nr_vpes - 1) << GICR_IPIV_CTRL_VCPU_ENTRY_NUM_MAX_SHIFT) |
+			(0 << GICR_IPIV_CTRL_IPIV_ITS_TA_SEL_SHIFT);
+		writel_relaxed(ipiv_val, vlpi_base + GICR_IPIV_CTRL);
+
+		ipiv_disable_vsgi_trap();
+	}
 
 	/* Schedule the VPE */
 	val |= GICR_VPENDBASER_Valid;
@@ -4397,6 +4455,7 @@ static void its_vpe_4_1_deschedule(struct its_vpe *vpe,
 				   struct its_cmd_info *info)
 {
 	void __iomem *vlpi_base = gic_data_rdist_vlpi_base();
+	struct its_vm *vm = vpe->its_vm;
 	u64 val;
 
 	if (info->req_db) {
@@ -4427,6 +4486,17 @@ static void its_vpe_4_1_deschedule(struct its_vpe *vpe,
 					    0,
 					    GICR_VPENDBASER_PendingLast);
 		vpe->pending_last = true;
+	}
+
+	if (static_branch_unlikely(&ipiv_enable) &&
+	    vm->nassgireq) {
+		/* wait gicr_ipiv_busy */
+		WARN_ON_ONCE(readl_relaxed_poll_timeout_atomic(vlpi_base + GICR_IPIV_ST,
+					val, !(val & GICR_IPIV_ST_IPIV_BUSY), 1, 500));
+		writel_relaxed(0, vlpi_base + GICR_VM_TABLE_BAR_L);
+		writel_relaxed(0, vlpi_base + GICR_VM_TABLE_BAR_H);
+
+		ipiv_enable_vsgi_trap();
 	}
 }
 

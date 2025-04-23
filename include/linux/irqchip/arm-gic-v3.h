@@ -360,6 +360,21 @@
 #define GICR_VSGIPENDR_BUSY		(1U << 31)
 #define GICR_VSGIPENDR_PENDING		GENMASK(15, 0)
 
+/* IPIV VM table address */
+#define GICR_VM_TABLE_BAR_L		0x140
+#define GICR_VM_TABLE_BAR_H		0x144
+
+#define GICR_IPIV_CTRL		0x148
+#define GICR_IPIV_CTRL_VCPU_ENTRY_NUM_MAX_SHIFT 8
+/*
+ * Select ITS to determine the ITS through which the IPI is sent.
+ */
+#define GICR_IPIV_CTRL_IPIV_ITS_TA_SEL_SHIFT 4
+
+#define GICR_IPIV_ST		0x14c
+#define GICR_IPIV_ST_IPIV_BUSY_SHIFT 0
+#define GICR_IPIV_ST_IPIV_BUSY (1 << GICR_IPIV_ST_IPIV_BUSY_SHIFT)
+
 /*
  * ITS registers, offsets from ITS_base
  */
