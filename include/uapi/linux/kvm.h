@@ -1197,6 +1197,8 @@ struct kvm_ppc_resize_hpt {
 
 #define KVM_CAP_ARM_HW_DIRTY_STATE_TRACK 502
 
+#define KVM_CAP_ARM_IPIV_MODE 503
+
 #ifdef KVM_CAP_IRQ_ROUTING
 
 struct kvm_irq_routing_irqchip {
