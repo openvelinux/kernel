@@ -358,15 +358,19 @@ int resctrl_arch_rmid_read(struct rdt_resource	*r, struct rdt_domain *d,
 	cfg.opts = resctrl_evt_config_to_mpam(dom->mbm_local_evt_cfg);
 
 	if (cdp_enabled) {
-		cfg.partid = closid << 1;
+		cfg.partid = resctrl_get_config_index(closid, CDP_DATA);
 		err = mpam_msmon_read(dom->comp, &cfg, type, val);
 		if (err)
 			return err;
 
-		cfg.partid += 1;
+		cfg.partid = resctrl_get_config_index(closid, CDP_CODE);
 		err = mpam_msmon_read(dom->comp, &cfg, type, &cdp_val);
-		if (!err)
+		if (!err) {
+			pr_debug("read monitor rmid %u %s:%u CODE/DATA: %lld/%lld\n",
+				resctrl_arch_rmid_idx_encode(closid, rmid),
+				r->name, dom->comp->comp_id, cdp_val, *val);
 			*val += cdp_val;
+		}
 	} else {
 		cfg.partid = closid;
 		err = mpam_msmon_read(dom->comp, &cfg, type, val);
