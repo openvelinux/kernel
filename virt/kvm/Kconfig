@@ -119,3 +119,8 @@ config HAVE_KVM_ARCH_GMEM_INVALIDATE
 config HAVE_KVM_ARCH_GMEM_POPULATE
        bool
        depends on KVM_GUEST_MEMFD
+
+config KVM_GMEM_HUGETLB
+       select KVM_GUEST_MEMFD
+       depends on GUESTMEM_HUGETLB
+       bool "Enables using a custom allocator with guest_memfd, see CONFIG_GUESTMEM_HUGETLB"
