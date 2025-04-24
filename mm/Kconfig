@@ -1208,7 +1208,10 @@ config SECRETMEM
 
 config GUESTMEM_HUGETLB
 	bool "Enable guestmem_hugetlb allocator for guest_memfd"
-	depends on HUGETLBFS
+	select GUESTMEM
+	select HUGETLBFS
+	select HUGETLB_PAGE
+	select HUGETLB_PAGE_OPTIMIZE_VMEMMAP
 	help
 	  Enable this to make HugeTLB folios available to guest_memfd
 	  (KVM virtualization) as backing memory.
