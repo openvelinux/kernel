@@ -124,7 +124,7 @@ static inline bool is_branch_counters_group(struct perf_event *event)
 
 static inline bool is_pebs_counter_event_group(struct perf_event *event)
 {
-	return event->group_leader->hw.flags & PERF_X86_EVENT_PEBS_CNTR;
+	return check_leader_group(event->group_leader, PERF_X86_EVENT_PEBS_CNTR);
 }
 
 static inline bool is_acr_event_group(struct perf_event *event)
