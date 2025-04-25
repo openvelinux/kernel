@@ -6057,6 +6057,7 @@ void folio_zero_user(struct folio *folio, unsigned long addr_hint)
 	else
 		process_huge_page(addr_hint, nr_pages, clear_subpage, folio);
 }
+EXPORT_SYMBOL_GPL(folio_zero_user);
 
 static int copy_user_gigantic_page(struct folio *dst, struct folio *src,
 				     unsigned long addr,

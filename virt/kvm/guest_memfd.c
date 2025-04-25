@@ -553,7 +553,9 @@ static int kvm_gmem_filemap_add_folio(struct address_space *mapping,
 static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index)
 {
 	struct mempolicy *policy;
+	size_t allocated_size;
 	struct folio *folio;
+	pgoff_t index_floor;
 	int ret;
 
 repeat:
@@ -582,8 +584,10 @@ repeat:
 			return ERR_PTR(ret);
 		}
 	}
+	allocated_size = folio_size(folio);
 
-	ret = kvm_gmem_filemap_add_folio(inode->i_mapping, folio, index);
+	index_floor = round_down(index, folio_nr_pages(folio));
+	ret = kvm_gmem_filemap_add_folio(inode->i_mapping, folio, index_floor);
 	if (ret) {
 		folio_put(folio);
 
@@ -599,7 +603,17 @@ repeat:
 		return ERR_PTR(ret);
 	}
 
-	__folio_set_locked(folio);
+	spin_lock(&inode->i_lock);
+	inode->i_blocks += allocated_size / 512;
+	spin_unlock(&inode->i_lock);
+
+	/*
+	 * folio is the one that is allocated, this gets the folio at the
+	 * requested index.
+	 */
+	folio = page_folio(folio_file_page(folio, index));
+	folio_lock(folio);
+
 	return folio;
 }
 
@@ -737,6 +751,92 @@ static void kvm_gmem_truncate_inode_aligned_pages(struct inode *inode,
 	spin_unlock(&inode->i_lock);
 }
 
+/**
+ * kvm_gmem_zero_range() - Zeroes all sub-pages in range [@start, @end).
+ *
+ * @mapping: the filemap to remove this range from.
+ * @start: index in filemap for start of range (inclusive).
+ * @end: index in filemap for end of range (exclusive).
+ *
+ * The pages in range may be split. truncate_inode_pages_range() isn't the right
+ * function because it removes pages from the page cache; this function only
+ * zeroes the pages.
+ */
+static void kvm_gmem_zero_range(struct address_space *mapping,
+				pgoff_t start, pgoff_t end)
+{
+	struct folio_batch fbatch;
+
+	folio_batch_init(&fbatch);
+	while (filemap_get_folios(mapping, &start, end - 1, &fbatch)) {
+		unsigned int i;
+
+		for (i = 0; i < folio_batch_count(&fbatch); ++i) {
+			struct folio *f;
+			size_t nr_bytes;
+
+			f = fbatch.folios[i];
+			nr_bytes = offset_in_folio(f, end << PAGE_SHIFT);
+			if (nr_bytes == 0)
+				nr_bytes = folio_size(f);
+
+			folio_zero_segment(f, 0, nr_bytes);
+		}
+
+		folio_batch_release(&fbatch);
+		cond_resched();
+	}
+}
+
+/**
+ * kvm_gmem_truncate_inode_range() - Truncate pages in range [@lstart, @lend).
+ *
+ * @inode: inode to truncate from.
+ * @lstart: offset in inode for start of range (inclusive).
+ * @lend: offset in inode for end of range (exclusive).
+ *
+ * Removes full (huge)pages from the filemap and zeroing incomplete
+ * (huge)pages. The pages in the range may be split.
+ */
+static void kvm_gmem_truncate_inode_range(struct inode *inode, loff_t lstart,
+					  loff_t lend)
+{
+	pgoff_t full_hpage_start;
+	size_t nr_per_huge_page;
+	pgoff_t full_hpage_end;
+	size_t nr_pages;
+	pgoff_t start;
+	pgoff_t end;
+	void *priv;
+
+	priv = kvm_gmem_allocator_private(inode);
+	nr_per_huge_page = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
+
+	start = lstart >> PAGE_SHIFT;
+	end = min(lend, i_size_read(inode)) >> PAGE_SHIFT;
+
+	full_hpage_start = round_up(start, nr_per_huge_page);
+	full_hpage_end = round_down(end, nr_per_huge_page);
+
+	if (start < full_hpage_start) {
+		pgoff_t zero_end = min(full_hpage_start, end);
+
+		kvm_gmem_zero_range(inode->i_mapping, start, zero_end);
+	}
+
+	if (full_hpage_end > full_hpage_start) {
+		nr_pages = full_hpage_end - full_hpage_start;
+		kvm_gmem_truncate_inode_aligned_pages(inode, full_hpage_start,
+						      nr_pages);
+	}
+
+	if (end > full_hpage_end && end > full_hpage_start) {
+		pgoff_t zero_start = max(full_hpage_end, start);
+
+		kvm_gmem_zero_range(inode->i_mapping, zero_start, end);
+	}
+}
+
 static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 {
 	struct list_head *gmem_list = &inode->i_mapping->private_list;
@@ -753,7 +853,12 @@ static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	list_for_each_entry(gmem, gmem_list, entry)
 		kvm_gmem_invalidate_begin(gmem, start, end);
 
-	truncate_inode_pages_range(inode->i_mapping, offset, offset + len - 1);
+	if (kvm_gmem_has_custom_allocator(inode)) {
+		kvm_gmem_truncate_inode_range(inode, offset, offset + len);
+	} else {
+		/* Page size is PAGE_SIZE, so use optimized truncation function. */
+		truncate_inode_pages_range(inode->i_mapping, offset, offset + len - 1);
+	}
 
 	list_for_each_entry(gmem, gmem_list, entry)
 		kvm_gmem_invalidate_end(gmem, start, end);
@@ -777,6 +882,16 @@ static long kvm_gmem_allocate(struct inode *inode, loff_t offset, loff_t len)
 
 	start = offset >> PAGE_SHIFT;
 	end = (offset + len) >> PAGE_SHIFT;
+	if (kvm_gmem_has_custom_allocator(inode)) {
+		size_t nr_pages;
+		void *p;
+
+		p = kvm_gmem_allocator_private(inode);
+		nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(p);
+
+		start = round_down(start, nr_pages);
+		end = round_down(end, nr_pages);
+	}
 
 	r = 0;
 	for (index = start; index < end; ) {
@@ -926,7 +1041,7 @@ static vm_fault_t kvm_gmem_fault_user_mapping(struct vm_fault *vmf)
 	}
 
 	if (!folio_test_uptodate(folio)) {
-		clear_highpage(folio_page(folio, 0));
+		folio_zero_user(folio, folio->index << PAGE_SHIFT);
 		folio_mark_uptodate(folio);
 	}
 
@@ -1583,7 +1698,7 @@ static struct folio *__kvm_gmem_get_pfn(struct file *file,
 
 	*pfn = folio_file_pfn(folio, index);
 	if (max_order)
-		*max_order = 0;
+		*max_order = folio_order(folio);
 
 
 	return folio;
@@ -1609,10 +1724,7 @@ int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 	}
 
 	if (!folio_test_uptodate(folio)) {
-		unsigned long i, nr_pages = folio_nr_pages(folio);
-
-		for (i = 0; i < nr_pages; i++)
-			clear_highpage(folio_page(folio, i));
+		folio_zero_user(folio, folio->index << PAGE_SHIFT);
 		folio_mark_uptodate(folio);
 	}
 
