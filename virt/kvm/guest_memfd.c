@@ -886,6 +886,35 @@ rollback:
 	return ret;
 }
 
+static long kvm_gmem_merge_truncate_indices(struct inode *inode, pgoff_t index,
+					   size_t nr_pages)
+{
+	struct folio *f;
+	pgoff_t unused;
+	long num_freed;
+
+	unmap_mapping_pages(inode->i_mapping, index, nr_pages, false);
+
+	if (!kvm_gmem_has_safe_refcount(inode->i_mapping, index, nr_pages, &unused))
+		return -EAGAIN;
+
+	f = filemap_get_folio(inode->i_mapping, index);
+	if (IS_ERR(f))
+		return 0;
+
+	/* Leave just filemap's refcounts on the folio. */
+	folio_put(f);
+
+	WARN_ON(kvm_gmem_merge_folio_in_filemap(inode, f));
+
+	num_freed = folio_nr_pages(f);
+	folio_lock(f);
+	truncate_inode_folio(inode->i_mapping, f);
+	folio_unlock(f);
+
+	return num_freed;
+}
+
 #else
 
 static inline int kvm_gmem_try_split_folio_in_filemap(struct inode *inode,
@@ -897,6 +926,12 @@ static inline int kvm_gmem_try_split_folio_in_filemap(struct inode *inode,
 static int kvm_gmem_restructure_folios_in_range(struct inode *inode,
 						pgoff_t start, size_t nr_pages,
 						bool is_split_operation)
+{
+	return 0;
+}
+
+static long kvm_gmem_merge_truncate_indices(struct inode *inode, pgoff_t index,
+					   size_t nr_pages)
 {
 	return 0;
 }
@@ -1185,8 +1220,10 @@ static long kvm_gmem_truncate_indices(struct address_space *mapping,
  *
  * Removes folios beginning @index for @nr_pages from filemap in @inode, updates
  * inode metadata.
+ *
+ * Return: 0 on success and negative error otherwise.
  */
-static void kvm_gmem_truncate_inode_aligned_pages(struct inode *inode,
+static long kvm_gmem_truncate_inode_aligned_pages(struct inode *inode,
 						  pgoff_t index,
 						  size_t nr_pages)
 {
@@ -1194,19 +1231,34 @@ static void kvm_gmem_truncate_inode_aligned_pages(struct inode *inode,
 	long num_freed;
 	pgoff_t idx;
 	void *priv;
+	long ret;
 
 	priv = kvm_gmem_allocator_private(inode);
 	nr_per_huge_page = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
 
+	ret = 0;
 	num_freed = 0;
 	for (idx = index; idx < index + nr_pages; idx += nr_per_huge_page) {
-		num_freed += kvm_gmem_truncate_indices(
-			inode->i_mapping, idx, nr_per_huge_page);
+		if (mapping_exiting(inode->i_mapping) ||
+		    !kvm_gmem_has_some_shared(inode, idx, nr_per_huge_page)) {
+			num_freed += kvm_gmem_truncate_indices(
+				inode->i_mapping, idx, nr_per_huge_page);
+		} else {
+			ret = kvm_gmem_merge_truncate_indices(inode, idx,
+							      nr_per_huge_page);
+			if (ret < 0)
+				break;
+
+			num_freed += ret;
+			ret = 0;
+		}
 	}
 
 	spin_lock(&inode->i_lock);
 	inode->i_blocks -= (num_freed << PAGE_SHIFT) / 512;
 	spin_unlock(&inode->i_lock);
+
+	return ret;
 }
 
 /**
@@ -1255,8 +1307,10 @@ static void kvm_gmem_zero_range(struct address_space *mapping,
  *
  * Removes full (huge)pages from the filemap and zeroing incomplete
  * (huge)pages. The pages in the range may be split.
+ *
+ * Return: 0 on success and negative error otherwise.
  */
-static void kvm_gmem_truncate_inode_range(struct inode *inode, loff_t lstart,
+static long kvm_gmem_truncate_inode_range(struct inode *inode, loff_t lstart,
 					  loff_t lend)
 {
 	pgoff_t full_hpage_start;
@@ -1266,6 +1320,7 @@ static void kvm_gmem_truncate_inode_range(struct inode *inode, loff_t lstart,
 	pgoff_t start;
 	pgoff_t end;
 	void *priv;
+	long ret;
 
 	priv = kvm_gmem_allocator_private(inode);
 	nr_per_huge_page = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
@@ -1282,10 +1337,11 @@ static void kvm_gmem_truncate_inode_range(struct inode *inode, loff_t lstart,
 		kvm_gmem_zero_range(inode->i_mapping, start, zero_end);
 	}
 
+	ret = 0;
 	if (full_hpage_end > full_hpage_start) {
 		nr_pages = full_hpage_end - full_hpage_start;
-		kvm_gmem_truncate_inode_aligned_pages(inode, full_hpage_start,
-						      nr_pages);
+		ret = kvm_gmem_truncate_inode_aligned_pages(
+			inode, full_hpage_start, nr_pages);
 	}
 
 	if (end > full_hpage_end && end > full_hpage_start) {
@@ -1293,6 +1349,8 @@ static void kvm_gmem_truncate_inode_range(struct inode *inode, loff_t lstart,
 
 		kvm_gmem_zero_range(inode->i_mapping, zero_start, end);
 	}
+
+	return ret;
 }
 
 static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
@@ -1301,6 +1359,7 @@ static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	pgoff_t start = offset >> PAGE_SHIFT;
 	pgoff_t end = (offset + len) >> PAGE_SHIFT;
 	struct kvm_gmem *gmem;
+	long ret;
 
 	/*
 	 * Bindings must be stable across invalidation to ensure the start+end
@@ -1311,8 +1370,9 @@ static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	list_for_each_entry(gmem, gmem_list, entry)
 		kvm_gmem_invalidate_begin_and_zap(gmem, start, end);
 
+	ret = 0;
 	if (kvm_gmem_has_custom_allocator(inode)) {
-		kvm_gmem_truncate_inode_range(inode, offset, offset + len);
+		ret = kvm_gmem_truncate_inode_range(inode, offset, offset + len);
 	} else {
 		/* Page size is PAGE_SIZE, so use optimized truncation function. */
 		truncate_inode_pages_range(inode->i_mapping, offset, offset + len - 1);
@@ -1323,7 +1383,7 @@ static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 
 	filemap_invalidate_unlock(inode->i_mapping);
 
-	return 0;
+	return ret;
 }
 
 static long kvm_gmem_allocate(struct inode *inode, loff_t offset, loff_t len)
