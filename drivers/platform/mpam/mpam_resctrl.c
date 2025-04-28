@@ -522,6 +522,14 @@ static bool class_has_usable_intpri(struct mpam_props *cprops)
 	return false;
 }
 
+static bool class_has_usable_max_limit(struct mpam_props *cprops)
+{
+	if (mpam_has_feature(mpam_feat_max_limit, cprops))
+		return true;
+
+	return false;
+}
+
 /*
  * Calculate the percentage change from each implemented bit in the control
  * This can return 0 when BWA_WD is greater than 6. (100 / (1<<7) == 0)
@@ -722,8 +730,8 @@ static void mpam_resctrl_pick_caches(void)
 
 static void mpam_resctrl_pick_mba(void)
 {
+	bool has_mba, has_mbw_min, has_intpri, has_limit;
 	struct mpam_resctrl_res *res;
-	bool has_mba, has_mbw_min, has_intpri;
 	struct mpam_class *class;
 	int idx;
 
@@ -736,6 +744,7 @@ static void mpam_resctrl_pick_mba(void)
 		has_mba = class_has_usable_mba(cprops);
 		has_mbw_min = class_has_usable_mbw_min(cprops);
 		has_intpri = class_has_usable_intpri(cprops);
+		has_limit = class_has_usable_max_limit(cprops);
 
 		if (class->level < 3)
 			continue;
@@ -759,6 +768,12 @@ static void mpam_resctrl_pick_mba(void)
 			res = &mpam_resctrl_exports[RDT_RESOURCE_MB_PRI];
 			res->class = class;
 			res->resctrl_res.name = "MBPRI";
+		}
+
+		if (has_limit) {
+			res = &mpam_resctrl_exports[RDT_RESOURCE_MB_HDL];
+			res->class = class;
+			res->resctrl_res.name = "MBHDL";
 		}
 	}
 	srcu_read_unlock(&mpam_srcu, idx);
@@ -980,6 +995,19 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 			r->alloc_capable = true;
 		break;
 
+	case RDT_RESOURCE_MB_HDL:
+		r->format_str = "%d=%0*u";
+		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
+		r->fflags = RFTYPE_RES_MB;
+		r->default_ctrl = 1;
+		r->data_width = 1;
+
+		r->membw.bw_gran = 1;
+
+		if (class_has_usable_max_limit(cprops))
+			r->alloc_capable = true;
+		break;
+
 	default:
 		break;
 	}
@@ -1126,6 +1154,10 @@ u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_domain *d,
 		configured_by = mpam_feat_mbw_min;
 		break;
 
+	case RDT_RESOURCE_MB_HDL:
+		configured_by = mpam_feat_max_limit;
+		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -1151,6 +1183,8 @@ u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_domain *d,
 		return mbw_max_to_percent(cfg->mbw_max, cprops->bwa_wd);
 	case mpam_feat_mbw_min:
 		return mbw_max_to_percent(cfg->mbw_min, cprops->bwa_wd);
+	case mpam_feat_max_limit:
+		return cfg->max_limit;
 	default:
 		return -EINVAL;
 	}
@@ -1218,6 +1252,10 @@ int resctrl_arch_update_one(struct rdt_resource *r, struct rdt_domain *d,
 	case RDT_RESOURCE_MB_MIN:
 		cfg.mbw_min = percent_to_mbw_max(cfg_val, cprops->bwa_wd);
 		mpam_set_feature(mpam_feat_mbw_min, &cfg);
+		break;
+	case RDT_RESOURCE_MB_HDL:
+		cfg.max_limit = cfg_val;
+		mpam_set_feature(mpam_feat_max_limit, &cfg);
 		break;
 	default:
 		return -EINVAL;
