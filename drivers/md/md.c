@@ -975,7 +975,8 @@ void md_super_write(struct mddev *mddev, struct md_rdev *rdev,
 	if (test_bit(Faulty, &rdev->flags))
 		return;
 
-	bio = bio_alloc_bioset(GFP_NOIO, 1, &mddev->sync_set);
+	bio = bio_alloc_bioset(REQ_IDLE | REQ_META | GFP_NOIO,
+			      1, &mddev->sync_set);
 
 	atomic_inc(&rdev->nr_pending);
 
