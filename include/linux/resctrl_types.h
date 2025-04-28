@@ -84,6 +84,9 @@ enum resctrl_res_level {
 	RDT_RESOURCE_L3_MIN,
 	RDT_RESOURCE_L2_MIN,
 	RDT_RESOURCE_MB_MIN,
+	RDT_RESOURCE_L3_PRI,
+	RDT_RESOURCE_L2_PRI,
+	RDT_RESOURCE_MB_PRI,
 #endif
 
 	/* Must be the last */
