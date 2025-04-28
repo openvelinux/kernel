@@ -607,8 +607,10 @@ static void mpam_ris_hw_probe(struct mpam_msc_ris *ris)
 			mpam_set_feature(mpam_feat_mbw_part, props);
 
 		props->bwa_wd = FIELD_GET(MPAMF_MBW_IDR_BWA_WD, mbw_features);
-		if (props->bwa_wd && FIELD_GET(MPAMF_MBW_IDR_HAS_MAX, mbw_features))
+		if (props->bwa_wd && FIELD_GET(MPAMF_MBW_IDR_HAS_MAX, mbw_features)) {
 			mpam_set_feature(mpam_feat_mbw_max, props);
+			mpam_set_feature(mpam_feat_max_limit, props);
+		}
 
 		if (props->bwa_wd && FIELD_GET(MPAMF_MBW_IDR_HAS_MIN, mbw_features))
 			mpam_set_feature(mpam_feat_mbw_min, props);
@@ -1190,6 +1192,7 @@ static void mpam_reset_msc_bitmap(struct mpam_msc *msc, u16 reg, u16 wd)
 static void mpam_reprogram_ris_partid(struct mpam_msc_ris *ris, u16 partid,
 				      struct mpam_config *cfg)
 {
+	bool limit;
 	u32 pri_val = 0;
 	u16 intpri, dspri;
 	u16 cmax = MPAMCFG_CMAX_CMAX;
@@ -1243,8 +1246,16 @@ static void mpam_reprogram_ris_partid(struct mpam_msc_ris *ris, u16 partid,
 
 	if (mpam_has_feature(mpam_feat_mbw_max, rprops)) {
 		if (mpam_has_feature(mpam_feat_mbw_max, cfg))
-			mpam_write_partsel_reg(msc, MBW_MAX, cfg->mbw_max |
-									MPAMCFG_MBW_MAX_HARDLIM);
+			bwa_fract = cfg->mbw_max;
+
+		if (mpam_has_feature(mpam_feat_max_limit, cfg))
+			limit = cfg->max_limit;
+		else
+			limit = false;
+
+		if (limit)
+			mpam_write_partsel_reg(msc, MBW_MAX, bwa_fract |
+					       MPAMCFG_MBW_MAX_HARDLIM);
 		else
 			mpam_write_partsel_reg(msc, MBW_MAX, bwa_fract);
 	}
