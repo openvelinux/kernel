@@ -439,6 +439,13 @@ static bool cache_has_usable_cpor(struct mpam_class *class)
 	return (class->props.cpbm_wd <= RESCTRL_MAX_CBM);
 }
 
+static bool cache_has_usable_cmax(struct mpam_class *class)
+{
+	struct mpam_props *cprops = &class->props;
+
+	return mpam_has_feature(mpam_feat_ccap_part, cprops);
+}
+
 static bool cache_has_usable_csu(struct mpam_class *class)
 {
 	struct mpam_props *cprops;
@@ -595,6 +602,7 @@ static void mpam_resctrl_pick_caches(void)
 {
 	int idx;
 	unsigned int cache_size;
+	bool has_cpor, has_cmax;
 	struct mpam_class *class;
 	struct mpam_resctrl_res *res;
 
@@ -603,7 +611,9 @@ static void mpam_resctrl_pick_caches(void)
 	idx = srcu_read_lock(&mpam_srcu);
 	list_for_each_entry_rcu(class, &mpam_classes, classes_list) {
 		struct mpam_props *cprops = &class->props;
-		bool has_cpor = cache_has_usable_cpor(class);
+
+		has_cpor = cache_has_usable_cpor(class);
+		has_cmax = cache_has_usable_cmax(class);
 
 		if (class->type != MPAM_CLASS_CACHE) {
 			pr_debug("pick_caches: Class is not a cache\n");
@@ -645,6 +655,17 @@ static void mpam_resctrl_pick_caches(void)
 			} else {
 				res = &mpam_resctrl_exports[RDT_RESOURCE_L3];
 				res->resctrl_res.name = "L3";
+			}
+			res->class = class;
+		}
+
+		if (has_cmax) {
+			if (class->level == 2) {
+				res = &mpam_resctrl_exports[RDT_RESOURCE_L2_MAX];
+				res->resctrl_res.name = "L2MAX";
+			} else {
+				res = &mpam_resctrl_exports[RDT_RESOURCE_L3_MAX];
+				res->resctrl_res.name = "L3MAX";
 			}
 			res->class = class;
 		}
@@ -821,6 +842,22 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		}
 		break;
 
+	case RDT_RESOURCE_L3_MAX:
+	case RDT_RESOURCE_L2_MAX:
+		r->format_str = "%d=%0*u";
+		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
+		r->fflags = RFTYPE_RES_CACHE;
+		r->default_ctrl = MAX_MBA_BW;
+		r->data_width = 3;
+		r->cache_level = class->level;
+
+		if (cache_has_usable_cmax(class))
+			r->alloc_capable = true;
+
+		r->membw.min_bw = 0;
+		r->membw.bw_gran = max(100 / (1 << cprops->cmax_wd), 1);
+		break;
+
 	default:
 		break;
 	}
@@ -939,6 +976,11 @@ u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_domain *d,
 	case RDT_RESOURCE_L3:
 		configured_by = mpam_feat_cpor_part;
 		break;
+	case RDT_RESOURCE_L2_MAX:
+	case RDT_RESOURCE_L3_MAX:
+		configured_by = mpam_feat_ccap_part;
+		break;
+
 	case RDT_RESOURCE_MBA:
 		if (mba_class_use_mbw_part(cprops)) {
 			configured_by = mpam_feat_mbw_part;
@@ -960,6 +1002,8 @@ u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_domain *d,
 	case mpam_feat_cpor_part:
 		/* TODO: Scaling is not yet supported */
 		return cfg->cpbm;
+	case mpam_feat_ccap_part:
+		return mbw_max_to_percent(cfg->cmax, cprops->cmax_wd);
 	case mpam_feat_mbw_part:
 		/* TODO: Scaling is not yet supported */
 		return mbw_pbm_to_percent(cfg->mbw_pbm, cprops);
@@ -1001,6 +1045,11 @@ int resctrl_arch_update_one(struct rdt_resource *r, struct rdt_domain *d,
 		/* TODO: Scaling is not yet supported */
 		cfg.cpbm = cfg_val;
 		mpam_set_feature(mpam_feat_cpor_part, &cfg);
+		break;
+	case RDT_RESOURCE_L2_MAX:
+	case RDT_RESOURCE_L3_MAX:
+		cfg.cmax = percent_to_mbw_max(cfg_val, cprops->cmax_wd);
+		mpam_set_feature(mpam_feat_ccap_part, &cfg);
 		break;
 	case RDT_RESOURCE_MBA:
 		if (mba_class_use_mbw_part(cprops)) {

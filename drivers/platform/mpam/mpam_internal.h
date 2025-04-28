@@ -159,6 +159,7 @@ struct mpam_config {
 	u32	cpbm;
 	u32	mbw_pbm;
 	u16	mbw_max;
+	u16	cmax;
 };
 
 struct mpam_component {
