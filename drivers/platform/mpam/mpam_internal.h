@@ -52,7 +52,7 @@ struct mpam_msc
 	struct mpam_msc * __percpu	*error_dev_id;
 
 	atomic_t		online_refs;
-	
+
 	struct mutex		lock;
 	bool			probed;
 	bool			error_irq_requested;
@@ -162,6 +162,7 @@ struct mpam_config {
 	u32	cpbm;
 	u32	mbw_pbm;
 	u16	mbw_max;
+	u16	cmax;
 };
 
 struct mpam_component
