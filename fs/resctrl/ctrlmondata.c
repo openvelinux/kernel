@@ -45,14 +45,15 @@ static bool bw_validate(char *buf, u32 *data, struct rdt_resource *r)
 	 * Only linear delay values is supported for current Intel SKUs.
 	 */
 	if (!r->membw.delay_linear && r->membw.arch_needs_linear) {
-		rdt_last_cmd_puts("No support for non-linear MB domains\n");
+		rdt_last_cmd_printf("No support for non-linear %s domains\n",
+				    r->name);
 		return false;
 	}
 
 	ret = kstrtou32(buf, 10, &bw);
 	if (ret) {
-		rdt_last_cmd_printf("Invalid MB value %s\n", buf);
-		return false;
+		rdt_last_cmd_printf("Non-decimal digit in %s value %s\n",
+				    r->name, buf);
 	}
 
 	/* Nothing else to do if software controller is enabled. */
@@ -62,8 +63,9 @@ static bool bw_validate(char *buf, u32 *data, struct rdt_resource *r)
 	}
 
 	if (bw < r->membw.min_bw || bw > r->default_ctrl) {
-		rdt_last_cmd_printf("MB value %u out of range [%d,%d]\n",
-				    bw, r->membw.min_bw, r->default_ctrl);
+		rdt_last_cmd_printf("%s value %d out of range [%d,%d]\n",
+				    r->name, bw, r->membw.min_bw,
+				    r->default_ctrl);
 		return false;
 	}
 
@@ -232,7 +234,7 @@ static int parse_cbm(struct rdt_parse_data *data, struct resctrl_schema *s,
 
 static ctrlval_parser_t *get_parser(struct rdt_resource *res)
 {
-	if (res->fflags & RFTYPE_RES_CACHE)
+	if (res->schema_fmt == RESCTRL_SCHEMA_BITMAP)
 		return &parse_cbm;
 	else
 		return &parse_bw;

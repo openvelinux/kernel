@@ -1541,11 +1541,11 @@ static int rdtgroup_size_show(struct kernfs_open_file *of,
 					ctrl = resctrl_arch_get_config(r, d,
 								       closid,
 								       type);
-				if (r->rid == RDT_RESOURCE_MBA ||
-				    r->rid == RDT_RESOURCE_SMBA)
-					size = ctrl;
-				else
+				if (r->rid == RDT_RESOURCE_L3 ||
+				    r->rid == RDT_RESOURCE_L2)
 					size = rdtgroup_cbm_to_size(r, d, ctrl);
+				else
+					size = ctrl;
 			}
 			seq_printf(s, "%d=%u", d->id, size);
 			sep = true;
@@ -2143,6 +2143,11 @@ static int rdtgroup_create_info_dir(struct kernfs_node *parent_kn)
 	/* loop over enabled controls, these are all alloc_capable */
 	list_for_each_entry(s, &resctrl_schema_all, list) {
 		r = s->res;
+
+		/* Not supported yet */
+		if (r->rid > RDT_RESOURCE_SMBA)
+			continue;
+
 		fflags = r->fflags | RFTYPE_CTRL_INFO;
 		ret = rdtgroup_mkdir_info_resdir(s, s->name, fflags);
 		if (ret)
