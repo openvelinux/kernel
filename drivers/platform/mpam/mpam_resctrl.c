@@ -537,6 +537,9 @@ static u32 mbw_max_to_percent(u16 mbw_max, u8 wd)
 	u8 bit;
 	u32 divisor = 2, value = 0, precision = get_wd_precision(wd);
 
+	if (mbw_max == GENMASK(15, 15 - wd + 1))
+		return MAX_MBA_BW;
+
 	for (bit = 15; bit; bit--) {
 		if (mbw_max & BIT(bit))
 			value += MAX_MBA_BW * precision / divisor;
@@ -565,6 +568,9 @@ static u16 percent_to_mbw_max(u32 pc, u8 wd)
 
 	if (WARN_ON_ONCE(wd > 15))
 		return MAX_MBA_BW;
+
+	if (pc == MAX_MBA_BW)
+		return GENMASK(15, 15 - wd + 1);
 
 	pc *= precision;
 
@@ -632,22 +638,25 @@ static void mpam_resctrl_pick_caches(void)
 		if (mpam_has_feature(mpam_feat_msmon_csu, cprops))
 			update_rmid_limits(cache_size);
 
-		if (class->level == 2) {
-			res = &mpam_resctrl_exports[RDT_RESOURCE_L2];
-			res->resctrl_res.name = "L2";
-		} else {
-			res = &mpam_resctrl_exports[RDT_RESOURCE_L3];
-			res->resctrl_res.name = "L3";
+		if (has_cpor) {
+			if (class->level == 2) {
+				res = &mpam_resctrl_exports[RDT_RESOURCE_L2];
+				res->resctrl_res.name = "L2";
+			} else {
+				res = &mpam_resctrl_exports[RDT_RESOURCE_L3];
+				res->resctrl_res.name = "L3";
+			}
+			res->class = class;
 		}
-		res->class = class;
 	}
 	srcu_read_unlock(&mpam_srcu, idx);
 }
 
 static void mpam_resctrl_pick_mba(void)
 {
-	struct mpam_class *class, *candidate_class = NULL;
 	struct mpam_resctrl_res *res;
+	struct mpam_class *class;
+	bool has_mba;
 	int idx;
 
 	lockdep_assert_cpus_held();
@@ -655,6 +664,8 @@ static void mpam_resctrl_pick_mba(void)
 	idx = srcu_read_lock(&mpam_srcu);
 	list_for_each_entry_rcu(class, &mpam_classes, classes_list) {
 		struct mpam_props *cprops = &class->props;
+
+		has_mba = class_has_usable_mba(cprops);
 
 		if (class->level < 3)
 			continue;
@@ -665,21 +676,13 @@ static void mpam_resctrl_pick_mba(void)
 		if (!cpumask_equal(&class->affinity, cpu_possible_mask))
 			continue;
 
-		/*
-		 * mba_sc reads the mbm_local counter, and waggles the MBA controls.
-		 * mbm_local is implicitly part of the L3, pick a resource to be MBA
-		 * that as close as possible to the L3.
-		 */
-		if (!candidate_class || class->level < candidate_class->level)
-			candidate_class = class;
+		if (has_mba) {
+			res = &mpam_resctrl_exports[RDT_RESOURCE_MBA];
+			res->class = class;
+			res->resctrl_res.name = "MB";
+		}
 	}
 	srcu_read_unlock(&mpam_srcu, idx);
-
-	if (candidate_class) {
-		res = &mpam_resctrl_exports[RDT_RESOURCE_MBA];
-		res->class = candidate_class;
-		res->resctrl_res.name = "MB";
-	}
 }
 
 bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt)
@@ -733,14 +736,15 @@ void resctrl_arch_reset_rmid_all(struct rdt_resource *r, struct rdt_domain *d)
 static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 {
 	struct mpam_class *class = res->class;
+	struct mpam_props *cprops = &class->props;
 	struct rdt_resource *r = &res->resctrl_res;
 	bool has_mbwu = class_has_usable_mbwu(class);
+	bool has_csu = cache_has_usable_csu(class);
 
 	/* Is this one of the two well-known caches? */
-	if (res->resctrl_res.rid == RDT_RESOURCE_L2 ||
-	    res->resctrl_res.rid == RDT_RESOURCE_L3) {
-		bool has_csu = cache_has_usable_csu(class);
-
+	switch (res->resctrl_res.rid) {
+	case RDT_RESOURCE_L2:
+	case RDT_RESOURCE_L3:
 		/* TODO: Scaling is not yet supported */
 		r->cache.cbm_len = class->props.cpbm_wd;
 		r->cache.arch_has_sparse_bitmasks = true;
@@ -750,6 +754,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 
 		/* TODO: kill these properties off as they are derivatives */
 		r->format_str = "%d=%0*x";
+		r->schema_fmt = RESCTRL_SCHEMA_BITMAP;
 		r->fflags = RFTYPE_RES_CACHE;
 		r->default_ctrl = BIT_MASK(class->props.cpbm_wd) - 1;
 		r->data_width = (class->props.cpbm_wd + 3) / 4;
@@ -763,7 +768,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		 */
 		r->cache.shareable_bits = r->default_ctrl;
 
-		if (mpam_has_feature(mpam_feat_cpor_part, &class->props)) {
+		if (mpam_has_feature(mpam_feat_cpor_part, cprops)) {
 			r->alloc_capable = true;
 			exposed_alloc_capable = true;
 		}
@@ -787,11 +792,12 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		    class->level == 3) {
 			r->mon_capable = true;
 		}
-	} else if (res->resctrl_res.rid == RDT_RESOURCE_MBA) {
-		struct mpam_props *cprops = &class->props;
+		break;
 
+	case RDT_RESOURCE_MBA:
 		/* TODO: kill these properties off as they are derivatives */
 		r->format_str = "%d=%0*u";
+		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_MB;
 		r->default_ctrl = MAX_MBA_BW;
 		r->data_width = 3;
@@ -813,6 +819,10 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 			mbm_total_class = class;
 			r->mon_capable = true;
 		}
+		break;
+
+	default:
+		break;
 	}
 
 	if (r->mon_capable) {
@@ -826,7 +836,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		 * For mpam, each control group has its own pmg/rmid
 		 * space.
 		 */
-		r->num_rmid = 1;
+		r->num_rmid = mpam_partid_max * mpam_pmg_max;
 	}
 
 	return 0;
@@ -982,6 +992,8 @@ int resctrl_arch_update_one(struct rdt_resource *r, struct rdt_domain *d,
 	partid = resctrl_get_config_index(closid, t);
 	if (!r->alloc_capable || partid >= resctrl_arch_get_num_closid(r))
 		return -EINVAL;
+
+	cfg = dom->comp->cfg[partid];
 
 	switch (r->rid) {
 	case RDT_RESOURCE_L2:
