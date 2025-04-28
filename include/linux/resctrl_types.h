@@ -81,6 +81,9 @@ enum resctrl_res_level {
 #ifdef CONFIG_ARM64_MPAM
 	RDT_RESOURCE_L3_MAX,
 	RDT_RESOURCE_L2_MAX,
+	RDT_RESOURCE_L3_MIN,
+	RDT_RESOURCE_L2_MIN,
+	RDT_RESOURCE_MB_MIN,
 #endif
 
 	/* Must be the last */

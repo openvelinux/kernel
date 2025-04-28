@@ -577,9 +577,14 @@ static void mpam_ris_hw_probe(struct mpam_msc_ris *ris)
 		u32 ccap_features = mpam_read_partsel_reg(msc, CCAP_IDR);
 
 		props->cmax_wd = FIELD_GET(MPAMF_CCAP_IDR_CMAX_WD, ccap_features);
-		if (props->cmax_wd &&
-		   !FIELD_GET(MPAMF_CCAP_IDR_NO_CMAX, ccap_features))
-			mpam_set_feature(mpam_feat_ccap_part, props);
+
+		if (props->cmax_wd) {
+			if (!FIELD_GET(MPAMF_CCAP_IDR_NO_CMAX, ccap_features))
+				mpam_set_feature(mpam_feat_ccap_part, props);
+
+			if (FIELD_GET(MPAMF_CCAP_IDR_HAS_CMIN, ccap_features))
+				mpam_set_feature(mpam_feat_cmin, props);
+		}
 	}
 
 	/* Cache Portion partitioning */
@@ -1215,6 +1220,13 @@ static void mpam_reprogram_ris_partid(struct mpam_msc_ris *ris, u16 partid,
 			mpam_write_partsel_reg(msc, CMAX, cmax);
 	}
 
+	if (mpam_has_feature(mpam_feat_cmin, rprops)) {
+		if (mpam_has_feature(mpam_feat_cmin, cfg))
+			mpam_write_partsel_reg(msc, CMIN, cfg->cmin);
+		else
+			mpam_write_partsel_reg(msc, CMIN, 0);
+	}
+
 	if (mpam_has_feature(mpam_feat_mbw_part, rprops)) {
 		if (mpam_has_feature(mpam_feat_mbw_part, cfg))
 			mpam_write_partsel_reg(msc, MBW_PBM, cfg->mbw_pbm);
@@ -1223,8 +1235,12 @@ static void mpam_reprogram_ris_partid(struct mpam_msc_ris *ris, u16 partid,
 					      rprops->mbw_pbm_bits);
 	}
 
-	if (mpam_has_feature(mpam_feat_mbw_min, rprops))
-		mpam_write_partsel_reg(msc, MBW_MIN, 0);
+	if (mpam_has_feature(mpam_feat_mbw_min, rprops)) {
+		if (mpam_has_feature(mpam_feat_mbw_min, cfg))
+			mpam_write_partsel_reg(msc, MBW_MIN, cfg->mbw_min);
+		else
+			mpam_write_partsel_reg(msc, MBW_MIN, 0);
+	}
 
 	if (mpam_has_feature(mpam_feat_mbw_max, rprops)) {
 		if (mpam_has_feature(mpam_feat_mbw_max, cfg))
