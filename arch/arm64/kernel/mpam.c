@@ -8,6 +8,7 @@
 #include <linux/jump_label.h>
 #include <linux/percpu.h>
 #include <linux/crash_dump.h>
+#include <linux/resctrl.h>
 
 DEFINE_STATIC_KEY_FALSE(arm64_mpam_has_hcr);
 DEFINE_STATIC_KEY_FALSE(mpam_enabled);
@@ -18,9 +19,21 @@ static int mpam_pm_notifier(struct notifier_block *self,
 			    unsigned long cmd, void *v)
 {
 	u64 regval;
-	int cpu = smp_processor_id();
+	struct rdt_resource *r;
+	int i, cpu = smp_processor_id();
 
 	switch (cmd) {
+	case CPU_PM_ENTER:
+		if (!resctrl_mounted)
+			return NOTIFY_OK;
+
+		for (i = 0; i < RDT_NUM_RESOURCES; i++) {
+			r = resctrl_arch_get_resource(i);
+			if (!r->invisible && r->is_volatile)
+				return NOTIFY_BAD;
+		}
+
+		return NOTIFY_OK;
 	case CPU_PM_EXIT:
 		/*
 		 * Don't use mpam_thread_switch() as the system register
