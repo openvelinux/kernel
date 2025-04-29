@@ -2033,6 +2033,11 @@ static void __maybe_unused
 cpu_enable_mpam(const struct arm64_cpu_capabilities *entry)
 {
 	u64 idr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
+	int cpu = smp_processor_id();
+	u64 regval = 0;
+
+	if (IS_ENABLED(CONFIG_ARM64_MPAM))
+		regval = READ_ONCE(per_cpu(arm64_mpam_current, cpu));
 
 	/*
 	 * Initialise MPAM EL2 registers and disable EL2 traps.
@@ -2049,6 +2054,7 @@ cpu_enable_mpam(const struct arm64_cpu_capabilities *entry)
 	 * been throttled to release the lock.
 	 */
 	write_sysreg_s(0, SYS_MPAM1_EL1);
+	write_sysreg_s(regval, SYS_MPAM0_EL1);
 }
 
 static void mpam_extra_caps(void)
