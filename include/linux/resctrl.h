@@ -218,6 +218,7 @@ struct rdt_resource {
 	int			rid;
 	bool			alloc_capable;
 	bool			mon_capable;
+	bool			invisible;
 	int			num_rmid;
 	int			cache_level;
 	struct resctrl_cache	cache;

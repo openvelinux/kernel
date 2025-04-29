@@ -2367,6 +2367,7 @@ static void rdt_disable_ctx(void)
 
 static int rdt_enable_ctx(struct rdt_fs_context *ctx)
 {
+	struct rdt_resource *r;
 	int ret = 0;
 
 	if (ctx->enable_cdpl2) {
@@ -2389,6 +2390,13 @@ static int rdt_enable_ctx(struct rdt_fs_context *ctx)
 
 	if (ctx->enable_debug)
 		resctrl_debug = true;
+
+	r = resctrl_arch_get_resource(RDT_RESOURCE_L2);
+	/* Only arm64 arch hides L2 resource by default */
+	if (IS_ENABLED(CONFIG_ARM64_MPAM) && !ctx->enable_l2)
+		r->invisible = true;
+	else
+		r->invisible = false;
 
 	return 0;
 
@@ -2612,6 +2620,7 @@ enum rdt_param {
 	Opt_cdpl2,
 	Opt_mba_mbps,
 	Opt_debug,
+	Opt_l2,
 	nr__rdt_params
 };
 
@@ -2620,6 +2629,7 @@ static const struct fs_parameter_spec rdt_fs_parameters[] = {
 	fsparam_flag("cdpl2",		Opt_cdpl2),
 	fsparam_flag("mba_MBps",	Opt_mba_mbps),
 	fsparam_flag("debug",		Opt_debug),
+	fsparam_flag("l2",		Opt_l2),
 	{}
 };
 
@@ -2647,6 +2657,9 @@ static int rdt_parse_param(struct fs_context *fc, struct fs_parameter *param)
 		return 0;
 	case Opt_debug:
 		ctx->enable_debug = true;
+		return 0;
+	case Opt_l2:
+		ctx->enable_l2 = true;
 		return 0;
 	}
 
@@ -2995,6 +3008,9 @@ static int mkdir_mondata_all(struct kernfs_node *parent_kn,
 	for (i = 0; i < RDT_NUM_RESOURCES; i++) {
 		r = resctrl_arch_get_resource(i);
 		if (!r->mon_capable)
+			continue;
+
+		if (r->invisible)
 			continue;
 
 		ret = mkdir_mondata_subdir_alldom(kn, r, prgrp);
