@@ -64,6 +64,8 @@ static inline bool resctrl_arch_event_is_free_running(enum resctrl_event_id evt)
 bool resctrl_arch_alloc_capable(void);
 bool resctrl_arch_mon_capable(void);
 bool resctrl_arch_is_llc_occupancy_enabled(void);
+bool resctrl_arch_is_l2c_occupancy_enabled(void);
+bool resctrl_arch_is_mbm_core_enabled(void);
 bool resctrl_arch_is_mbm_local_enabled(void);
 bool resctrl_arch_is_mbm_total_enabled(void);
 bool resctrl_arch_would_mbm_overflow(void);

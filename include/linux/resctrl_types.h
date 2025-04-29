@@ -99,11 +99,21 @@ enum resctrl_res_level {
 /*
  * Event IDs, the values match those used to program IA32_QM_EVTSEL before
  * reading IA32_QM_CTR on RDT systems.
+ *
+ * Monitor Event IDs, representative a variety of monitoring events:
+ * QOS_L3_OCCUP_EVENT_ID:     L3 Cache Occupancy statistics event
+ * QOS_L3_MBM_TOTAL_EVENT_ID: Global Memory Bandwidth statistics event
+ * QOS_L3_MBM_LOCAL_EVENT_ID: L3 Cache Bandwidth statistics event
+ * QOS_L2_OCCUP_EVENT_ID:     L2 Cache Occupancy statistics event
+ * QOS_L2_MBM_CORE_EVENT_ID:  L2 Cache Bandwidth statistics event
  */
 enum resctrl_event_id {
 	QOS_L3_OCCUP_EVENT_ID		= 0x01,
 	QOS_L3_MBM_TOTAL_EVENT_ID	= 0x02,
 	QOS_L3_MBM_LOCAL_EVENT_ID	= 0x03,
+
+	QOS_L2_OCCUP_EVENT_ID,
+	QOS_L2_MBM_CORE_EVENT_ID,
 };
 
 #endif /* __LINUX_RESCTRL_TYPES_H */
