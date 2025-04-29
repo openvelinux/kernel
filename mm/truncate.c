@@ -195,6 +195,7 @@ int truncate_inode_folio(struct address_space *mapping, struct folio *folio)
 	filemap_remove_folio(folio);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(truncate_inode_folio);
 
 /*
  * Handle partial folios.  The folio may be entirely within the

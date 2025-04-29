@@ -4,12 +4,12 @@
  * as an allocator for guest_memfd.
  */
 
-#include <linux/mm_types.h>
 #include <linux/guestmem.h>
 #include <linux/hugetlb.h>
 #include <linux/hugetlb_cgroup.h>
 #include <linux/mempolicy.h>
 #include <linux/mm.h>
+#include <linux/mm_types.h>
 #include <linux/pagemap.h>
 
 #include <uapi/linux/guestmem.h>
