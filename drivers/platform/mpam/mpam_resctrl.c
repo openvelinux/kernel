@@ -905,6 +905,14 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		 */
 		if (has_csu && class->type == MPAM_CLASS_CACHE)
 			r->mon_capable = true;
+
+		/*
+		 * The power domain of L2 cache msc is shared with the
+		 * core's, which will cause information of the L2 msc to
+		 * be lost when the core enter power down state.
+		 */
+		if (class->level <= 2)
+			r->is_volatile = true;
 		break;
 
 	case RDT_RESOURCE_MBA:
@@ -1434,6 +1442,27 @@ int mpam_resctrl_online_cpu(unsigned int cpu)
 	}
 
 	resctrl_online_cpu(cpu);
+	return 0;
+}
+
+int mpam_resctrl_prepare_offline(void)
+{
+	struct mpam_resctrl_res *res;
+	int i;
+
+	if (resctrl_mounted) {
+		for (i = 0; i < RDT_NUM_RESOURCES; i++) {
+			res = &mpam_resctrl_exports[i];
+
+			if (res->resctrl_res.is_volatile &&
+			   !res->resctrl_res.invisible) {
+				pr_info("%s is working, umount /sys/fs/resctrl first.\n",
+					res->resctrl_res.name);
+				return -EBUSY;
+			}
+		}
+	}
+
 	return 0;
 }
 
