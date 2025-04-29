@@ -40,6 +40,10 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_GUESTMEM_HUGETLB
+#include "guestmem_hugetlb.h"
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/pagemap.h>
 
@@ -111,6 +115,11 @@ static void free_typed_folio(struct folio *folio)
 #ifdef CONFIG_HUGETLBFS
 	case PGTY_hugetlb:
 		free_huge_folio(folio);
+		return;
+#endif
+#ifdef CONFIG_GUESTMEM_HUGETLB
+	case PGTY_guestmem_hugetlb:
+		guestmem_hugetlb_handle_folio_put(folio);
 		return;
 #endif
 	default:

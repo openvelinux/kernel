@@ -1206,6 +1206,16 @@ config SECRETMEM
 	  memory areas visible only in the context of the owning process and
 	  not mapped to other processes and other kernel page tables.
 
+config GUESTMEM_HUGETLB
+	bool "Enable guestmem_hugetlb allocator for guest_memfd"
+	depends on HUGETLBFS
+	help
+	  Enable this to make HugeTLB folios available to guest_memfd
+	  (KVM virtualization) as backing memory.
+
+	  This feature wraps HugeTLB as a custom allocator that
+	  guest_memfd can use.
+
 config ANON_VMA_NAME
 	bool "Anonymous VMA name support"
 	depends on PROC_FS && ADVISE_SYSCALLS && MMU

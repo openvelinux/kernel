@@ -950,6 +950,7 @@ enum pagetype {
 	PGTY_slab	= 0xf5,
 	PGTY_zsmalloc	= 0xf6,
 	PGTY_unaccepted	= 0xf7,
+	PGTY_guestmem_hugetlb	= 0xf9,
 
 	PGTY_mapcount_underflow = 0xff
 };
@@ -1082,6 +1083,22 @@ static inline bool PageSlab(const struct page *page)
 FOLIO_TYPE_OPS(hugetlb, hugetlb)
 #else
 FOLIO_TEST_FLAG_FALSE(hugetlb)
+#endif
+
+/*
+ * PGTY_guestmem_hugetlb, for now, is used to mark a folio as requiring further
+ * cleanup by the guestmem_hugetlb allocator.  This page type is installed only
+ * at truncation time, by guest_memfd, if further cleanup is required.  It is
+ * safe to install this page type at truncation time because by then mapcount
+ * would be 0.
+ *
+ * The plan is to always set this page type for any folios allocated by
+ * guestmem_hugetlb once typed folios can be mapped to userspace cleanly.
+ */
+#ifdef CONFIG_GUESTMEM_HUGETLB
+FOLIO_TYPE_OPS(guestmem_hugetlb, guestmem_hugetlb)
+#else
+FOLIO_TEST_FLAG_FALSE(guestmem_hugetlb)
 #endif
 
 PAGE_TYPE_OPS(Zsmalloc, zsmalloc, zsmalloc)
