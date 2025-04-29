@@ -586,4 +586,6 @@ void mpam_resctrl_exit(void);
  */
 #define MSMON_CAPT_EVNT_NOW    BIT(0)
 
+int mpam_resctrl_prepare_offline(void);
+
 #endif /* MPAM_INTERNAL_H */
