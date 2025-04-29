@@ -921,17 +921,9 @@ static u64 mpam_msmon_overflow_val(struct mpam_msc_ris *ris)
 		return GENMASK_ULL(30, 0);
 }
 
-static bool resctrl_arch_would_mbm_overflow(void)
-{
-	return read_cpuid_implementor() != ARM_CPU_IMP_HISI;
-}
-
 bool resctrl_arch_would_mbm_overflow(void)
 {
-	if (is_midr_in_range_list(read_cpuid_id(), mbwu_flowrate_list))
-		return false;
-
-	return true;
+	return read_cpuid_implementor() != ARM_CPU_IMP_HISI;
 }
 
 static void __ris_msmon_read(void *arg)

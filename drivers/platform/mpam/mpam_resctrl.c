@@ -35,6 +35,7 @@ static bool exposed_alloc_capable;
 static bool exposed_mon_capable;
 static struct mpam_class *mbm_local_class;
 static struct mpam_class *mbm_total_class;
+static struct mpam_class *mbm_core_class;
 
 /*
  * MPAM emulates CDP by setting different PARTID in the I/D fields of MPAM1_EL1.
@@ -76,6 +77,11 @@ bool resctrl_arch_is_mbm_local_enabled(void)
 bool resctrl_arch_is_mbm_total_enabled(void)
 {
 	return mbm_total_class;
+}
+
+bool resctrl_arch_is_mbm_core_enabled(void)
+{
+	return mbm_core_class;
 }
 
 bool resctrl_arch_get_cdp_enabled(enum resctrl_res_level rid)
@@ -263,6 +269,8 @@ static void *resctrl_arch_mon_ctx_alloc_no_wait(struct rdt_resource *r,
 	case QOS_L3_OCCUP_EVENT_ID:
 	case QOS_L3_MBM_LOCAL_EVENT_ID:
 	case QOS_L3_MBM_TOTAL_EVENT_ID:
+	case QOS_L2_OCCUP_EVENT_ID:
+	case QOS_L2_MBM_CORE_EVENT_ID:
 		*ret = __mon_is_rmid_idx;
 		return ret;
 
@@ -328,10 +336,12 @@ int resctrl_arch_rmid_read(struct rdt_resource	*r, struct rdt_domain *d,
 
 	switch (eventid) {
 	case QOS_L3_OCCUP_EVENT_ID:
+	case QOS_L2_OCCUP_EVENT_ID:
 		type = mpam_feat_msmon_csu;
 		break;
 	case QOS_L3_MBM_LOCAL_EVENT_ID:
 	case QOS_L3_MBM_TOTAL_EVENT_ID:
+	case QOS_L2_MBM_CORE_EVENT_ID:
 		type = mpam_feat_msmon_mbwu;
 		break;
 	default:
@@ -478,6 +488,11 @@ static bool cache_has_usable_csu(struct mpam_class *class)
 bool resctrl_arch_is_llc_occupancy_enabled(void)
 {
 	return cache_has_usable_csu(mpam_resctrl_exports[RDT_RESOURCE_L3].class);
+}
+
+bool resctrl_arch_is_l2c_occupancy_enabled(void)
+{
+	return cache_has_usable_csu(mpam_resctrl_exports[RDT_RESOURCE_L2].class);
 }
 
 static bool class_has_usable_mbwu(struct mpam_class *class)
@@ -873,19 +888,23 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		 * be local. If it's on the memory controller, its assumed to
 		 * be global.
 		 */
-		if (has_mbwu && class->level >= 3) {
-			mbm_local_class = class;
-			r->mon_capable = true;
+		if (has_mbwu) {
+			if (class->level == 3) {
+				mbm_local_class = class;
+				r->mon_capable = true;
+
+			} else if (class->level == 2) {
+				mbm_core_class = class;
+				r->mon_capable = true;
+			}
 		}
 
 		/*
 		 * CSU counters only make sense on a cache. The file is called
 		 * llc_occupancy, but its expected to the on the L3.
 		 */
-		if (has_csu && class->type == MPAM_CLASS_CACHE &&
-		    class->level == 3) {
+		if (has_csu && class->type == MPAM_CLASS_CACHE)
 			r->mon_capable = true;
-		}
 		break;
 
 	case RDT_RESOURCE_MBA:
@@ -1458,6 +1477,11 @@ static struct mon_evt llc_occupancy_event = {
 	.evtid		= QOS_L3_OCCUP_EVENT_ID,
 };
 
+static struct mon_evt l2c_occupancy_event = {
+	.name		= "l2c_occupancy",
+	.evtid		= QOS_L2_OCCUP_EVENT_ID,
+};
+
 static struct mon_evt mbm_total_event = {
 	.name		= "mbm_total_bytes",
 	.evtid		= QOS_L3_MBM_TOTAL_EVENT_ID,
@@ -1466,6 +1490,11 @@ static struct mon_evt mbm_total_event = {
 static struct mon_evt mbm_local_event = {
 	.name		= "mbm_local_bytes",
 	.evtid		= QOS_L3_MBM_LOCAL_EVENT_ID,
+};
+
+static struct mon_evt mbm_core_event = {
+	.name		= "mbm_core_bytes",
+	.evtid		= QOS_L2_MBM_CORE_EVENT_ID,
 };
 
 /*
@@ -1490,6 +1519,14 @@ static void l3_mon_evt_init(struct rdt_resource *r)
 			list_add_tail(&mbm_local_event.list, &r->evt_list);
 	}
 
+	if (r->rid == RDT_RESOURCE_L2) {
+		if (resctrl_arch_is_l2c_occupancy_enabled())
+			list_add_tail(&l2c_occupancy_event.list, &r->evt_list);
+
+		if (resctrl_arch_is_mbm_core_enabled())
+			list_add_tail(&mbm_core_event.list, &r->evt_list);
+	}
+
 	if ((r->rid == RDT_RESOURCE_MBA) &&
 	     resctrl_arch_is_mbm_total_enabled())
 		list_add_tail(&mbm_total_event.list, &r->evt_list);
@@ -1498,6 +1535,7 @@ static void l3_mon_evt_init(struct rdt_resource *r)
 int resctrl_arch_mon_resource_init(void)
 {
 	l3_mon_evt_init(resctrl_arch_get_resource(RDT_RESOURCE_L3));
+	l3_mon_evt_init(resctrl_arch_get_resource(RDT_RESOURCE_L2));
 	l3_mon_evt_init(resctrl_arch_get_resource(RDT_RESOURCE_MBA));
 
 	if (resctrl_arch_is_evt_configurable(QOS_L3_MBM_TOTAL_EVENT_ID)) {

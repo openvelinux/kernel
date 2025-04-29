@@ -113,13 +113,15 @@ void rdt_staged_configs_clear(void)
 static bool resctrl_is_mbm_enabled(void)
 {
 	return (resctrl_arch_is_mbm_total_enabled() ||
-		resctrl_arch_is_mbm_local_enabled());
+		resctrl_arch_is_mbm_local_enabled() ||
+		resctrl_arch_is_mbm_core_enabled());
 }
 
 static bool resctrl_is_mbm_event(int e)
 {
-	return (e >= QOS_L3_MBM_TOTAL_EVENT_ID &&
-		e <= QOS_L3_MBM_LOCAL_EVENT_ID);
+	return (e == QOS_L3_MBM_TOTAL_EVENT_ID ||
+		e == QOS_L3_MBM_LOCAL_EVENT_ID ||
+		e == QOS_L2_MBM_CORE_EVENT_ID);
 }
 
 /*
@@ -3839,6 +3841,15 @@ static int domain_setup_mon_state(struct rdt_resource *r, struct rdt_domain *d)
 		if (!d->mbm_local) {
 			bitmap_free(d->rmid_busy_llc);
 			kfree(d->mbm_total);
+			return -ENOMEM;
+		}
+	}
+	if (resctrl_arch_is_mbm_core_enabled()) {
+		tsize = sizeof(*d->mbm_core);
+		d->mbm_core = kcalloc(idx_limit, tsize, GFP_KERNEL);
+		if (!d->mbm_core) {
+			bitmap_free(d->rmid_busy_llc);
+			kfree(d->mbm_core);
 			return -ENOMEM;
 		}
 	}
