@@ -41,5 +41,6 @@ enum adf_device_type {
 	DEV_C3XXXVF,
 	DEV_4XXX,
 	DEV_420XX,
+	DEV_6XXX,
 };
 #endif
