@@ -19,7 +19,16 @@
 enum rpal_command_type {
 	RPAL_CMD_GET_API_VERSION_AND_CAP,
 	RPAL_CMD_GET_SERVICE_KEY,
+	RPAL_CMD_REQUEST_SERVICE,
+	RPAL_CMD_RELEASE_SERVICE,
+	RPAL_CMD_ENABLE_SERVICE,
+	RPAL_CMD_DISABLE_SERVICE,
 	RPAL_NR_CMD,
+};
+
+enum {
+	RPAL_REQUEST_MAP,
+	RPAL_REVERSE_MAP,
 };
 
 extern bool rpal_inited;
@@ -28,6 +37,12 @@ extern bool rpal_inited;
 int __init rpal_service_init(void);
 void rpal_service_exit(void);
 long rpal_ctl(unsigned long cmd, unsigned long arg0, unsigned long arg1);
+long rpal_request_service(u64 key, void __user *to);
+long rpal_release_service(u64 key);
+long rpal_enable_service(void __user *u_data, void __user *k_data, bool is_new);
+long rpal_disable_service(void);
 
 /* mm.c */
 int rpal_mmap(struct file *filp, struct vm_area_struct *vma);
+int rpal_map_service(struct rpal_service *tgt);
+void rpal_unmap_service(struct rpal_service *tgt);

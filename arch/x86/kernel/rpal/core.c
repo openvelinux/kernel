@@ -43,6 +43,19 @@ long rpal_ctl(unsigned long cmd, unsigned long arg0, unsigned long arg1)
 	case RPAL_CMD_GET_SERVICE_KEY:
 		ret = (long)cur->key;
 		break;
+	case RPAL_CMD_REQUEST_SERVICE:
+		ret = rpal_request_service((u64)arg0, (void __user *)arg1);
+		break;
+	case RPAL_CMD_RELEASE_SERVICE:
+		ret = rpal_release_service((u64)arg0);
+		break;
+	case RPAL_CMD_ENABLE_SERVICE:
+		ret = rpal_enable_service((void __user *)arg0,
+					  (void __user *)arg1, false);
+		break;
+	case RPAL_CMD_DISABLE_SERVICE:
+		ret = rpal_disable_service();
+		break;
 	default:
 		ret = -RPAL_ERR_BAD_ARG;
 		break;

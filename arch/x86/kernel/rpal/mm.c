@@ -14,6 +14,26 @@
 void rpal_munmap(struct vm_area_struct *area);
 const struct vm_operations_struct rpal_vm_ops = { .close = rpal_munmap };
 
+bool rpal_is_correct_address(struct rpal_service *rs, unsigned long address)
+{
+	if (likely(rs->base <= address &&
+		   address < rs->base + RPAL_ADDR_SPACE_SIZE))
+		return true;
+
+	/*
+	 * [rs->base, rs->base + RPAL_ADDR_SPACE_SIZE) is always a
+	 * sub range of [RPAL_ADDRESS_SPACE_LOW, RPAL_ADDRESS_SPACE_HIGH).
+	 * Therefore, we can only check whether the address is in
+	 * [RPAL_ADDRESS_SPACE_LOW, RPAL_ADDRESS_SPACE_HIGH) to determine
+	 * whether the address may belong to another RPAL service.
+	 */
+	if (address >= RPAL_ADDRESS_SPACE_LOW &&
+	    address < RPAL_ADDRESS_SPACE_HIGH)
+		return false;
+
+	return true;
+}
+
 static inline int rpal_balloon_mapping(unsigned long base, unsigned long size)
 {
 	struct vm_area_struct *vma;
@@ -73,6 +93,173 @@ out:
 	return ret;
 }
 
+/*
+ * Since the user address space size of rpal process is 512G, which
+ * is the size of one p4d, we assume p4d entry will never change after
+ * rpal process is created.
+ */
+static int mm_link_p4d(struct mm_struct *dst_mm, p4d_t src_p4d,
+		       unsigned long addr, int pkey)
+{
+	spinlock_t *dst_ptl = &dst_mm->page_table_lock;
+	unsigned long flags;
+	pgd_t *dst_pgdp;
+	p4d_t p4d, *dst_p4dp;
+	p4dval_t p4dv;
+	int ret = 0;
+
+	BUILD_BUG_ON(CONFIG_PGTABLE_LEVELS < 4);
+
+	mmap_write_lock(dst_mm);
+	spin_lock_irqsave(dst_ptl, flags);
+	dst_pgdp = pgd_offset(dst_mm, addr);
+	/*
+	 * dst_pgd must exists, otherwise we need to alloc pgd entry. When
+	 * src_p4d is freed, we also need to free the pgd entry. This should
+	 * be supported in the future.
+	 */
+	if (unlikely(pgd_none_or_clear_bad(dst_pgdp))) {
+		rpal_err("cannot find pgd entry for addr 0x%016lx\n", addr);
+		ret = -RPAL_ERR_NOMAPPING;
+		goto unlock;
+	}
+
+	dst_p4dp = p4d_offset(dst_pgdp, addr);
+	if (unlikely(!p4d_none_or_clear_bad(dst_p4dp))) {
+		rpal_err("p4d is previously mapped\n");
+		ret = -RPAL_ERR_BAD_SERVICE_STATUS;
+		goto unlock;
+	}
+
+	p4dv = p4d_val(src_p4d);
+
+	p4dv |= _PAGE_RPAL_IGN;
+
+	if (boot_cpu_has(X86_FEATURE_PTI))
+		p4d = native_make_p4d((~_PAGE_NX) & p4dv);
+	else
+		p4d = native_make_p4d(p4dv);
+
+	set_p4d(dst_p4dp, p4d);
+	spin_unlock_irqrestore(dst_ptl, flags);
+	mmap_write_unlock(dst_mm);
+
+	return 0;
+unlock:
+	spin_unlock_irqrestore(dst_ptl, flags);
+	mmap_write_unlock(dst_mm);
+	return ret;
+}
+
+static void mm_unlink_p4d(struct mm_struct *mm, unsigned long addr)
+{
+	spinlock_t *ptl = &mm->page_table_lock;
+	unsigned long flags;
+	pgd_t *pgdp;
+	p4d_t *p4dp;
+
+	mmap_write_lock(mm);
+	spin_lock_irqsave(ptl, flags);
+	pgdp = pgd_offset(mm, addr);
+	p4dp = p4d_offset(pgdp, addr);
+	p4d_clear(p4dp);
+	spin_unlock_irqrestore(ptl, flags);
+	mmap_write_unlock(mm);
+
+	flush_tlb_range(mm->mmap, addr, addr + RPAL_ADDR_SPACE_SIZE);
+}
+
+static int get_mm_p4d(struct mm_struct *mm, unsigned long addr, p4d_t *srcp)
+{
+	spinlock_t *ptl;
+	unsigned long flags;
+	pgd_t *pgdp;
+	p4d_t *p4dp;
+	int ret = 0;
+
+	ptl = &mm->page_table_lock;
+	spin_lock_irqsave(ptl, flags);
+	pgdp = pgd_offset(mm, addr);
+	if (pgd_none(*pgdp)) {
+		ret = -RPAL_ERR_BAD_SERVICE_STATUS;
+		goto out;
+	}
+
+	p4dp = p4d_offset(pgdp, addr);
+	if (p4d_none(*p4dp) || p4d_bad(*p4dp)) {
+		ret = -RPAL_ERR_BAD_SERVICE_STATUS;
+		goto out;
+	}
+	*srcp = *p4dp;
+
+out:
+	spin_unlock_irqrestore(ptl, flags);
+
+	return ret;
+}
+
+int rpal_map_service(struct rpal_service *tgt)
+{
+	struct rpal_service *cur = rpal_current_service();
+	struct mm_struct *cur_mm, *tgt_mm;
+	unsigned long cur_addr, tgt_addr;
+	p4d_t cur_p4d, tgt_p4d;
+	int pkey = 0;
+	int ret = 0;
+
+	cur_mm = current->mm;
+	tgt_mm = tgt->mm;
+	if (!mmget_not_zero(tgt_mm)) {
+		ret = -RPAL_ERR_BAD_SERVICE_STATUS;
+		goto out;
+	}
+
+	cur_addr = rpal_get_base(cur);
+	tgt_addr = rpal_get_base(tgt);
+
+	ret = get_mm_p4d(tgt_mm, tgt_addr, &tgt_p4d);
+	if (ret)
+		goto put_tgt;
+
+	ret = get_mm_p4d(cur_mm, cur_addr, &cur_p4d);
+	if (ret)
+		goto put_tgt;
+
+	ret = mm_link_p4d(cur_mm, tgt_p4d, tgt_addr, pkey);
+	if (ret)
+		goto put_tgt;
+
+	ret = mm_link_p4d(tgt_mm, cur_p4d, cur_addr, pkey);
+	if (ret) {
+		mm_unlink_p4d(cur_mm, tgt_addr);
+		goto put_tgt;
+	}
+
+put_tgt:
+	mmput(tgt_mm);
+out:
+	return ret;
+}
+
+void rpal_unmap_service(struct rpal_service *tgt)
+{
+	struct rpal_service *cur = rpal_current_service();
+	struct mm_struct *cur_mm, *tgt_mm;
+	unsigned long cur_addr, tgt_addr;
+
+	cur_mm = current->mm;
+	tgt_mm = tgt->mm;
+
+	cur_addr = rpal_get_base(cur);
+	tgt_addr = rpal_get_base(tgt);
+
+	if (mmget_not_zero(tgt_mm)) {
+		mm_unlink_p4d(tgt_mm, cur_addr);
+		mmput(tgt_mm);
+	}
+	mm_unlink_p4d(cur_mm, tgt->base);
+}
+
 void rpal_munmap(struct vm_area_struct *area)
 {
 	struct mm_struct *mm = area->vm_mm;
@@ -82,7 +269,7 @@ void rpal_munmap(struct vm_area_struct *area)
 	int refcnt = atomic_read(&rsp->refcnt);
 
 	if (mm->rpal_rs == NULL) {
-		pr_debug(
+		rpal_err(
 			"free shared page after exit_mmap or fork a child process\n");
 		return;
 	}
@@ -106,9 +293,6 @@ void rpal_munmap(struct vm_area_struct *area)
 	atomic_sub(rsp->npage, &rs->nr_shared_pages);
 	__free_pages(rsp->page, get_order(rsp->npage));
 	kfree(rsp);
-
-	pr_debug("rpal: [%d] free page user addr: 0x%016lx - 0x%016lx\n",
-		 current->pid, rsp->user_start, rsp->user_end);
 }
 
 int rpal_mmap(struct file *filp, struct vm_area_struct *vma)
@@ -126,9 +310,6 @@ int rpal_mmap(struct file *filp, struct vm_area_struct *vma)
 		ret = -EINVAL;
 		goto out;
 	}
-
-	pr_debug("rpal debug: vma->vm_start: 0x%016lx, size: 0x%016lx\n",
-		 vma->vm_start, size);
 
 	if (!IS_ALIGNED(size, PAGE_SIZE) ||
 	    !IS_ALIGNED(vma->vm_start, PAGE_SIZE)) {

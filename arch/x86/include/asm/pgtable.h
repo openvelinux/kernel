@@ -869,12 +869,25 @@ static inline int pud_large(pud_t pud)
 #if CONFIG_PGTABLE_LEVELS > 3
 static inline int p4d_none(p4d_t p4d)
 {
+#if IS_ENABLED(CONFIG_RPAL)
+	p4dval_t p4dv = native_p4d_val(p4d);
+
+	return (p4dv & _PAGE_RPAL_IGN) ||
+	       ((p4dv & ~(_PAGE_KNL_ERRATUM_MASK)) == 0);
+#else
 	return (native_p4d_val(p4d) & ~(_PAGE_KNL_ERRATUM_MASK)) == 0;
+#endif
 }
 
 static inline int p4d_present(p4d_t p4d)
 {
+#if IS_ENABLED(CONFIG_RPAL)
+	p4dval_t p4df = p4d_flags(p4d);
+
+	return (p4df & _PAGE_PRESENT) && ((p4df & _PAGE_RPAL_IGN) == 0);
+#else
 	return p4d_flags(p4d) & _PAGE_PRESENT;
+#endif
 }
 
 static inline pud_t *p4d_pgtable(p4d_t p4d)

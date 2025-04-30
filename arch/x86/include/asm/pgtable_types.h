@@ -33,6 +33,13 @@
 #define _PAGE_BIT_UFFD_WP	_PAGE_BIT_SOFTW2 /* userfaultfd wrprotected */
 #define _PAGE_BIT_SOFT_DIRTY	_PAGE_BIT_SOFTW3 /* software dirty tracking */
 #define _PAGE_BIT_DEVMAP	_PAGE_BIT_SOFTW4
+/*
+ * _PAGE_BIT_SOFTW1 is used by _PAGE_BIT_SPECIAL.
+ * but we are not conflicted with _PAGE_BIT_SPECIAL
+ * as we use it only on p4d/pud level and _PAGE_BIT_SPECIAL
+ * is only used on pte level.
+ */
+#define _PAGE_BIT_RPAL_IGN	_PAGE_BIT_SOFTW1
 
 /* If _PAGE_BIT_PRESENT is clear, we use these: */
 /* - if the user mapped it with PROT_NONE; pte_present gives true */
@@ -81,6 +88,10 @@
 #define _PAGE_SOFT_DIRTY	(_AT(pteval_t, 1) << _PAGE_BIT_SOFT_DIRTY)
 #else
 #define _PAGE_SOFT_DIRTY	(_AT(pteval_t, 0))
+#endif
+
+#if IS_ENABLED(CONFIG_RPAL)
+#define _PAGE_RPAL_IGN	(_AT(pteval_t, 1) << _PAGE_BIT_RPAL_IGN)
 #endif
 
 /*

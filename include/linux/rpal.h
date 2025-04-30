@@ -88,7 +88,27 @@ struct rpal_ctl_args {
 	unsigned long arg0;
 	unsigned long arg1;
 };
+
+struct rpal_service_metadata {
+	void __user *infos;
+	void __user *fdevs;
+	u64 key;
+	int nr_threads;
+	int id;
+	int pkey;
+};
+
+struct rpal_critical_section {
+	unsigned long ret_begin;
+	unsigned long ret_end;
+};
 /* End */
+
+struct rpal_mapped_service {
+	int pkey;
+	unsigned long type;
+	struct rpal_service *rs;
+};
 
 #define RPAL_MAX_SHARED_PAGES 1024
 struct rpal_shared_page {
@@ -123,15 +143,28 @@ struct rpal_service {
 	struct mm_struct *mm;
 	/* bad rpal binary */
 	bool bad_service;
+	bool enabled;
+
+	/* map for services required, being required and mapped  */
+	struct rpal_mapped_service service_map[RPAL_NR_ID];
+	DECLARE_BITMAP(mapped_service_bitmap, RPAL_NR_ID);
 
 	/* Fields below may change. */
 	spinlock_t lock;
 	/* Mutex for service level operations */
 	struct mutex mutex;
 
+	atomic_t req_avail_cnt;
+
 	/* pinned page for sender and receiver */
 	atomic_t nr_shared_pages;
 	struct list_head shared_pages;
+
+	/* Metadata that service provided to app. */
+	struct rpal_service_metadata rsm;
+
+	/* critical code section */
+	struct rpal_critical_section rcs;
 
 	/* delayed service put work */
 	struct delayed_work delayed_put_work;
@@ -144,6 +177,16 @@ struct rpal_service {
 	atomic_t refcnt;
 };
 
+#define rpal_for_each_mapped_service(rs, idx)                                  \
+	for (idx = find_first_bit(rs->mapped_service_bitmap, RPAL_NR_ID);      \
+	     idx < RPAL_NR_ID; idx = find_next_bit(rs->mapped_service_bitmap,  \
+						   RPAL_NR_ID, idx + 1))
+
+static inline struct rpal_mapped_service *
+rpal_get_mapped_node(struct rpal_service *rs, int id)
+{
+	return &rs->service_map[id];
+}
 
 struct rpal_service *rpal_get_service(struct rpal_service *rs);
 void rpal_put_service(struct rpal_service *rs);
@@ -178,6 +221,7 @@ void rpal_unregister_service(struct rpal_service *rs);
 /* mm.c */
 int rpal_balloon_init(unsigned long base);
 void rpal_exit_mmap(struct mm_struct *mm);
+bool rpal_is_correct_address(struct rpal_service *rs, unsigned long address);
 
 void rpal_pick_mmap_base(struct mm_struct *mm, struct rlimit *rlim_stack);
 #endif /* _LINUX_RPAL_H_ */
