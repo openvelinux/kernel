@@ -1,0 +1,9 @@
+#define RCI_APP_TLS_BASE 0
+#define RCI_APP_FCTX 16
+#define ECTX_PKRU 108
+#define ECTX_G_STATUS 104
+#define RET_BEGIN 0
+#define RET_END 8
+#define RTI_SER_BASE 8
+#define CALL_BEGIN 16
+#define CALL_END 24
