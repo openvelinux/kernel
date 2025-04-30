@@ -12668,6 +12668,46 @@ int memslot_rmap_alloc(struct kvm_memory_slot *slot, unsigned long npages)
 	return 0;
 }
 
+static inline bool kvm_is_level_aligned(u64 value, int level)
+{
+	return IS_ALIGNED(value, KVM_PAGES_PER_HPAGE(level));
+}
+
+static inline bool
+kvm_should_allow_lpage_for_slot(struct kvm_memory_slot *slot, int level)
+{
+	bool gfn_and_userspace_addr_aligned;
+	unsigned long ugfn;
+
+	ugfn = slot->userspace_addr >> PAGE_SHIFT;
+
+	/*
+	 * If addresses are not aligned wrt each other, then large page mapping
+	 * cannot be allowed for the slot since page tables only allow guest to
+	 * host translations to function at fixed levels.
+	 */
+	gfn_and_userspace_addr_aligned =
+		kvm_is_level_aligned(slot->base_gfn ^ ugfn, level);
+
+	/*
+	 * If slot->userspace_addr is 0 (disabled), 0 is always aligned so the
+	 * check is deferred to gmem.pgoff.
+	 */
+	if (!gfn_and_userspace_addr_aligned)
+		return false;
+
+	if (kvm_slot_has_gmem(slot)) {
+		bool gfn_and_gmem_pgoff_aligned;
+
+		gfn_and_gmem_pgoff_aligned = kvm_is_level_aligned(
+			slot->base_gfn ^ slot->gmem.pgoff, level);
+
+		return gfn_and_gmem_pgoff_aligned;
+	}
+
+	return true;
+}
+
 static int kvm_alloc_memslot_metadata(struct kvm *kvm,
 				      struct kvm_memory_slot *slot)
 {
@@ -12689,7 +12729,6 @@ static int kvm_alloc_memslot_metadata(struct kvm *kvm,
 
 	for (i = 1; i < KVM_NR_PAGE_SIZES; ++i) {
 		struct kvm_lpage_info *linfo;
-		unsigned long ugfn;
 		int lpages;
 		int level = i + 1;
 
@@ -12701,16 +12740,12 @@ static int kvm_alloc_memslot_metadata(struct kvm *kvm,
 
 		slot->arch.lpage_info[i - 1] = linfo;
 
-		if (slot->base_gfn & (KVM_PAGES_PER_HPAGE(level) - 1))
+		if (!kvm_is_level_aligned(slot->base_gfn, level))
 			linfo[0].disallow_lpage = 1;
-		if ((slot->base_gfn + npages) & (KVM_PAGES_PER_HPAGE(level) - 1))
+		if (!kvm_is_level_aligned(slot->base_gfn + npages, level))
 			linfo[lpages - 1].disallow_lpage = 1;
-		ugfn = slot->userspace_addr >> PAGE_SHIFT;
-		/*
-		 * If the gfn and userspace address are not aligned wrt each
-		 * other, disable large page support for this slot.
-		 */
-		if ((slot->base_gfn ^ ugfn) & (KVM_PAGES_PER_HPAGE(level) - 1)) {
+
+		if (!kvm_should_allow_lpage_for_slot(slot, level)) {
 			unsigned long j;
 
 			for (j = 0; j < lpages; ++j)
