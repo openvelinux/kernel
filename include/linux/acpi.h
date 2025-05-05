@@ -758,6 +758,10 @@ static inline u64 acpi_arch_get_root_pointer(void)
 int acpi_get_local_address(acpi_handle handle, u32 *addr);
 const char *acpi_get_subsystem_id(acpi_handle handle);
 
+#ifdef CONFIG_ACPI_MRRM
+int acpi_mrrm_max_mem_region(void);
+#endif
+
 #else	/* !CONFIG_ACPI */
 
 #define acpi_disabled 1
@@ -1068,6 +1072,11 @@ static inline u32 acpi_osc_ctx_get_cxl_control(struct acpi_osc_context *context)
 static inline bool acpi_sleep_state_supported(u8 sleep_state)
 {
 	return false;
+}
+
+static inline int acpi_mrrm_max_mem_region(void)
+{
+	return -ENOENT;
 }
 
 #endif	/* !CONFIG_ACPI */
