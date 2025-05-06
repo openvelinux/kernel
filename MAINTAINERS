@@ -21919,6 +21919,7 @@ F:	Documentation/ABI/testing/configfs-tsm
 F:	Documentation/driver-api/coco/
 F:	drivers/virt/coco/tsm*.c
 F:	include/linux/tsm*.h
+F:	samples/tsm/
 
 TTY LAYER AND SERIAL DRIVERS
 M:	Greg Kroah-Hartman <gregkh@linuxfoundation.org>
