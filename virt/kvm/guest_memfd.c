@@ -10,6 +10,7 @@
 #include <linux/pagemap.h>
 #include <linux/pseudo_fs.h>
 #include <linux/memcontrol.h>
+#include <linux/pagevec.h>
 
 #include "kvm_mm.h"
 
@@ -41,6 +42,10 @@ static struct mempolicy *kvm_gmem_get_pgoff_policy(struct kvm_gmem_inode_info *i
 						   pgoff_t index);
 
 static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index);
+static void kvm_gmem_invalidate_begin(struct kvm_gmem *gmem, pgoff_t start,
+				      pgoff_t end);
+static void kvm_gmem_invalidate_end(struct kvm_gmem *gmem, pgoff_t start,
+				    pgoff_t end);
 
 /**
  * folio_file_pfn - like folio_file_page, but return a pfn.
@@ -87,6 +92,306 @@ static struct folio *kvm_gmem_get_shared_folio(struct inode *inode, pgoff_t inde
 		return ERR_PTR(-EACCES);
 
 	return kvm_gmem_get_folio(inode, index);
+}
+
+/**
+ * kvm_gmem_shareability_store() - Sets shareability to @value for range.
+ *
+ * @mt: the shareability maple tree.
+ * @index: the range begins at this index in the inode.
+ * @nr_pages: number of PAGE_SIZE pages in this range.
+ * @value: the shareability value to set for this range.
+ *
+ * Unlike mtree_store_range(), this function also merges adjacent ranges that
+ * have the same values as an optimization. Assumes that all stores to @mt go
+ * through this function, such that adjacent ranges are always merged.
+ *
+ * Return: 0 on success and negative error otherwise.
+ */
+static int kvm_gmem_shareability_store(struct maple_tree *mt, pgoff_t index,
+				       size_t nr_pages, enum shareability value)
+{
+	MA_STATE(mas, mt, 0, 0);
+	unsigned long start;
+	unsigned long last;
+	void *entry;
+	int ret;
+
+	start = index;
+	last = start + nr_pages - 1;
+
+	mas_lock(&mas);
+
+	/* Try extending range. entry is NULL on overflow/wrap-around. */
+	mas_set_range(&mas, last + 1, last + 1);
+	entry = mas_find(&mas, last + 1);
+	if (entry && xa_to_value(entry) == value)
+		last = mas.last;
+
+	mas_set_range(&mas, start - 1, start - 1);
+	entry = mas_find(&mas, start - 1);
+	if (entry && xa_to_value(entry) == value)
+		start = mas.index;
+
+	mas_set_range(&mas, start, last);
+	ret = mas_store_gfp(&mas, xa_mk_value(value), GFP_KERNEL);
+
+	mas_unlock(&mas);
+
+	return ret;
+}
+
+struct conversion_work {
+	struct list_head list;
+	pgoff_t start;
+	size_t nr_pages;
+};
+
+static int add_to_work_list(struct list_head *list, pgoff_t start, pgoff_t last)
+{
+	struct conversion_work *work;
+
+	work = kzalloc(sizeof(*work), GFP_KERNEL);
+	if (!work)
+		return -ENOMEM;
+
+	work->start = start;
+	work->nr_pages = last + 1 - start;
+
+	list_add_tail(&work->list, list);
+
+	return 0;
+}
+
+static bool kvm_gmem_has_safe_refcount(struct address_space *mapping, pgoff_t start,
+				       size_t nr_pages, pgoff_t *error_index)
+{
+	const int filemap_get_folios_refcount = 1;
+	struct folio_batch fbatch;
+	bool refcount_safe;
+	pgoff_t last;
+	int i;
+
+	last = start + nr_pages - 1;
+	refcount_safe = true;
+
+	folio_batch_init(&fbatch);
+	while (refcount_safe &&
+	       filemap_get_folios(mapping, &start, last, &fbatch)) {
+
+		for (i = 0; i < folio_batch_count(&fbatch); ++i) {
+			int filemap_refcount;
+			int safe_refcount;
+			struct folio *f;
+
+			f = fbatch.folios[i];
+			filemap_refcount = folio_nr_pages(f);
+
+			safe_refcount = filemap_refcount + filemap_get_folios_refcount;
+			if (folio_ref_count(f) != safe_refcount) {
+				refcount_safe = false;
+				*error_index = f->index;
+				break;
+			}
+		}
+
+		folio_batch_release(&fbatch);
+	}
+
+	return refcount_safe;
+}
+
+static int kvm_gmem_shareability_apply(struct inode *inode,
+				       struct conversion_work *work,
+				       enum shareability m)
+{
+	struct maple_tree *mt;
+
+	mt = &KVM_GMEM_I(inode)->shareability;
+	return kvm_gmem_shareability_store(mt, work->start, work->nr_pages, m);
+}
+
+static int kvm_gmem_convert_compute_work(struct inode *inode, pgoff_t start,
+					 size_t nr_pages, enum shareability m,
+					 struct list_head *work_list)
+{
+	struct maple_tree *mt;
+	struct ma_state mas;
+	pgoff_t last;
+	void *entry;
+	int ret;
+
+	last = start + nr_pages - 1;
+
+	mt = &KVM_GMEM_I(inode)->shareability;
+	ret = 0;
+
+	mas_init(&mas, mt, start);
+
+	rcu_read_lock();
+	mas_for_each(&mas, entry, last) {
+		enum shareability current_m;
+		pgoff_t m_range_index;
+		pgoff_t m_range_last;
+		int ret;
+
+		m_range_index = max(mas.index, start);
+		m_range_last = min(mas.last, last);
+
+		current_m = xa_to_value(entry);
+		if (m == current_m)
+			continue;
+
+		mas_pause(&mas);
+		rcu_read_unlock();
+		/* Caller will clean this up on error. */
+		ret = add_to_work_list(work_list, m_range_index, m_range_last);
+		rcu_read_lock();
+		if (ret)
+			break;
+	}
+	rcu_read_unlock();
+
+	return ret;
+}
+
+static void kvm_gmem_convert_invalidate_begin(struct inode *inode,
+					      struct conversion_work *work)
+{
+	struct list_head *gmem_list;
+	struct kvm_gmem *gmem;
+	pgoff_t end;
+
+	end = work->start + work->nr_pages;
+
+	gmem_list = &inode->i_mapping->private_list;
+	list_for_each_entry(gmem, gmem_list, entry)
+		kvm_gmem_invalidate_begin(gmem, work->start, end);
+}
+
+static void kvm_gmem_convert_invalidate_end(struct inode *inode,
+					    struct conversion_work *work)
+{
+	struct list_head *gmem_list;
+	struct kvm_gmem *gmem;
+	pgoff_t end;
+
+	end = work->start + work->nr_pages;
+
+	gmem_list = &inode->i_mapping->private_list;
+	list_for_each_entry(gmem, gmem_list, entry)
+		kvm_gmem_invalidate_end(gmem, work->start, end);
+}
+
+static int kvm_gmem_convert_should_proceed(struct inode *inode,
+					   struct conversion_work *work,
+					   bool to_shared, pgoff_t *error_index)
+{
+	if (!to_shared) {
+		unmap_mapping_pages(inode->i_mapping, work->start,
+				    work->nr_pages, false);
+
+		if (!kvm_gmem_has_safe_refcount(inode->i_mapping, work->start,
+						work->nr_pages, error_index)) {
+			return -EAGAIN;
+		}
+	}
+
+	return 0;
+}
+
+static int kvm_gmem_convert_range(struct file *file, pgoff_t start,
+				  size_t nr_pages, bool shared,
+				  pgoff_t *error_index)
+{
+	struct conversion_work *work, *tmp, *rollback_stop_item;
+	LIST_HEAD(work_list);
+	struct inode *inode;
+	enum shareability m;
+	int ret;
+
+	inode = file_inode(file);
+
+	filemap_invalidate_lock(inode->i_mapping);
+
+	m = shared ? SHAREABILITY_ALL : SHAREABILITY_GUEST;
+	ret = kvm_gmem_convert_compute_work(inode, start, nr_pages, m, &work_list);
+	if (ret || list_empty(&work_list))
+		goto out;
+
+	list_for_each_entry(work, &work_list, list)
+		kvm_gmem_convert_invalidate_begin(inode, work);
+
+	list_for_each_entry(work, &work_list, list) {
+		ret = kvm_gmem_convert_should_proceed(inode, work, shared,
+						      error_index);
+		if (ret)
+			goto invalidate_end;
+	}
+
+	list_for_each_entry(work, &work_list, list) {
+		rollback_stop_item = work;
+		ret = kvm_gmem_shareability_apply(inode, work, m);
+		if (ret)
+			break;
+	}
+
+	if (ret) {
+		m = shared ? SHAREABILITY_GUEST : SHAREABILITY_ALL;
+		list_for_each_entry(work, &work_list, list) {
+			if (work == rollback_stop_item)
+				break;
+
+			WARN_ON(kvm_gmem_shareability_apply(inode, work, m));
+		}
+	}
+
+invalidate_end:
+	list_for_each_entry(work, &work_list, list)
+		kvm_gmem_convert_invalidate_end(inode, work);
+out:
+	filemap_invalidate_unlock(inode->i_mapping);
+
+	list_for_each_entry_safe(work, tmp, &work_list, list) {
+		list_del(&work->list);
+		kfree(work);
+	}
+
+	return ret;
+}
+
+static int kvm_gmem_ioctl_convert_range(struct file *file,
+					struct kvm_gmem_convert *param,
+					bool shared)
+{
+	pgoff_t error_index;
+	size_t nr_pages;
+	pgoff_t start;
+	int ret;
+
+	if (param->error_offset)
+		return -EINVAL;
+
+	if (param->size == 0)
+		return 0;
+
+	if (param->offset + param->size < param->offset ||
+	    param->offset > file_inode(file)->i_size ||
+	    param->offset + param->size > file_inode(file)->i_size)
+		return -EINVAL;
+
+	if (!IS_ALIGNED(param->offset, PAGE_SIZE) ||
+	    !IS_ALIGNED(param->size, PAGE_SIZE))
+		return -EINVAL;
+
+	start = param->offset >> PAGE_SHIFT;
+	nr_pages = param->size >> PAGE_SHIFT;
+
+	ret = kvm_gmem_convert_range(file, start, nr_pages, shared, &error_index);
+	if (ret)
+		param->error_offset = error_index << PAGE_SHIFT;
+
+	return ret;
 }
 
 static int __kvm_gmem_prepare_folio(struct kvm *kvm, struct kvm_memory_slot *slot,
@@ -234,15 +539,26 @@ static void kvm_gmem_invalidate_begin(struct kvm_gmem *gmem, pgoff_t start,
 	unsigned long index;
 
 	xa_for_each_range(&gmem->bindings, index, slot, start, end - 1) {
+		enum kvm_gfn_range_filter filter;
 		pgoff_t pgoff = slot->gmem.pgoff;
+
+		filter = KVM_FILTER_PRIVATE;
+		if (kvm_memslot_is_gmem_only(slot)) {
+			/*
+			 * Unmapping would also cause invalidation, but cannot
+			 * rely on mmu_notifiers to do invalidation via
+			 * unmapping, since memory may not be mapped to
+			 * userspace.
+			 */
+			filter |= KVM_FILTER_SHARED;
+		}
 
 		struct kvm_gfn_range gfn_range = {
 			.start = slot->base_gfn + max(pgoff, start) - pgoff,
 			.end = slot->base_gfn + min(pgoff + slot->npages, end) - pgoff,
 			.slot = slot,
 			.may_block = true,
-			/* guest memfd is relevant to only private mappings. */
-			.attr_filter = KVM_FILTER_PRIVATE,
+			.attr_filter = filter,
 		};
 
 		if (!found_memslot) {
@@ -562,11 +878,48 @@ bool kvm_gmem_is_private(struct kvm_memory_slot *slot, gfn_t gfn)
 }
 EXPORT_SYMBOL_GPL(kvm_gmem_is_private);
 
+static long kvm_gmem_ioctl(struct file *file, unsigned int ioctl,
+			   unsigned long arg)
+{
+	void __user *argp;
+	int r;
+
+	argp = (void __user *)arg;
+
+	switch (ioctl) {
+	case KVM_GMEM_CONVERT_SHARED:
+	case KVM_GMEM_CONVERT_PRIVATE: {
+		struct kvm_gmem_convert param;
+		bool to_shared;
+
+		r = -EFAULT;
+		if (copy_from_user(&param, argp, sizeof(param)))
+			goto out;
+
+		to_shared = ioctl == KVM_GMEM_CONVERT_SHARED;
+		r = kvm_gmem_ioctl_convert_range(file, &param, to_shared);
+		if (r) {
+			if (copy_to_user(argp, &param, sizeof(param))) {
+				r = -EFAULT;
+				goto out;
+			}
+		}
+		break;
+	}
+
+	default:
+		r = -ENOTTY;
+	}
+out:
+	return r;
+}
+
 static struct file_operations kvm_gmem_fops = {
 	.mmap		= kvm_gmem_mmap,
 	.open		= generic_file_open,
 	.release	= kvm_gmem_release,
 	.fallocate	= kvm_gmem_fallocate,
+	.unlocked_ioctl	= kvm_gmem_ioctl,
 };
 
 static struct kmem_cache *kvm_gmem_inode_cachep;
