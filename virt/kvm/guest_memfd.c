@@ -537,6 +537,29 @@ static pgoff_t kvm_gmem_get_index(struct kvm_memory_slot *slot, gfn_t gfn)
 	return gfn - slot->base_gfn + slot->gmem.pgoff;
 }
 
+bool kvm_gmem_is_private(struct kvm_memory_slot *slot, gfn_t gfn)
+{
+	struct inode *inode;
+	struct file *file;
+	pgoff_t index;
+	bool ret;
+
+	file = kvm_gmem_get_file(slot);
+	if (!file)
+		return false;
+
+	index = kvm_gmem_get_index(slot, gfn);
+	inode = file_inode(file);
+
+	filemap_invalidate_lock_shared(inode->i_mapping);
+	ret = kvm_gmem_shareability_get(inode, index) == SHAREABILITY_GUEST;
+	filemap_invalidate_unlock_shared(inode->i_mapping);
+
+	fput(file);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvm_gmem_is_private);
+
 static struct file_operations kvm_gmem_fops = {
 	.mmap		= kvm_gmem_mmap,
 	.open		= generic_file_open,
