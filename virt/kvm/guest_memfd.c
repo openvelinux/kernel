@@ -53,6 +53,11 @@ static void kvm_gmem_invalidate_begin(struct kvm_gmem *gmem, pgoff_t start,
 				      pgoff_t end);
 static void kvm_gmem_invalidate_end(struct kvm_gmem *gmem, pgoff_t start,
 				    pgoff_t end);
+static int __kvm_gmem_filemap_add_folio(struct address_space *mapping,
+					struct folio *folio, pgoff_t index);
+static int kvm_gmem_restructure_folios_in_range(struct inode *inode,
+						pgoff_t start, size_t nr_pages,
+						bool is_split_operation);
 
 #ifdef CONFIG_KVM_GMEM_HUGETLB
 
@@ -129,6 +134,31 @@ static enum shareability kvm_gmem_shareability_get(struct inode *inode,
 	     "Shareability should always be defined for all indices in inode.");
 
 	return xa_to_value(entry);
+}
+
+static bool kvm_gmem_shareability_in_range(struct inode *inode, pgoff_t start,
+					   size_t nr_pages, enum shareability m)
+{
+	struct maple_tree *mt;
+	pgoff_t last;
+	void *entry;
+
+	mt = &KVM_GMEM_I(inode)->shareability;
+
+	last = start + nr_pages - 1;
+	mt_for_each(mt, entry, start, last) {
+		if (xa_to_value(entry) == m)
+			return true;
+	}
+
+	return false;
+}
+
+static inline bool kvm_gmem_has_some_shared(struct inode *inode, pgoff_t start,
+					    size_t nr_pages)
+{
+	return kvm_gmem_shareability_in_range(inode, start, nr_pages,
+					      SHAREABILITY_ALL);
 }
 
 static struct folio *kvm_gmem_get_shared_folio(struct inode *inode, pgoff_t index)
@@ -246,6 +276,105 @@ static bool kvm_gmem_has_safe_refcount(struct address_space *mapping, pgoff_t st
 	return refcount_safe;
 }
 
+static void kvm_gmem_unmap_private(struct kvm_gmem *gmem, pgoff_t start,
+				   pgoff_t end)
+{
+	struct kvm_memory_slot *slot;
+	struct kvm *kvm = gmem->kvm;
+	unsigned long index;
+	bool locked = false;
+	bool flush = false;
+
+	xa_for_each_range(&gmem->bindings, index, slot, start, end - 1) {
+		pgoff_t pgoff = slot->gmem.pgoff;
+
+		struct kvm_gfn_range gfn_range = {
+			.start = slot->base_gfn + max(pgoff, start) - pgoff,
+			.end = slot->base_gfn + min(pgoff + slot->npages, end) - pgoff,
+			.slot = slot,
+			.may_block = true,
+			/* This function is only concerned with private mappings. */
+			.attr_filter = KVM_FILTER_PRIVATE,
+		};
+
+		if (!locked) {
+			KVM_MMU_LOCK(kvm);
+			locked = true;
+		}
+
+		flush |= kvm_mmu_unmap_gfn_range(kvm, &gfn_range);
+	}
+
+	if (flush)
+		kvm_flush_remote_tlbs(kvm);
+
+	if (locked)
+		KVM_MMU_UNLOCK(kvm);
+}
+
+static void kvm_gmem_invalidate_begin(struct kvm_gmem *gmem, pgoff_t start,
+				      pgoff_t end)
+{
+	struct kvm_memory_slot *slot;
+	struct kvm *kvm = gmem->kvm;
+	unsigned long index;
+	bool found_memslot;
+
+	found_memslot = false;
+	xa_for_each_range(&gmem->bindings, index, slot, start, end - 1) {
+		gfn_t gfn_start;
+		gfn_t gfn_end;
+		pgoff_t pgoff;
+
+		pgoff = slot->gmem.pgoff;
+
+		gfn_start = slot->base_gfn + max(pgoff, start) - pgoff;
+		gfn_end = slot->base_gfn + min(pgoff + slot->npages, end) - pgoff;
+
+		if (!found_memslot) {
+			found_memslot = true;
+
+			KVM_MMU_LOCK(kvm);
+			kvm_mmu_invalidate_begin(kvm);
+		}
+
+		kvm_mmu_invalidate_range_add(kvm, gfn_start, gfn_end);
+	}
+
+	if (found_memslot)
+		KVM_MMU_UNLOCK(kvm);
+}
+
+static pgoff_t kvm_gmem_compute_invalidate_bound(struct inode *inode,
+						 pgoff_t bound, bool start)
+{
+	size_t nr_pages;
+	void *priv;
+
+	if (!kvm_gmem_has_custom_allocator(inode))
+		return bound;
+
+	priv = kvm_gmem_allocator_private(inode);
+	nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
+
+	if (start)
+		return round_down(bound, nr_pages);
+	else
+		return round_up(bound, nr_pages);
+}
+
+static pgoff_t kvm_gmem_compute_invalidate_start(struct inode *inode,
+						 pgoff_t bound)
+{
+	return kvm_gmem_compute_invalidate_bound(inode, bound, true);
+}
+
+static pgoff_t kvm_gmem_compute_invalidate_end(struct inode *inode,
+					       pgoff_t bound)
+{
+	return kvm_gmem_compute_invalidate_bound(inode, bound, false);
+}
+
 static int kvm_gmem_shareability_apply(struct inode *inode,
 				       struct conversion_work *work,
 				       enum shareability m)
@@ -326,35 +455,53 @@ static void kvm_gmem_convert_invalidate_begin(struct inode *inode,
 					      struct conversion_work *work)
 {
 	struct list_head *gmem_list;
+	pgoff_t invalidate_start;
+	pgoff_t invalidate_end;
 	struct kvm_gmem *gmem;
-	pgoff_t end;
+	pgoff_t work_end;
 
-	end = work->start + work->nr_pages;
+	work_end = work->start + work->nr_pages;
+	invalidate_start = kvm_gmem_compute_invalidate_start(inode, work->start);
+	invalidate_end = kvm_gmem_compute_invalidate_end(inode, work_end);
 
 	gmem_list = &inode->i_mapping->private_list;
 	list_for_each_entry(gmem, gmem_list, entry)
-		kvm_gmem_invalidate_begin(gmem, work->start, end);
+		kvm_gmem_invalidate_begin(gmem, invalidate_start, invalidate_end);
 }
 
 static void kvm_gmem_convert_invalidate_end(struct inode *inode,
 					    struct conversion_work *work)
 {
 	struct list_head *gmem_list;
+	pgoff_t invalidate_start;
+	pgoff_t invalidate_end;
 	struct kvm_gmem *gmem;
-	pgoff_t end;
+	pgoff_t work_end;
 
-	end = work->start + work->nr_pages;
+	work_end = work->start + work->nr_pages;
+	invalidate_start = kvm_gmem_compute_invalidate_start(inode, work->start);
+	invalidate_end = kvm_gmem_compute_invalidate_end(inode, work_end);
 
 	gmem_list = &inode->i_mapping->private_list;
 	list_for_each_entry(gmem, gmem_list, entry)
-		kvm_gmem_invalidate_end(gmem, work->start, end);
+		kvm_gmem_invalidate_end(gmem, invalidate_start, invalidate_end);
 }
 
 static int kvm_gmem_convert_should_proceed(struct inode *inode,
 					   struct conversion_work *work,
 					   bool to_shared, pgoff_t *error_index)
 {
-	if (!to_shared) {
+	if (to_shared) {
+		struct list_head *gmem_list;
+		struct kvm_gmem *gmem;
+		pgoff_t work_end;
+
+		work_end = work->start + work->nr_pages;
+
+		gmem_list = &inode->i_mapping->private_list;
+		list_for_each_entry(gmem, gmem_list, entry)
+			kvm_gmem_unmap_private(gmem, work->start, work_end);
+	} else {
 		unmap_mapping_pages(inode->i_mapping, work->start,
 				    work->nr_pages, false);
 
@@ -365,6 +512,27 @@ static int kvm_gmem_convert_should_proceed(struct inode *inode,
 	}
 
 	return 0;
+}
+
+static int kvm_gmem_convert_execute_work(struct inode *inode,
+					 struct conversion_work *work,
+					 bool to_shared)
+{
+	enum shareability m;
+	int ret;
+
+	m = to_shared ? SHAREABILITY_ALL : SHAREABILITY_GUEST;
+	ret = kvm_gmem_shareability_apply(inode, work, m);
+	if (ret)
+		return ret;
+	/*
+	 * Apply shareability first so split/merge can operate on new
+	 * shareability state.
+	 */
+	ret = kvm_gmem_restructure_folios_in_range(
+		inode, work->start, work->nr_pages, to_shared);
+
+	return ret;
 }
 
 static int kvm_gmem_convert_range(struct file *file, pgoff_t start,
@@ -398,18 +566,21 @@ static int kvm_gmem_convert_range(struct file *file, pgoff_t start,
 
 	list_for_each_entry(work, &work_list, list) {
 		rollback_stop_item = work;
-		ret = kvm_gmem_shareability_apply(inode, work, m);
+
+		ret = kvm_gmem_convert_execute_work(inode, work, shared);
 		if (ret)
 			break;
 	}
 
 	if (ret) {
-		m = shared ? SHAREABILITY_GUEST : SHAREABILITY_ALL;
 		list_for_each_entry(work, &work_list, list) {
+			int r;
+
+			r = kvm_gmem_convert_execute_work(inode, work, !shared);
+			WARN_ON(r);
+
 			if (work == rollback_stop_item)
 				break;
-
-			WARN_ON(kvm_gmem_shareability_apply(inode, work, m));
 		}
 	}
 
@@ -460,6 +631,277 @@ static int kvm_gmem_ioctl_convert_range(struct file *file,
 
 	return ret;
 }
+
+#ifdef CONFIG_KVM_GMEM_HUGETLB
+
+static inline void __filemap_remove_folio_for_restructuring(struct folio *folio)
+{
+	struct address_space *mapping = folio->mapping;
+
+	spin_lock(&mapping->host->i_lock);
+	xa_lock_irq(&mapping->i_pages);
+
+	__filemap_remove_folio(folio, NULL);
+
+	xa_unlock_irq(&mapping->i_pages);
+	spin_unlock(&mapping->host->i_lock);
+}
+
+/**
+ * filemap_remove_folio_for_restructuring() - Remove @folio from filemap for
+ * split/merge.
+ *
+ * @folio: the folio to be removed.
+ *
+ * Similar to filemap_remove_folio(), but skips LRU-related calls (meaningless
+ * for guest_memfd), and skips call to ->free_folio() to maintain folio flags.
+ *
+ * Context: Expects only the filemap's refcounts to be left on the folio. Will
+ *          freeze these refcounts away so that no other users will interfere
+ *          with restructuring.
+ */
+static inline void filemap_remove_folio_for_restructuring(struct folio *folio)
+{
+	int filemap_refcount;
+
+	filemap_refcount = folio_nr_pages(folio);
+	while (!folio_ref_freeze(folio, filemap_refcount)) {
+		/*
+		 * At this point only filemap refcounts are expected, hence okay
+		 * to spin until speculative refcounts go away.
+		 */
+		WARN_ONCE(1, "Spinning on folio=%p refcount=%d", folio, folio_ref_count(folio));
+	}
+
+	folio_lock(folio);
+	__filemap_remove_folio_for_restructuring(folio);
+	folio_unlock(folio);
+}
+
+/**
+ * kvm_gmem_split_folio_in_filemap() - Split @folio within filemap in @inode.
+ *
+ * @inode: inode containing the folio.
+ * @folio: folio to be split.
+ *
+ * Split a folio into folios of size PAGE_SIZE. Will clean up folio from filemap
+ * and add back the split folios.
+ *
+ * Context: Expects that before this call, folio's refcount is just the
+ *          filemap's refcounts. After this function returns, the split folios'
+ *          refcounts will also be filemap's refcounts.
+ * Return: 0 on success or negative error otherwise.
+ */
+static int kvm_gmem_split_folio_in_filemap(struct inode *inode, struct folio *folio)
+{
+	size_t orig_nr_pages;
+	pgoff_t orig_index;
+	size_t i, j;
+	int ret;
+
+	orig_nr_pages = folio_nr_pages(folio);
+	if (orig_nr_pages == 1)
+		return 0;
+
+	orig_index = folio->index;
+
+	filemap_remove_folio_for_restructuring(folio);
+
+	ret = kvm_gmem_allocator_ops(inode)->split_folio(folio);
+	if (ret)
+		goto err;
+
+	for (i = 0; i < orig_nr_pages; ++i) {
+		struct folio *f = page_folio(folio_page(folio, i));
+
+		ret = __kvm_gmem_filemap_add_folio(inode->i_mapping, f,
+						   orig_index + i);
+		if (ret)
+			goto rollback;
+	}
+
+	return ret;
+
+rollback:
+	for (j = 0; j < i; ++j) {
+		struct folio *f = page_folio(folio_page(folio, j));
+
+		filemap_remove_folio_for_restructuring(f);
+	}
+
+	kvm_gmem_allocator_ops(inode)->merge_folio(folio);
+err:
+	WARN_ON(__kvm_gmem_filemap_add_folio(inode->i_mapping, folio, orig_index));
+
+	return ret;
+}
+
+static inline int kvm_gmem_try_split_folio_in_filemap(struct inode *inode,
+						      struct folio *folio)
+{
+	size_t to_nr_pages;
+	void *priv;
+
+	if (!kvm_gmem_has_custom_allocator(inode))
+		return 0;
+
+	priv = kvm_gmem_allocator_private(inode);
+	to_nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
+
+	if (kvm_gmem_has_some_shared(inode, folio->index, to_nr_pages))
+		return kvm_gmem_split_folio_in_filemap(inode, folio);
+
+	return 0;
+}
+
+/**
+ * kvm_gmem_merge_folio_in_filemap() - Merge @first_folio within filemap in
+ * @inode.
+ *
+ * @inode: inode containing the folio.
+ * @first_folio: first folio among folios to be merged.
+ *
+ * Will clean up subfolios from filemap and add back the merged folio.
+ *
+ * Context: Expects that before this call, all subfolios only have filemap
+ *          refcounts. After this function returns, the merged folio will only
+ *          have filemap refcounts.
+ * Return: 0 on success or negative error otherwise.
+ */
+static int kvm_gmem_merge_folio_in_filemap(struct inode *inode,
+					   struct folio *first_folio)
+{
+	size_t to_nr_pages;
+	pgoff_t index;
+	void *priv;
+	size_t i;
+	int ret;
+
+	index = first_folio->index;
+
+	priv = kvm_gmem_allocator_private(inode);
+	to_nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
+	if (folio_nr_pages(first_folio) == to_nr_pages)
+		return 0;
+
+	for (i = 0; i < to_nr_pages; ++i) {
+		struct folio *f = page_folio(folio_page(first_folio, i));
+
+		filemap_remove_folio_for_restructuring(f);
+	}
+
+	kvm_gmem_allocator_ops(inode)->merge_folio(first_folio);
+
+	ret = __kvm_gmem_filemap_add_folio(inode->i_mapping, first_folio, index);
+	if (ret)
+		goto err_split;
+
+	return ret;
+
+err_split:
+	WARN_ON(kvm_gmem_allocator_ops(inode)->split_folio(first_folio));
+	for (i = 0; i < to_nr_pages; ++i) {
+		struct folio *f = page_folio(folio_page(first_folio, i));
+
+		WARN_ON(__kvm_gmem_filemap_add_folio(inode->i_mapping, f, index + i));
+	}
+
+	return ret;
+}
+
+static inline int kvm_gmem_try_merge_folio_in_filemap(struct inode *inode,
+						      struct folio *first_folio)
+{
+	size_t to_nr_pages;
+	void *priv;
+
+	priv = kvm_gmem_allocator_private(inode);
+	to_nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
+
+	if (kvm_gmem_has_some_shared(inode, first_folio->index, to_nr_pages))
+		return 0;
+
+	return kvm_gmem_merge_folio_in_filemap(inode, first_folio);
+}
+
+static int kvm_gmem_restructure_folios_in_range(struct inode *inode,
+						pgoff_t start, size_t nr_pages,
+						bool is_split_operation)
+{
+	size_t to_nr_pages;
+	pgoff_t index;
+	pgoff_t end;
+	void *priv;
+	int ret;
+
+	if (!kvm_gmem_has_custom_allocator(inode))
+		return 0;
+
+	end = start + nr_pages;
+
+	/* Round to allocator page size, to check all (huge) pages in range. */
+	priv = kvm_gmem_allocator_private(inode);
+	to_nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
+
+	start = round_down(start, to_nr_pages);
+	end = round_up(end, to_nr_pages);
+
+	for (index = start; index < end; index += to_nr_pages) {
+		struct folio *f;
+
+		f = filemap_get_folio(inode->i_mapping, index);
+		if (IS_ERR(f))
+			continue;
+
+		/* Leave just filemap's refcounts on the folio. */
+		folio_put(f);
+
+		if (is_split_operation)
+			ret = kvm_gmem_split_folio_in_filemap(inode, f);
+		else
+			ret = kvm_gmem_try_merge_folio_in_filemap(inode, f);
+
+		if (ret)
+			goto rollback;
+	}
+	return ret;
+
+rollback:
+	for (index -= to_nr_pages; index >= start; index -= to_nr_pages) {
+		struct folio *f;
+
+		f = filemap_get_folio(inode->i_mapping, index);
+		if (IS_ERR(f))
+			continue;
+
+		/* Leave just filemap's refcounts on the folio. */
+		folio_put(f);
+
+		if (is_split_operation)
+			WARN_ON(kvm_gmem_merge_folio_in_filemap(inode, f));
+		else
+			WARN_ON(kvm_gmem_split_folio_in_filemap(inode, f));
+	}
+
+	return ret;
+}
+
+#else
+
+static inline int kvm_gmem_try_split_folio_in_filemap(struct inode *inode,
+						      struct folio *folio)
+{
+	return 0;
+}
+
+static int kvm_gmem_restructure_folios_in_range(struct inode *inode,
+						pgoff_t start, size_t nr_pages,
+						bool is_split_operation)
+{
+	return 0;
+}
+
+#endif
 
 static int __kvm_gmem_prepare_folio(struct kvm *kvm, struct kvm_memory_slot *slot,
 				    pgoff_t index, struct folio *folio)
@@ -564,11 +1006,16 @@ repeat:
 		return folio;
 
 	if (kvm_gmem_has_custom_allocator(inode)) {
-		void *p = kvm_gmem_allocator_private(inode);
+		size_t nr_pages;
+		void *p;
 
+		p = kvm_gmem_allocator_private(inode);
 		folio = kvm_gmem_allocator_ops(inode)->alloc_folio(p);
 		if (IS_ERR(folio))
 			return folio;
+
+		nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(p);
+		index_floor = round_down(index, nr_pages);
 	} else {
 		gfp_t gfp = mapping_gfp_mask(inode->i_mapping);
 		policy = kvm_gmem_get_pgoff_policy(KVM_GMEM_I(inode), index);
@@ -583,10 +1030,11 @@ repeat:
 			folio_put(folio);
 			return ERR_PTR(ret);
 		}
+
+		index_floor = index;
 	}
 	allocated_size = folio_size(folio);
 
-	index_floor = round_down(index, folio_nr_pages(folio));
 	ret = kvm_gmem_filemap_add_folio(inode->i_mapping, folio, index_floor);
 	if (ret) {
 		folio_put(folio);
@@ -603,6 +1051,13 @@ repeat:
 		return ERR_PTR(ret);
 	}
 
+	/* Leave just filemap's refcounts on folio. */
+	folio_put(folio);
+
+	ret = kvm_gmem_try_split_folio_in_filemap(inode, folio);
+	if (ret)
+		goto err;
+
 	spin_lock(&inode->i_lock);
 	inode->i_blocks += allocated_size / 512;
 	spin_unlock(&inode->i_lock);
@@ -611,14 +1066,17 @@ repeat:
 	 * folio is the one that is allocated, this gets the folio at the
 	 * requested index.
 	 */
-	folio = page_folio(folio_file_page(folio, index));
-	folio_lock(folio);
+	folio = filemap_lock_folio(inode->i_mapping, index);
 
 	return folio;
+
+err:
+	filemap_remove_folio(folio);
+	return ERR_PTR(ret);
 }
 
-static void kvm_gmem_invalidate_begin(struct kvm_gmem *gmem, pgoff_t start,
-				      pgoff_t end)
+static void kvm_gmem_invalidate_begin_and_zap(struct kvm_gmem *gmem,
+					      pgoff_t start, pgoff_t end)
 {
 	bool flush = false, found_memslot = false;
 	struct kvm_memory_slot *slot;
@@ -851,7 +1309,7 @@ static long kvm_gmem_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	filemap_invalidate_lock(inode->i_mapping);
 
 	list_for_each_entry(gmem, gmem_list, entry)
-		kvm_gmem_invalidate_begin(gmem, start, end);
+		kvm_gmem_invalidate_begin_and_zap(gmem, start, end);
 
 	if (kvm_gmem_has_custom_allocator(inode)) {
 		kvm_gmem_truncate_inode_range(inode, offset, offset + len);
@@ -977,7 +1435,7 @@ static int kvm_gmem_release(struct inode *inode, struct file *file)
 	 * Zap all SPTEs pointed at by this file.  Do not free the backing
 	 * memory, as its lifetime is associated with the inode, not the file.
 	 */
-	kvm_gmem_invalidate_begin(gmem, 0, -1ul);
+	kvm_gmem_invalidate_begin_and_zap(gmem, 0, -1ul);
 	kvm_gmem_invalidate_end(gmem, 0, -1ul);
 
 	list_del(&gmem->entry);
@@ -1335,7 +1793,7 @@ static int kvm_gmem_error_page(struct address_space *mapping, struct page *page)
 	end = start + thp_nr_pages(page);
 
 	list_for_each_entry(gmem, gmem_list, entry)
-		kvm_gmem_invalidate_begin(gmem, start, end);
+		kvm_gmem_invalidate_begin_and_zap(gmem, start, end);
 
 	/*
 	 * Do not truncate the range, what action is taken in response to the
@@ -1375,6 +1833,9 @@ static void kvm_gmem_free_folio(struct address_space *mapping,
 	 * freeing, but may be required for other allocators to reset page.
 	 */
 	folio_clear_uptodate(folio);
+
+	if (kvm_gmem_has_custom_allocator(mapping->host))
+		kvm_gmem_allocator_ops(mapping->host)->free_folio(folio);
 
 	kvm_gmem_invalidate(folio);
 }

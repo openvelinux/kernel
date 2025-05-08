@@ -224,6 +224,7 @@ void __filemap_remove_folio(struct folio *folio, void *shadow)
 	filemap_unaccount_folio(mapping, folio);
 	page_cache_delete(mapping, folio, shadow);
 }
+EXPORT_SYMBOL_GPL(__filemap_remove_folio);
 
 void filemap_free_folio(struct address_space *mapping, struct folio *folio)
 {
@@ -262,6 +263,7 @@ void filemap_remove_folio(struct folio *folio)
 
 	filemap_free_folio(mapping, folio);
 }
+EXPORT_SYMBOL_GPL(filemap_remove_folio);
 
 /*
  * page_cache_delete_batch - delete several folios from page cache
