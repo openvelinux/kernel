@@ -4959,6 +4959,10 @@ static int kvm_vm_ioctl_check_extension_generic(struct kvm *kvm, long arg)
 	case KVM_CAP_GUEST_MEMFD_CONVERSION:
 		return !kvm || kvm_arch_supports_gmem_mmap(kvm);
 #endif
+#ifdef CONFIG_KVM_GMEM_HUGETLB
+	case KVM_CAP_GUEST_MEMFD_HUGETLB:
+		return true;
+#endif
 	default:
 		break;
 	}
