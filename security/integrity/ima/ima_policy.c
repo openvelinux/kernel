@@ -2105,8 +2105,13 @@ int ima_policy_show(struct seq_file *m, void *v)
 {
 	struct ima_rule_entry *entry = v;
 	int i;
-	char tbuf[64] = {0,};
+	char *tbuf;
 	int offset = 0;
+	size_t buf_size = PATH_MAX * 2;
+
+	tbuf = kzalloc(buf_size, GFP_KERNEL);
+	if (!tbuf)
+		return 0;
 
 	rcu_read_lock();
 
@@ -2114,6 +2119,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	for (i = 0; i < MAX_LSM_RULES; i++) {
 		if (entry->lsm[i].args_p && !entry->lsm[i].rule) {
 			rcu_read_unlock();
+			kfree(tbuf);
 			return 0;
 		}
 	}
@@ -2153,19 +2159,19 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_FSMAGIC) {
-		snprintf(tbuf, sizeof(tbuf), "0x%lx", entry->fsmagic);
+		snprintf(tbuf, buf_size, "0x%lx", entry->fsmagic);
 		seq_printf(m, pt(Opt_fsmagic), tbuf);
 		seq_puts(m, " ");
 	}
 
 	if (entry->flags & IMA_FILENAME) {
-		snprintf(tbuf, sizeof(tbuf), "%s", entry->file_name);
+		snprintf(tbuf, buf_size, "%s", entry->file_name);
 		seq_printf(m, pt(Opt_filename), tbuf);
 		seq_puts(m, " ");
 	}
 
 	if (entry->flags & IMA_FSNAME) {
-		snprintf(tbuf, sizeof(tbuf), "%s", entry->fsname);
+		snprintf(tbuf, buf_size, "%s", entry->fsname);
 		seq_printf(m, pt(Opt_fsname), tbuf);
 		seq_puts(m, " ");
 	}
@@ -2183,7 +2189,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_PCR) {
-		snprintf(tbuf, sizeof(tbuf), "%d", entry->pcr);
+		snprintf(tbuf, buf_size, "%d", entry->pcr);
 		seq_printf(m, pt(Opt_pcr), tbuf);
 		seq_puts(m, " ");
 	}
@@ -2194,7 +2200,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_UID) {
-		snprintf(tbuf, sizeof(tbuf), "%d", __kuid_val(entry->uid));
+		snprintf(tbuf, buf_size, "%d", __kuid_val(entry->uid));
 		if (entry->uid_op == &uid_gt)
 			seq_printf(m, pt(Opt_uid_gt), tbuf);
 		else if (entry->uid_op == &uid_lt)
@@ -2205,7 +2211,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_EUID) {
-		snprintf(tbuf, sizeof(tbuf), "%d", __kuid_val(entry->uid));
+		snprintf(tbuf, buf_size, "%d", __kuid_val(entry->uid));
 		if (entry->uid_op == &uid_gt)
 			seq_printf(m, pt(Opt_euid_gt), tbuf);
 		else if (entry->uid_op == &uid_lt)
@@ -2216,7 +2222,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_GID) {
-		snprintf(tbuf, sizeof(tbuf), "%d", __kgid_val(entry->gid));
+		snprintf(tbuf, buf_size, "%d", __kgid_val(entry->gid));
 		if (entry->gid_op == &gid_gt)
 			seq_printf(m, pt(Opt_gid_gt), tbuf);
 		else if (entry->gid_op == &gid_lt)
@@ -2227,7 +2233,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_EGID) {
-		snprintf(tbuf, sizeof(tbuf), "%d", __kgid_val(entry->gid));
+		snprintf(tbuf, buf_size, "%d", __kgid_val(entry->gid));
 		if (entry->gid_op == &gid_gt)
 			seq_printf(m, pt(Opt_egid_gt), tbuf);
 		else if (entry->gid_op == &gid_lt)
@@ -2238,7 +2244,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_FOWNER) {
-		snprintf(tbuf, sizeof(tbuf), "%d", __kuid_val(entry->fowner));
+		snprintf(tbuf, buf_size, "%d", __kuid_val(entry->fowner));
 		if (entry->fowner_op == &vfsuid_gt_kuid)
 			seq_printf(m, pt(Opt_fowner_gt), tbuf);
 		else if (entry->fowner_op == &vfsuid_lt_kuid)
@@ -2249,7 +2255,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 	}
 
 	if (entry->flags & IMA_FGROUP) {
-		snprintf(tbuf, sizeof(tbuf), "%d", __kgid_val(entry->fgroup));
+		snprintf(tbuf, buf_size, "%d", __kgid_val(entry->fgroup));
 		if (entry->fgroup_op == &vfsgid_gt_kgid)
 			seq_printf(m, pt(Opt_fgroup_gt), tbuf);
 		else if (entry->fgroup_op == &vfsgid_lt_kgid)
@@ -2312,6 +2318,7 @@ int ima_policy_show(struct seq_file *m, void *v)
 		seq_puts(m, "permit_directio ");
 	rcu_read_unlock();
 	seq_puts(m, "\n");
+	kfree(tbuf);
 	return 0;
 }
 #endif	/* CONFIG_IMA_READ_POLICY */
