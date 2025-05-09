@@ -519,7 +519,7 @@ void handle_nested_irq(unsigned int irq)
 	might_sleep();
 
 	raw_spin_lock_irq(&desc->lock);
-	if (irq_can_handle_actions(desc)) {
+	if (!irq_can_handle_actions(desc)) {
 		raw_spin_unlock_irq(&desc->lock);
 		return;
 	}
