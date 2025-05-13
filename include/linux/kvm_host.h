@@ -2461,6 +2461,7 @@ static inline bool kvm_mem_is_private(struct kvm *kvm, gfn_t gfn)
 #ifdef CONFIG_KVM_GUEST_MEMFD
 int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 		     gfn_t gfn, kvm_pfn_t *pfn, int *max_order);
+int kvm_gmem_mapping_order(const struct kvm_memory_slot *slot, gfn_t gfn);
 #else
 static inline int kvm_gmem_get_pfn(struct kvm *kvm,
 				   struct kvm_memory_slot *slot, gfn_t gfn,
@@ -2468,6 +2469,13 @@ static inline int kvm_gmem_get_pfn(struct kvm *kvm,
 {
 	KVM_BUG_ON(1, kvm);
 	return -EIO;
+}
+
+static inline int kvm_gmem_mapping_order(const struct kvm_memory_slot *slot,
+					 gfn_t gfn)
+{
+	BUILD_BUG();
+	return 0;
 }
 #endif /* CONFIG_KVM_GUEST_MEMFD */
 
