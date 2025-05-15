@@ -18,6 +18,9 @@
 
 #define RESCTRL_PICK_ANY_CPU		-1
 
+#define RFTYPE_RES_CACHE		BIT(8)
+#define RFTYPE_RES_MB			BIT(9)
+
 #ifdef CONFIG_PROC_CPU_RESCTRL
 
 int proc_resctrl_show(struct seq_file *m,
@@ -278,6 +281,11 @@ struct rdt_resource {
 	bool			cdp_capable;
 };
 
+int parse_cbm(struct rdt_parse_data *data, struct resctrl_schema *s,
+	      struct rdt_ctrl_domain *d);
+int parse_bw(struct rdt_parse_data *data, struct resctrl_schema *s,
+	     struct rdt_ctrl_domain *d);
+
 /*
  * Get the resource that exists at this level. If the level is not supported
  * a dummy/not-capable resource can be returned. Levels >= RDT_NUM_RESOURCES
@@ -482,5 +490,9 @@ void resctrl_arch_reset_all_ctrls(struct rdt_resource *r);
 
 extern unsigned int resctrl_rmid_realloc_threshold;
 extern unsigned int resctrl_rmid_realloc_limit;
+extern int max_data_width;
+
+int resctrl_init(void);
+void resctrl_exit(void);
 
 #endif /* _RESCTRL_H */

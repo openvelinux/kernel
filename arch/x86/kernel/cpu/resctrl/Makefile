@@ -4,4 +4,3 @@ obj-$(CONFIG_X86_CPU_RESCTRL)	+= ctrlmondata.o pseudo_lock.o
 
 # To allow define_trace.h's recursive include:
 CFLAGS_pseudo_lock.o = -I$(src)
-CFLAGS_monitor.o = -I$(src)

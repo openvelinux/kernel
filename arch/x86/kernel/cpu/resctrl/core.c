@@ -14,7 +14,7 @@
  * Software Developer Manual June 2016, volume 3, section 17.17.
  */
 
-#define pr_fmt(fmt)	"resctrl: " fmt
+#define pr_fmt(fmt)    "resctrl: " fmt
 
 #include <linux/cpu.h>
 #include <linux/slab.h>
@@ -42,12 +42,6 @@ static DEFINE_MUTEX(domain_list_lock);
  * is sufficient for the protection.
  */
 DEFINE_PER_CPU(struct resctrl_pqr_state, pqr_state);
-
-/*
- * Used to store the max resource name width and max resource data width
- * to display the schemata in a tabular format
- */
-int max_name_width, max_data_width;
 
 /*
  * Global boolean for rdt_alloc which is true if any
@@ -238,7 +232,6 @@ static __init bool __get_mem_config_intel(struct rdt_resource *r)
 		r->membw.throttle_mode = THREAD_THROTTLE_PER_THREAD;
 	else
 		r->membw.throttle_mode = THREAD_THROTTLE_MAX;
-	thread_throttle_mode_init();
 
 	r->alloc_capable = true;
 
@@ -1112,7 +1105,7 @@ static int __init resctrl_late_init(void)
 	if (state < 0)
 		return state;
 
-	ret = rdtgroup_init();
+	ret = resctrl_init();
 	if (ret) {
 		cpuhp_remove_state(state);
 		return ret;
