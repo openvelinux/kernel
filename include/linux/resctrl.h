@@ -507,6 +507,7 @@ void resctrl_arch_reset_all_ctrls(struct rdt_resource *r);
 
 extern unsigned int resctrl_rmid_realloc_threshold;
 extern unsigned int resctrl_rmid_realloc_limit;
+extern int max_data_width;
 
 int resctrl_init(void);
 void resctrl_exit(void);
