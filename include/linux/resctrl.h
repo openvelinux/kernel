@@ -246,6 +246,50 @@ u32 resctrl_arch_get_num_closid(struct rdt_resource *r);
 u32 resctrl_arch_system_num_rmid_idx(void);
 int resctrl_arch_update_domains(struct rdt_resource *r, u32 closid);
 
+bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt);
+
+/**
+ * resctrl_arch_mon_event_config_write() - Write the config for an event.
+ * @config_info: struct resctrl_mon_config_info describing the resource, domain
+ *		 and event.
+ *
+ * Reads resource, domain and eventid from @config_info and writes the
+ * event config_info->mon_config into hardware.
+ *
+ * Called via IPI to reach a CPU that is a member of the specified domain.
+ */
+void resctrl_arch_mon_event_config_write(void *config_info);
+
+/**
+ * resctrl_arch_mon_event_config_read() - Read the config for an event.
+ * @config_info: struct resctrl_mon_config_info describing the resource, domain
+ *		 and event.
+ *
+ * Reads resource, domain and eventid from @config_info and reads the
+ * hardware config value into config_info->mon_config.
+ *
+ * Called via IPI to reach a CPU that is a member of the specified domain.
+ */
+void resctrl_arch_mon_event_config_read(void *config_info);
+
+/* For use by arch code to remap resctrl's smaller CDP CLOSID range */
+static inline u32 resctrl_get_config_index(u32 closid,
+					   enum resctrl_conf_type type)
+{
+	switch (type) {
+	default:
+	case CDP_NONE:
+		return closid;
+	case CDP_CODE:
+		return closid * 2 + 1;
+	case CDP_DATA:
+		return closid * 2;
+	}
+}
+
+bool resctrl_arch_get_cdp_enabled(enum resctrl_res_level l);
+int resctrl_arch_set_cdp_enabled(enum resctrl_res_level l, bool enable);
+
 /*
  * Update the ctrl_val and apply this config right now.
  * Must be called on one of the domain's CPUs.
