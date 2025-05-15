@@ -112,7 +112,7 @@ bool resctrl_arch_is_mbm_total_enabled(void)
 	return mpam_resctrl_counters[QOS_L3_MBM_TOTAL_EVENT_ID].class;
 }
 
-__init bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt)
+bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt)
 {
 	return false;
 }
