@@ -984,11 +984,50 @@ static struct rx_queue_attribute rps_dev_flow_table_cnt_attribute __ro_after_ini
 		 show_rps_dev_flow_table_cnt, store_rps_dev_flow_table_cnt);
 #endif /* CONFIG_RPS */
 
+static ssize_t show_rx_queue_napi_id(struct netdev_rx_queue *queue, char *buf)
+{
+	int len;
+	unsigned int napi_id = queue->napi_id ? : -1;
+
+	len = snprintf(buf, PAGE_SIZE, "%u\n", napi_id);
+
+	return len < PAGE_SIZE ? len : -EINVAL;
+}
+
+static ssize_t show_rx_queue_napi_cost(struct netdev_rx_queue *queue, char *buf)
+{
+	struct napi_struct *napi;
+	u64 cost = 0;
+	int len;
+
+	if (queue->napi_id) {
+		rcu_read_lock();
+		napi = netdev_rx_queue_napi(queue);
+		if (napi)
+			cost = napi->cost_jiffies;
+		rcu_read_unlock();
+
+		if (cost)
+			cost = jiffies_to_usecs(cost);
+	}
+
+	len = snprintf(buf, PAGE_SIZE, "%llu\n", cost);
+
+	return len < PAGE_SIZE ? len : -EINVAL;
+}
+
+static struct rx_queue_attribute napi_id_attribute __ro_after_init =
+	__ATTR(napi_id, 0644, show_rx_queue_napi_id, NULL);
+static struct rx_queue_attribute napi_timecost_us_attribute __ro_after_init =
+	__ATTR(napi_timecost_us, 0644, show_rx_queue_napi_cost, NULL);
+
 static struct attribute *rx_queue_default_attrs[] __ro_after_init = {
 #ifdef CONFIG_RPS
 	&rps_cpus_attribute.attr,
 	&rps_dev_flow_table_cnt_attribute.attr,
 #endif
+	&napi_id_attribute.attr,
+	&napi_timecost_us_attribute.attr,
 	NULL
 };
 ATTRIBUTE_GROUPS(rx_queue_default);
