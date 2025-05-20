@@ -352,6 +352,7 @@ struct napi_struct {
 	struct hlist_node	napi_hash_node;
 	unsigned int		napi_id;
 	struct task_struct	*thread;
+	u64			cost_jiffies;
 };
 
 enum {
@@ -766,6 +767,8 @@ struct netdev_rx_queue {
 	struct xsk_buff_pool            *pool;
 #endif
 	struct file __rcu		*dmabuf_pages;
+
+	unsigned int			napi_id;
 } ____cacheline_aligned_in_smp;
 
 struct page *
@@ -2349,6 +2352,8 @@ struct net_device {
 
 	/* protected by rtnl_lock */
 	struct bpf_xdp_entity	xdp_state[__MAX_XDP_MODE];
+
+	unsigned int		rx_cache_napi;
 };
 #define to_net_dev(d) container_of(d, struct net_device, dev)
 
@@ -3003,6 +3008,7 @@ struct net_device *__dev_get_by_index(struct net *net, int ifindex);
 struct net_device *dev_get_by_index_rcu(struct net *net, int ifindex);
 struct net_device *dev_get_by_napi_id(unsigned int napi_id);
 int dev_restart(struct net_device *dev);
+struct napi_struct *netdev_rx_queue_napi(struct netdev_rx_queue *queue);
 
 
 static inline int dev_hard_header(struct sk_buff *skb, struct net_device *dev,

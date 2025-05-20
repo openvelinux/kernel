@@ -945,6 +945,22 @@ struct net_device *dev_get_by_napi_id(unsigned int napi_id)
 }
 EXPORT_SYMBOL(dev_get_by_napi_id);
 
+/* must be called under rcu_read_lock(), as we dont take a reference */
+struct napi_struct *netdev_rx_queue_napi(struct netdev_rx_queue *queue)
+{
+	struct napi_struct *napi;
+
+	WARN_ON_ONCE(!rcu_read_lock_held());
+
+	if (queue->napi_id < MIN_NAPI_ID)
+		return NULL;
+
+	napi = napi_by_id(queue->napi_id);
+
+	return napi;
+}
+EXPORT_SYMBOL(netdev_rx_queue_napi);
+
 /**
  *	netdev_get_name - get a netdevice name, knowing its ifindex.
  *	@net: network namespace
@@ -7188,10 +7204,22 @@ void netif_napi_add(struct net_device *dev, struct napi_struct *napi,
 #ifdef CONFIG_NETPOLL
 	napi->poll_owner = -1;
 #endif
+	napi->cost_jiffies = 0;
 	set_bit(NAPI_STATE_SCHED, &napi->state);
 	set_bit(NAPI_STATE_NPSVC, &napi->state);
 	list_add_rcu(&napi->dev_list, &dev->napi_list);
 	napi_hash_add(napi);
+
+	if (napi->napi_id >= MIN_NAPI_ID) {
+		/* switch queue num, needs start from 0 */
+		if (dev->rx_cache_napi == dev->real_num_rx_queues)
+			dev->rx_cache_napi = 0;
+
+		/* dev->_rx cache napi_id for get napi cost time */
+		if (dev->rx_cache_napi < dev->num_rx_queues)
+			dev->_rx[dev->rx_cache_napi++].napi_id = napi->napi_id;
+	}
+
 	/* Create kthread for this napi if dev->threaded is set.
 	 * Clear dev->threaded if kthread creation failed so that
 	 * threaded mode will not be enabled in napi_enable().
@@ -7446,6 +7474,7 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 
 	for (;;) {
 		struct napi_struct *n;
+		u64 start;
 
 		if (list_empty(&list)) {
 			if (!sd_has_rps_ipi_waiting(sd) && list_empty(&repoll))
@@ -7454,7 +7483,9 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 		}
 
 		n = list_first_entry(&list, struct napi_struct, poll_list);
+		start = jiffies;
 		budget -= napi_poll(n, &repoll);
+		n->cost_jiffies += (jiffies - start);
 
 		/* If softirq window is exhausted then punt.
 		 * Allow this to run for 2 jiffies since which will allow
