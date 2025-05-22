@@ -20,6 +20,11 @@
 
 extern void *kthread_return_to_user;
 
+struct code_range {
+	unsigned long start;
+	unsigned long end;
+};
+
 /*
  * Start an unwind from a pt_regs.
  *
@@ -212,7 +217,37 @@ noinline noinstr void arch_stack_walk(stack_trace_consume_fn consume_entry,
 
 static inline bool unwind_state_is_reliable(struct unwind_state *state)
 {
-	return __kernel_text_address(ptrauth_strip_kernel_insn_pac(state->pc));
+	struct code_range *r;
+	unsigned long pc;
+
+	pc = ptrauth_strip_kernel_insn_pac(state->pc);
+
+	if (!__kernel_text_address(pc))
+		return false;
+	/*
+	 * Check the return PC against sym_code_functions[]. If there is a
+	 * match, then the consider the stack frame unreliable.
+	 *
+	 * As SYM_CODE functions don't follow the usual calling conventions,
+	 * we assume by default that any SYM_CODE function cannot be unwound
+	 * reliably.
+	 *
+	 * Note that this includes:
+	 *
+	 * - Exception handlers and entry assembly
+	 * - Trampoline assembly (e.g., ftrace, kprobes)
+	 * - Hypervisor-related assembly
+	 * - Hibernation-related assembly
+	 * - CPU start-stop, suspend-resume assembly
+	 * - Kernel relocation assembly
+	 */
+	for (r = (struct code_range *)__sym_code_functions_start;
+		r < (struct code_range *)__sym_code_functions_end; r++) {
+		if (pc >= r->start && pc < r->end)
+			return false;
+	}
+
+	return true;
 }
 
 static __always_inline int
