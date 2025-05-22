@@ -18,6 +18,8 @@
 #include <asm/stack_pointer.h>
 #include <asm/stacktrace.h>
 
+extern void *kthread_return_to_user;
+
 /*
  * Start an unwind from a pt_regs.
  *
@@ -206,6 +208,78 @@ noinline noinstr void arch_stack_walk(stack_trace_consume_fn consume_entry,
 	}
 
 	unwind(&state, consume_entry, cookie);
+}
+
+static inline bool unwind_state_is_reliable(struct unwind_state *state)
+{
+	return __kernel_text_address(ptrauth_strip_kernel_insn_pac(state->pc));
+}
+
+static __always_inline int
+unwind_reliable(struct unwind_state *state, stack_trace_consume_fn consume_entry,
+		void *cookie)
+{
+	struct task_struct *tsk = state->task;
+	int ret = 0;
+	unsigned long pc;
+
+	if (unwind_recover_return_address(state))
+		return -EINVAL;
+
+	do {
+		pc = ptrauth_strip_kernel_insn_pac(state->pc);
+		/* Final frame for kthread; nothing to unwind */
+		if ((state->fp == (unsigned long)task_pt_regs(tsk)->stackframe)
+			&& (pc == (unsigned long)&kthread_return_to_user))
+			return 0;
+
+		if (!unwind_state_is_reliable(state))
+			return -EINVAL;
+
+		if (!consume_entry(cookie, pc))
+			return ret;
+		ret = unwind_next(state);
+		if (ret < 0)
+			break;
+	} while (1);
+
+	if (ret == -ENOENT)
+		ret = 0;
+
+	return ret;
+}
+
+noinline noinstr int arch_stack_walk_reliable(stack_trace_consume_fn consume_entry,
+				      void *cookie, struct task_struct *task)
+{
+	int ret;
+	struct stack_info stacks[] = {
+		stackinfo_get_task(task),
+		STACKINFO_CPU(irq),
+#if defined(CONFIG_VMAP_STACK)
+		STACKINFO_CPU(overflow),
+#endif
+#if defined(CONFIG_VMAP_STACK) && defined(CONFIG_ARM_SDE_INTERFACE)
+		STACKINFO_SDEI(normal),
+		STACKINFO_SDEI(critical),
+#endif
+#ifdef CONFIG_EFI
+		STACKINFO_EFI,
+#endif
+	};
+	struct unwind_state state = {
+		.stacks = stacks,
+		.nr_stacks = ARRAY_SIZE(stacks),
+	};
+
+	if (task != current)
+		unwind_init_from_task(&state, task);
+	else
+		unwind_init_from_caller(&state);
+
+	ret = unwind_reliable(&state, consume_entry, cookie);
+
+	return ret;
 }
 
 static bool dump_backtrace_entry(void *arg, unsigned long where)
