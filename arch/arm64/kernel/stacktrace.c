@@ -237,7 +237,7 @@ unwind_reliable(struct unwind_state *state, stack_trace_consume_fn consume_entry
 			return -EINVAL;
 
 		if (!consume_entry(cookie, pc))
-			return ret;
+			return -EINVAL;
 		ret = unwind_next(state);
 		if (ret < 0)
 			break;
