@@ -925,6 +925,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 
 		r->membw.delay_linear = true;
 		r->membw.throttle_mode = THREAD_THROTTLE_UNDEFINED;
+		r->membw.min_bw = 1;
 		r->membw.bw_gran = get_mba_granularity(cprops);
 
 		/* Round up to at least 1% */
