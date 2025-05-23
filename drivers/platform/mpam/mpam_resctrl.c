@@ -921,6 +921,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_MB;
 		r->default_ctrl = MAX_MBA_BW;
+		r->membw.max_bw = MAX_MBA_BW;
 		r->data_width = 3;
 
 		r->membw.delay_linear = true;
@@ -949,6 +950,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_CACHE;
 		r->default_ctrl = MAX_MBA_BW;
+		r->membw.max_bw = MAX_MBA_BW;
 		r->data_width = 3;
 		r->cache_level = class->level;
 
@@ -964,7 +966,8 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->format_str = "%d=%0*u";
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_CACHE;
-		r->default_ctrl = MAX_MBA_BW;
+		r->default_ctrl = 0;
+		r->membw.max_bw = MAX_MBA_BW;
 		r->data_width = 3;
 		r->cache_level = class->level;
 
@@ -979,7 +982,8 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->format_str = "%d=%0*u";
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_MB;
-		r->default_ctrl = MAX_MBA_BW;
+		r->default_ctrl = 0;
+		r->membw.max_bw = MAX_MBA_BW;
 		r->data_width = 3;
 
 		r->membw.delay_linear = true;
@@ -999,7 +1003,8 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->format_str = "%d=%0*u";
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_CACHE;
-		r->default_ctrl = GENMASK(cprops->intpri_wd - 1, 0);
+		r->default_ctrl = 0;
+		r->membw.max_bw = GENMASK(cprops->intpri_wd - 1, 0);
 		r->data_width = 3;
 		r->cache_level = class->level;
 
@@ -1014,7 +1019,8 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->format_str = "%d=%0*u";
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_MB;
-		r->default_ctrl = GENMASK(cprops->intpri_wd - 1, 0);
+		r->default_ctrl = 3;
+		r->membw.max_bw = GENMASK(cprops->intpri_wd - 1, 0);
 		r->data_width = 3;
 
 		r->membw.bw_gran = 1;
@@ -1028,6 +1034,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
 		r->fflags = RFTYPE_RES_MB;
 		r->default_ctrl = 1;
+		r->membw.max_bw = 1;
 		r->data_width = 1;
 
 		r->membw.bw_gran = 1;
