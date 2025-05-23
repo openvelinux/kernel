@@ -81,6 +81,8 @@ bool hisi_ncsnp_supported(void);
 bool hisi_dvmbm_supported(void);
 #ifdef CONFIG_ARM64_HISI_IPIV
 bool hisi_ipiv_supported(void);
+bool hisi_ipiv_supported_per_vm(struct kvm_vcpu *vcpu);
+void hisi_ipiv_enable_per_vm(struct kvm_vcpu *vcpu);
 void ipiv_gicd_init(void);
 #endif /* CONFIG_ARM64_HISI_IPIV */
 void kvm_get_pg_cfg(void);
@@ -117,6 +119,11 @@ static inline int kvm_sched_affinity_vcpu_init(struct kvm_vcpu *vcpu)
 }
 static inline void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu) {}
 #ifdef CONFIG_ARM64_HISI_IPIV
+static bool hisi_ipiv_supported_per_vm(struct kvm_vcpu *vcpu)
+{
+	return false;
+}
+static void hisi_ipiv_enable_per_vm(struct kvm_vcpu *vcpu) {}
 static inline void ipiv_gicd_init(void) {}
 #endif /* CONFIG_ARM64_HISI_IPIV */
 static inline int kvm_sched_affinity_vm_init(struct kvm *kvm)

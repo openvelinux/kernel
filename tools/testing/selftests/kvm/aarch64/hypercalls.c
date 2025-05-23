@@ -20,7 +20,7 @@
 /* Last valid bits of the bitmapped firmware registers */
 #define KVM_REG_ARM_STD_BMAP_BIT_MAX		0
 #define KVM_REG_ARM_STD_HYP_BMAP_BIT_MAX	0
-#define KVM_REG_ARM_VENDOR_HYP_BMAP_BIT_MAX	1
+#define KVM_REG_ARM_VENDOR_HYP_BMAP_BIT_MAX	2
 
 struct kvm_fw_reg_info {
 	uint64_t reg;		/* Register definition */

@@ -9,6 +9,10 @@
 #include <kvm/arm_hypercalls.h>
 #include <kvm/arm_psci.h>
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+#include "hisilicon/hisi_virt.h"
+#endif
+
 #define KVM_ARM_SMCCC_STD_FEATURES				\
 	GENMASK(KVM_REG_ARM_STD_BMAP_BIT_COUNT - 1, 0)
 #define KVM_ARM_SMCCC_STD_HYP_FEATURES				\
@@ -116,6 +120,12 @@ static bool kvm_smccc_test_fw_bmap(struct kvm_vcpu *vcpu, u32 func_id)
 	case ARM_SMCCC_VENDOR_HYP_KVM_PTP_FUNC_ID:
 		return test_bit(KVM_REG_ARM_VENDOR_HYP_BIT_PTP,
 				&smccc_feat->vendor_hyp_bmap);
+#ifdef CONFIG_ARM64_HISI_IPIV
+	case ARM_SMCCC_VENDOR_PV_SGI_FEATURES:
+	case ARM_SMCCC_VENDOR_PV_SGI_ENABLE:
+		return test_bit(KVM_REG_ARM_VENDOR_HYP_BIT_IPIV,
+				&smccc_feat->vendor_hyp_bmap);
+#endif
 	default:
 		return false;
 	}
@@ -342,6 +352,22 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 		if (gpa != INVALID_GPA)
 			val[0] = gpa;
 		break;
+#ifdef CONFIG_ARM64_HISI_IPIV
+	case ARM_SMCCC_VENDOR_PV_SGI_FEATURES:
+		if (hisi_ipiv_supported_per_vm(vcpu))
+			val[0] = SMCCC_RET_SUCCESS;
+		else
+			val[0] = SMCCC_RET_NOT_SUPPORTED;
+		break;
+	case ARM_SMCCC_VENDOR_PV_SGI_ENABLE:
+		if (hisi_ipiv_supported_per_vm(vcpu)) {
+			hisi_ipiv_enable_per_vm(vcpu);
+			val[0] = SMCCC_RET_SUCCESS;
+		} else {
+			val[0] = SMCCC_RET_NOT_SUPPORTED;
+		}
+		break;
+#endif
 	case ARM_SMCCC_VENDOR_HYP_CALL_UID_FUNC_ID:
 		val[0] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_0;
 		val[1] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_1;

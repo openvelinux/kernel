@@ -2739,6 +2739,15 @@ static void vgic_its_reset(struct kvm *kvm, struct vgic_its *its)
 	its->enabled = 0;
 	vgic_its_free_device_list(kvm, its);
 	vgic_its_free_collection_list(kvm, its);
+
+#ifdef CONFIG_ARM64_HISI_IPIV
+	/*
+	 * For the para-virtualization feature IPIV, ensure that
+	 * the flag of the guest OS is reset when the guest OS is
+	 * reset.
+	 */
+	kvm->arch.vgic.its_vm.enable_ipiv_from_guest = false;
+#endif
 }
 
 static int vgic_its_has_attr(struct kvm_device *dev,

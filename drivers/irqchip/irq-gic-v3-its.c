@@ -380,10 +380,6 @@ static int alloc_devid_from_rsv_pools(struct rsv_devid_pool **devid_pool,
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
 #define gic_data_rdist_vlpi_base()	(gic_data_rdist_rd_base() + SZ_128K)
 
-#ifdef CONFIG_ARM64_HISI_IPIV
-extern struct static_key_false ipiv_enable;
-#endif
-
 #ifdef CONFIG_VIRT_PLAT_DEV
 /*
  * Currently we only build *one* devid pool.
@@ -4433,8 +4429,7 @@ static void its_vpe_4_1_schedule(struct its_vpe *vpe,
 	u64 ipiv_val = 0;
 	u32 nr_vpes;
 
-	if (static_branch_unlikely(&ipiv_enable) &&
-	    vm->nassgireq) {
+	if (vm->enable_ipiv_from_guest) {
 		/* wait gicr_ipiv_busy */
 		WARN_ON_ONCE(readl_relaxed_poll_timeout_atomic(vlpi_base + GICR_IPIV_ST,
 					ipiv_val, !(ipiv_val & GICR_IPIV_ST_IPIV_BUSY), 1, 500));
@@ -4504,8 +4499,7 @@ static void its_vpe_4_1_deschedule(struct its_vpe *vpe,
 	}
 
 #ifdef CONFIG_ARM64_HISI_IPIV
-	if (static_branch_unlikely(&ipiv_enable) &&
-	    vm->nassgireq) {
+	if (vm->enable_ipiv_from_guest) {
 		/* wait gicr_ipiv_busy */
 		WARN_ON_ONCE(readl_relaxed_poll_timeout_atomic(vlpi_base + GICR_IPIV_ST,
 					val, !(val & GICR_IPIV_ST_IPIV_BUSY), 1, 500));
@@ -4908,7 +4902,7 @@ static void its_vpe_irq_domain_free(struct irq_domain *domain,
 		its_lpi_free(vm->db_bitmap, vm->db_lpi_base, vm->nr_db_lpis);
 		its_free_prop_table(vm->vprop_page);
 #ifdef CONFIG_ARM64_HISI_IPIV
-		if (static_branch_unlikely(&ipiv_enable)) {
+		if (vm->enable_ipiv_from_vmm) {
 			free_pages((unsigned long)page_address(vm->vpeid_page),
 				    get_order(nr_irqs * 2));
 		}
@@ -4955,7 +4949,7 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 	if (gic_rdists->has_rvpeid) {
 		irqchip = &its_vpe_4_1_irq_chip;
 #ifdef CONFIG_ARM64_HISI_IPIV
-		if (static_branch_unlikely(&ipiv_enable)) {
+		if (vm->enable_ipiv_from_vmm) {
 			/*
 			 * The vpeid's size is 2 bytes, so we need to allocate 2 *
 			 * (num of vcpus). nr_irqs is equal to the number of vCPUs.
@@ -4978,7 +4972,7 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 		if (err)
 			break;
 #ifdef CONFIG_ARM64_HISI_IPIV
-		if (static_branch_unlikely(&ipiv_enable)) {
+		if (vm->enable_ipiv_from_vmm) {
 			vpeid_entry = (u16 *)vpeid_table_va + i;
 			*vpeid_entry = vm->vpes[i]->vpe_id;
 		}

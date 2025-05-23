@@ -376,6 +376,11 @@ enum {
 enum {
 	KVM_REG_ARM_VENDOR_HYP_BIT_FUNC_FEAT	= 0,
 	KVM_REG_ARM_VENDOR_HYP_BIT_PTP		= 1,
+	/*
+	 * If the mainline conflicts, do not change the
+	 * current sequence, add in sequence.
+	 */
+	KVM_REG_ARM_VENDOR_HYP_BIT_IPIV		= 2,
 #ifdef __KERNEL__
 	KVM_REG_ARM_VENDOR_HYP_BMAP_BIT_COUNT,
 #endif
