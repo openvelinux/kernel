@@ -1050,7 +1050,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		 * For mpam, each control group has its own pmg/rmid
 		 * space.
 		 */
-		r->num_rmid = mpam_partid_max * mpam_pmg_max;
+		r->num_rmid = resctrl_arch_system_num_rmid_idx();
 	}
 
 	return 0;
