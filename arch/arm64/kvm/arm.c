@@ -1424,6 +1424,16 @@ static int kvm_vcpu_init_check_features(struct kvm_vcpu *vcpu,
 	if (test_bit(KVM_ARM_VCPU_HAS_EL2, &features))
 		return -EINVAL;
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+	if (static_branch_unlikely(&ipiv_enable) &&
+	    vcpu->kvm->arch.vgic.its_vm.enable_ipiv_from_vmm &&
+	    vcpu->vcpu_id != vcpu->vcpu_idx) {
+		kvm_err("IPIV ERROR: vcpu_id %d != vcpu_idx %d\n",
+					vcpu->vcpu_id, vcpu->vcpu_idx);
+		return -EINVAL;
+	}
+#endif
+
 	return 0;
 }
 
