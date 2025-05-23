@@ -1076,7 +1076,7 @@ static inline bool acpi_sleep_state_supported(u8 sleep_state)
 
 static inline int acpi_mrrm_max_mem_region(void)
 {
-	return -ENOENT;
+	return 1;
 }
 
 #endif	/* !CONFIG_ACPI */
