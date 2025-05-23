@@ -127,6 +127,10 @@ The pseudo-firmware bitmap register are as follows:
     Bit-1: KVM_REG_ARM_VENDOR_HYP_BIT_PTP:
       The bit represents the Precision Time Protocol KVM service.
 
+    Bit-2: KVM_REG_ARM_VENDOR_HYP_BIT_IPIV:
+      The bit represents the ARM_SMCCC_VENDOR_PV_SGI_FEATURES and
+      ARM_SMCCC_VENDOR_PV_SGI_ENABLE function-ids.
+
 Errors:
 
     =======  =============================================================
