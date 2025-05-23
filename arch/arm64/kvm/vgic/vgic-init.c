@@ -14,6 +14,7 @@
 #include "vgic.h"
 
 #ifdef CONFIG_ARM64_HISI_IPIV
+#include <linux/irqchip/arm-gic-v3.h>
 #include "hisilicon/hisi_virt.h"
 #endif
 
@@ -551,9 +552,27 @@ void kvm_vgic_cpu_down(void)
 }
 
 #ifdef CONFIG_ARM64_HISI_IPIV
+extern void __iomem *gic_data_rdist_get_vlpi_base(void);
 static irqreturn_t vgic_ipiv_irq_handler(int irq, void *data)
 {
-	kvm_info("IPIV irq handler!\n");
+	void __iomem *vlpi_base = gic_data_rdist_get_vlpi_base();
+	u32 gicr_ipiv_st;
+	bool broadcast_err, grpbrd_err, vcpuidx_err;
+
+	gicr_ipiv_st = readl_relaxed(vlpi_base + GICR_IPIV_ST);
+
+	broadcast_err = !!(gicr_ipiv_st & GICR_IPIV_ST_IRM_ERR);
+	if (broadcast_err)
+		kvm_err("IPIV error: IRM=1 Guest broadcast error\n");
+
+	grpbrd_err = !!(gicr_ipiv_st & GICR_IPIV_ST_BRPBRD_ERR);
+	if (grpbrd_err)
+		kvm_err("IPIV error: Guest group broadcast error\n");
+
+	vcpuidx_err = !!(gicr_ipiv_st & GICR_IPIV_ST_VCPUIDX_ERR);
+	if (vcpuidx_err)
+		kvm_err("IPIV error: The VCPU index is out of range\n");
+
 	return IRQ_HANDLED;
 }
 #endif

@@ -380,6 +380,14 @@ static int alloc_devid_from_rsv_pools(struct rsv_devid_pool **devid_pool,
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
 #define gic_data_rdist_vlpi_base()	(gic_data_rdist_rd_base() + SZ_128K)
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+void __iomem *gic_data_rdist_get_vlpi_base(void)
+{
+	return gic_data_rdist_vlpi_base();
+}
+EXPORT_SYMBOL(gic_data_rdist_get_vlpi_base);
+#endif
+
 #ifdef CONFIG_VIRT_PLAT_DEV
 /*
  * Currently we only build *one* devid pool.
