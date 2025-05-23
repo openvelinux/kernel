@@ -1552,6 +1552,25 @@ static u64 read_sanitised_id_dfr0_el1(struct kvm_vcpu *vcpu,
 	return val;
 }
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+extern struct static_key_false ipiv_enable;
+static int set_mpidr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *rd,
+		     u64 val)
+{
+	if (static_branch_unlikely(&ipiv_enable) &&
+	    vcpu->kvm->arch.vgic.its_vm.enable_ipiv_from_vmm) {
+		if (val != __vcpu_sys_reg(vcpu, rd->reg)) {
+			kvm_err("IPIV ERROR: MPIDR changed\n");
+			return -EINVAL;
+		}
+	}
+
+	__vcpu_sys_reg(vcpu, rd->reg) = val;
+
+	return 0;
+}
+#endif
+
 static int set_id_dfr0_el1(struct kvm_vcpu *vcpu,
 			   const struct sys_reg_desc *rd,
 			   u64 val)
@@ -2058,7 +2077,12 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 
 	{ SYS_DESC(SYS_DBGVCR32_EL2), NULL, reset_val, DBGVCR32_EL2, 0 },
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+	{ SYS_DESC(SYS_MPIDR_EL1),
+	  .reset = reset_mpidr, .reg = MPIDR_EL1, .set_user = set_mpidr},
+#else
 	{ SYS_DESC(SYS_MPIDR_EL1), NULL, reset_mpidr, MPIDR_EL1 },
+#endif
 
 	/*
 	 * ID regs: all ID_SANITISED() entries here must have corresponding
