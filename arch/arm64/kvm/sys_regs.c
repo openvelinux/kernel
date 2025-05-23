@@ -694,7 +694,9 @@ static u64 reset_actlr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 	return actlr;
 }
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 extern struct static_key_false ipiv_enable;
+#endif
 
 static u64 reset_mpidr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 {
@@ -711,6 +713,7 @@ static u64 reset_mpidr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 	mpidr |= ((vcpu->vcpu_id >> 4) & 0xff) << MPIDR_LEVEL_SHIFT(1);
 	mpidr |= ((vcpu->vcpu_id >> 12) & 0xff) << MPIDR_LEVEL_SHIFT(2);
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 	if (static_branch_unlikely(&ipiv_enable)) {
 		/*
 		 * To avoid sending multi-SGIs in guest OS, make aff1/aff2 unique
@@ -718,6 +721,7 @@ static u64 reset_mpidr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 		mpidr = (vcpu->vcpu_id & 0x0f) << MPIDR_LEVEL_SHIFT(1);
 		mpidr |= ((vcpu->vcpu_id >> 4) & 0xff) << MPIDR_LEVEL_SHIFT(2);
 	}
+#endif
 
 	mpidr |= (1ULL << 31);
 	vcpu_write_sys_reg(vcpu, mpidr, MPIDR_EL1);

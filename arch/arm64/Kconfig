@@ -2243,6 +2243,18 @@ config ARM64_HDBSS
 
 endmenu # "ARMv9.5 architectural features"
 
+config ARM64_HISI_IPIV
+	bool "Enable support for IPIV"
+	default y
+	depends on ACPI
+	depends on ARM64
+	help
+	  IPIV optimizes vSGI on the basis of GICv4.1. The vCPU on the sending
+	  side of vSGI needs to trap to Hypervisor. IPIv sends vSGI without
+	  traping, improving performance.
+
+	  The feature will only be enabled if CPU in the system and Guest OS
+	  support this feature. If unsure, say Y.
 
 config ARM64_SVE
 	bool "ARM Scalable Vector Extension support"

@@ -19,7 +19,9 @@ enum hisi_cpu_type {
 };
 
 /* HIP12 */
+#ifdef CONFIG_ARM64_HISI_IPIV
 #define AIDR_EL1_IPIV_MASK     GENMASK_ULL(17, 16)
+#endif
 /* HIP10 */
 #define AIDR_EL1_DVMBM_MASK	GENMASK_ULL(13, 12)
 #define SYS_LSUDVM_CTRL_EL2	sys_reg(3, 4, 15, 7, 4)
@@ -77,9 +79,11 @@ enum hisi_cpu_type {
 void probe_hisi_cpu_type(void);
 bool hisi_ncsnp_supported(void);
 bool hisi_dvmbm_supported(void);
+#ifdef CONFIG_ARM64_HISI_IPIV
 bool hisi_ipiv_supported(void);
-void kvm_get_pg_cfg(void);
 void ipiv_gicd_init(void);
+#endif /* CONFIG_ARM64_HISI_IPIV */
+void kvm_get_pg_cfg(void);
 
 int kvm_sched_affinity_vcpu_init(struct kvm_vcpu *vcpu);
 void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu);
@@ -100,17 +104,21 @@ static inline bool hisi_dvmbm_supported(void)
 }
 static inline void kvm_get_pg_cfg(void) {}
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 static inline bool hisi_ipiv_supported(void)
 {
 	return false;
 }
+#endif /* CONFIG_ARM64_HISI_IPIV */
 
 static inline int kvm_sched_affinity_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	return 0;
 }
 static inline void kvm_sched_affinity_vcpu_destroy(struct kvm_vcpu *vcpu) {}
+#ifdef CONFIG_ARM64_HISI_IPIV
 static inline void ipiv_gicd_init(void) {}
+#endif /* CONFIG_ARM64_HISI_IPIV */
 static inline int kvm_sched_affinity_vm_init(struct kvm *kvm)
 {
 	return 0;
@@ -121,6 +129,8 @@ static inline void kvm_tlbi_dvmbm_vcpu_put(struct kvm_vcpu *vcpu) {}
 static inline void kvm_hisi_reload_lsudvmbm(struct kvm *kvm) {}
 #endif /* CONFIG_KVM_HISI_VIRT */
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 extern bool gic_dist_enable_ipiv(void);
 extern bool is_gicv4p1(void);
+#endif /* CONFIG_ARM64_HISI_IPIV */
 #endif /* __HISI_VIRT_H__ */

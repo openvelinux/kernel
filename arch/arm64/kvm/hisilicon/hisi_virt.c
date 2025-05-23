@@ -12,7 +12,10 @@
 static enum hisi_cpu_type cpu_type = UNKNOWN_HI_TYPE;
 
 static bool dvmbm_enabled;
+
+#ifdef CONFIG_ARM64_HISI_IPIV
 static bool ipiv_enabled;
+#endif
 
 static const char * const hisi_cpu_type_str[] = {
 	"Hisi1612",
@@ -158,6 +161,7 @@ static void hardware_disable_dvmbm(void *data)
 	write_sysreg_s(val, SYS_LSUDVM_CTRL_EL2);
 }
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 static int __init early_ipiv_enable(char *buf)
 {
 	return strtobool(buf, &ipiv_enabled);
@@ -193,7 +197,7 @@ void ipiv_gicd_init(void)
 {
 	gic_dist_enable_ipiv();
 }
-
+#endif /* CONFIG_ARM64_HISI_IPIV */
 
 bool hisi_dvmbm_supported(void)
 {

@@ -380,6 +380,10 @@ static int alloc_devid_from_rsv_pools(struct rsv_devid_pool **devid_pool,
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
 #define gic_data_rdist_vlpi_base()	(gic_data_rdist_rd_base() + SZ_128K)
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+extern struct static_key_false ipiv_enable;
+#endif
+
 #ifdef CONFIG_VIRT_PLAT_DEV
 /*
  * Currently we only build *one* devid pool.
@@ -4385,6 +4389,7 @@ static void its_vpe_4_1_unmask_irq(struct irq_data *d)
 	its_vpe_4_1_send_inv(d);
 }
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 /* IPIV private register */
 #define CPU_SYS_TRAP_EL2		sys_reg(3, 4, 15, 7, 2)
 #define CPU_SYS_TRAP_EL2_IPIV_ENABLE_SHIFT	0
@@ -4397,36 +4402,35 @@ static void its_vpe_4_1_unmask_irq(struct irq_data *d)
  */
 static void ipiv_disable_vsgi_trap(void)
 {
-#ifdef CONFIG_ARM64
 	u64 val;
 
 	/* disable guest access ICC_SGI1R_EL1 trap, enable ipiv */
 	val = read_sysreg_s(CPU_SYS_TRAP_EL2);
 	val |= CPU_SYS_TRAP_EL2_IPIV_ENABLE;
 	write_sysreg_s(val, CPU_SYS_TRAP_EL2);
-#endif
 }
 
 static void ipiv_enable_vsgi_trap(void)
 {
-#ifdef CONFIG_ARM64
 	u64 val;
 
 	/* enable guest access ICC_SGI1R_EL1 trap, disable ipiv */
 	val = read_sysreg_s(CPU_SYS_TRAP_EL2);
 	val &= ~CPU_SYS_TRAP_EL2_IPIV_ENABLE;
 	write_sysreg_s(val, CPU_SYS_TRAP_EL2);
-#endif
 }
+#endif /* CONFIG_ARM64_HISI_IPIV */
 
 static void its_vpe_4_1_schedule(struct its_vpe *vpe,
 				 struct its_cmd_info *info)
 {
 	void __iomem *vlpi_base = gic_data_rdist_vlpi_base();
+	u64 val = 0;
+
+#ifdef CONFIG_ARM64_HISI_IPIV
 	struct its_vm *vm = vpe->its_vm;
 	unsigned long vpeid_page_addr;
 	u64 ipiv_val = 0;
-	u64 val = 0;
 	u32 nr_vpes;
 
 	if (static_branch_unlikely(&ipiv_enable) &&
@@ -4448,6 +4452,7 @@ static void its_vpe_4_1_schedule(struct its_vpe *vpe,
 
 		ipiv_disable_vsgi_trap();
 	}
+#endif /* CONFIG_ARM64_HISI_IPIV */
 
 	/* Schedule the VPE */
 	val |= GICR_VPENDBASER_Valid;
@@ -4462,8 +4467,11 @@ static void its_vpe_4_1_deschedule(struct its_vpe *vpe,
 				   struct its_cmd_info *info)
 {
 	void __iomem *vlpi_base = gic_data_rdist_vlpi_base();
-	struct its_vm *vm = vpe->its_vm;
 	u64 val;
+
+#ifdef CONFIG_ARM64_HISI_IPIV
+	struct its_vm *vm = vpe->its_vm;
+#endif
 
 	if (info->req_db) {
 		unsigned long flags;
@@ -4495,6 +4503,7 @@ static void its_vpe_4_1_deschedule(struct its_vpe *vpe,
 		vpe->pending_last = true;
 	}
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 	if (static_branch_unlikely(&ipiv_enable) &&
 	    vm->nassgireq) {
 		/* wait gicr_ipiv_busy */
@@ -4505,6 +4514,7 @@ static void its_vpe_4_1_deschedule(struct its_vpe *vpe,
 
 		ipiv_enable_vsgi_trap();
 	}
+#endif
 }
 
 static void its_vpe_4_1_invall(struct its_vpe *vpe)
@@ -4897,10 +4907,12 @@ static void its_vpe_irq_domain_free(struct irq_domain *domain,
 	if (bitmap_empty(vm->db_bitmap, vm->nr_db_lpis)) {
 		its_lpi_free(vm->db_bitmap, vm->db_lpi_base, vm->nr_db_lpis);
 		its_free_prop_table(vm->vprop_page);
+#ifdef CONFIG_ARM64_HISI_IPIV
 		if (static_branch_unlikely(&ipiv_enable)) {
 			free_pages((unsigned long)page_address(vm->vpeid_page),
 				    get_order(nr_irqs * 2));
 		}
+#endif
 	}
 }
 
@@ -4910,10 +4922,14 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 	struct irq_chip *irqchip = &its_vpe_irq_chip;
 	struct its_vm *vm = args;
 	unsigned long *bitmap;
-	struct page *vprop_page, *vpeid_page;
+	struct page *vprop_page;
 	int base, nr_ids, i, err = 0;
+
+#ifdef CONFIG_ARM64_HISI_IPIV
+	struct page *vpeid_page;
 	void *vpeid_table_va;
 	u16 *vpeid_entry;
+#endif
 
 	bitmap = its_lpi_alloc(roundup_pow_of_two(nr_irqs), &base, &nr_ids);
 	if (!bitmap)
@@ -4938,6 +4954,7 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 
 	if (gic_rdists->has_rvpeid) {
 		irqchip = &its_vpe_4_1_irq_chip;
+#ifdef CONFIG_ARM64_HISI_IPIV
 		if (static_branch_unlikely(&ipiv_enable)) {
 			/*
 			 * The vpeid's size is 2 bytes, so we need to allocate 2 *
@@ -4952,6 +4969,7 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 			vm->vpeid_page = vpeid_page;
 			vpeid_table_va = page_address(vpeid_page);
 		}
+#endif
 	}
 
 	for (i = 0; i < nr_irqs; i++) {
@@ -4959,10 +4977,12 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 		err = its_vpe_init(vm->vpes[i]);
 		if (err)
 			break;
+#ifdef CONFIG_ARM64_HISI_IPIV
 		if (static_branch_unlikely(&ipiv_enable)) {
 			vpeid_entry = (u16 *)vpeid_table_va + i;
 			*vpeid_entry = vm->vpes[i]->vpe_id;
 		}
+#endif
 		err = its_irq_gic_domain_alloc(domain, virq + i,
 					       vm->vpes[i]->vpe_db_lpi);
 		if (err)

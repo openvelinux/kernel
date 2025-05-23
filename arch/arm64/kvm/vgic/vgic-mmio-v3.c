@@ -132,7 +132,9 @@ static void vgic_mmio_write_v3_misc(struct kvm_vcpu *vcpu,
 
 		/* Switching HW SGIs? */
 		dist->nassgireq = val & GICD_CTLR_nASSGIreq;
+#ifdef CONFIG_ARM64_HISI_IPIV
 		dist->its_vm.nassgireq = dist->nassgireq;
+#endif
 		if (is_hwsgi != dist->nassgireq)
 			vgic_v4_configure_vsgis(vcpu->kvm);
 

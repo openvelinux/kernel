@@ -111,6 +111,7 @@
 #define GIC_PAGE_SIZE_64K		2ULL
 #define GIC_PAGE_SIZE_MASK		3ULL
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 #define GICD_MISC_CTRL			0x2084
 #define GICD_MISC_CTRL_CFG_IPIV_EN	(1U << 19)
 
@@ -122,6 +123,7 @@
 #define GICD_IPIV_CTRL_VM_TABLE_INNERCACHE_SHIFT 16
 #define GICD_IPIV_CTRL_VM_TABLE_SHAREABILITY_SHIFT 19
 #define GICD_IPIV_ITS_TA_BASE	0xc010
+#endif
 
 /*
  * Re-Distributor registers, offsets from RD_base
@@ -372,6 +374,7 @@
 #define GICR_VSGIPENDR_BUSY		(1U << 31)
 #define GICR_VSGIPENDR_PENDING		GENMASK(15, 0)
 
+#ifdef CONFIG_ARM64_HISI_IPIV
 /* IPIV VM table address */
 #define GICR_VM_TABLE_BAR_L		0x140
 #define GICR_VM_TABLE_BAR_H		0x144
@@ -386,6 +389,7 @@
 #define GICR_IPIV_ST		0x14c
 #define GICR_IPIV_ST_IPIV_BUSY_SHIFT 0
 #define GICR_IPIV_ST_IPIV_BUSY (1 << GICR_IPIV_ST_IPIV_BUSY_SHIFT)
+#endif /* CONFIG_ARM64_HISI_IPIV */
 
 /*
  * ITS registers, offsets from ITS_base
