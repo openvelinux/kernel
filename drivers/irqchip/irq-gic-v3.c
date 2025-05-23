@@ -106,8 +106,12 @@ DEFINE_STATIC_KEY_FALSE(gic_nonsecure_priorities);
 EXPORT_SYMBOL(gic_nonsecure_priorities);
 
 #ifdef CONFIG_ARM64_HISI_IPIV
+/* indicate if host supports IPIv */
 DEFINE_STATIC_KEY_FALSE(ipiv_enable);
 EXPORT_SYMBOL(ipiv_enable);
+
+/* indicate if guest is using IPIv */
+static bool hisi_pv_sgi_enabled;
 #endif
 
 /*
@@ -1386,8 +1390,8 @@ void gic_dist_enable_ipiv(void)
 	static_branch_enable(&ipiv_enable);
 
 	val = (0 << GICD_IPIV_CTRL_AFF_DIRECT_VPEID_SHIFT) |
-		(0 << GICD_IPIV_CTRL_AFF1_LEFT_SHIFT_SHIFT) |
-		(4 << GICD_IPIV_CTRL_AFF2_LEFT_SHIFT_SHIFT) |
+		(4 << GICD_IPIV_CTRL_AFF1_LEFT_SHIFT_SHIFT) |
+		(12 << GICD_IPIV_CTRL_AFF2_LEFT_SHIFT_SHIFT) |
 		(7 << GICD_IPIV_CTRL_VM_TABLE_INNERCACHE_SHIFT) |
 		(2 << GICD_IPIV_CTRL_VM_TABLE_SHAREABILITY_SHIFT);
 	writel_relaxed(val, gic_data.dist_base + GICD_IPIV_CTRL);
@@ -1506,7 +1510,15 @@ static void gic_ipi_send_mask(struct irq_data *d, const struct cpumask *mask)
 		u64 cluster_id = MPIDR_TO_SGI_CLUSTER_ID(gic_cpu_to_affinity(cpu));
 		u16 tlist;
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+		if (!hisi_pv_sgi_enabled)
+			tlist = gic_compute_target_list(&cpu, mask, cluster_id);
+		else
+			tlist = 1 << (gic_cpu_to_affinity(cpu) & 0xf);
+#else
 		tlist = gic_compute_target_list(&cpu, mask, cluster_id);
+#endif
+
 		gic_send_sgi(cluster_id, tlist, d->hwirq);
 	}
 
@@ -2742,6 +2754,28 @@ static struct fwnode_handle *gic_v3_get_gsi_domain_id(u32 gsi)
 	return gsi_domain_handle;
 }
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+static void hisi_pv_sgi_init(void)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_PV_SGI_FEATURES, &res);
+	if (res.a0 != SMCCC_RET_SUCCESS) {
+		pr_info("Not Support HiSilicon PV SGI!\n");
+		return;
+	}
+
+	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_PV_SGI_ENABLE, &res);
+	if (res.a0 != SMCCC_RET_SUCCESS) {
+		pr_info("Disable HiSilicon PV SGI!\n");
+		return;
+	}
+
+	hisi_pv_sgi_enabled = true;
+	pr_info("Enable HiSilicon PV SGI!\n");
+}
+#endif
+
 static int __init
 gic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
 {
@@ -2793,6 +2827,10 @@ gic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
 
 	if (static_branch_likely(&supports_deactivate_key))
 		gic_acpi_setup_kvm_info();
+
+#ifdef CONFIG_ARM64_HISI_IPIV
+	hisi_pv_sgi_init();
+#endif
 
 	return 0;
 
