@@ -23,6 +23,7 @@ extern char __mmuoff_data_start[], __mmuoff_data_end[];
 extern char __entry_tramp_text_start[], __entry_tramp_text_end[];
 extern char __relocate_new_kernel_start[], __relocate_new_kernel_end[];
 extern char __sym_code_functions_start[], __sym_code_functions_end[];
+extern char __sym_kentry_functions_start[], __sym_kentry_functions_end[];
 
 static inline size_t entry_tramp_text_size(void)
 {
