@@ -37,6 +37,7 @@ struct its_vm {
 #ifdef CONFIG_ARM64_HISI_IPIV
 	struct page         *vpeid_page;
 	bool                  nassgireq;
+	bool			enable_ipiv_from_vmm;
 #endif
 };
 
