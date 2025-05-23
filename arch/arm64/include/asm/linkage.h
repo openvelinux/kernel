@@ -9,6 +9,15 @@
 #define __ALIGN_STR	".balign " #CONFIG_FUNCTION_ALIGNMENT
 
 /*
+ * Annotate sym code that only executed by user space
+ */
+#define SYM_CODE_START_USER(name)			\
+	SYM_CODE_START(name)
+
+#define SYM_CODE_END_USER(name)			\
+	SYM_END(name, SYM_T_NONE)
+
+/*
  * When using in-kernel BTI we need to ensure that PCS-conformant
  * assembly functions have suitable annotations.  Override
  * SYM_FUNC_START to insert a BTI landing pad at the start of
