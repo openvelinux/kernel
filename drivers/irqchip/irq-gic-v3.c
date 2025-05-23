@@ -1371,15 +1371,6 @@ static int gic_dist_supports_lpis(void)
 }
 
 #ifdef CONFIG_ARM64_HISI_IPIV
-bool is_gicv4p1(void)
-{
-	if (!gic_data.rdists.has_rvpeid)
-		return false;
-
-	return true;
-}
-EXPORT_SYMBOL(is_gicv4p1);
-
 void gic_dist_enable_ipiv(void)
 {
 	u32 val;

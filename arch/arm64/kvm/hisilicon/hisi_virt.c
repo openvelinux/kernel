@@ -184,7 +184,7 @@ bool hisi_ipiv_supported(void)
 		return false;
 
 	/* Enable IPIV feature if necessary */
-	if (!is_gicv4p1()) {
+	if (!kvm_vgic_global_state.has_gicv4_1) {
 		kvm_info("Hisi ipiv needs to enable GICv4p1!\n");
 		return false;
 	}

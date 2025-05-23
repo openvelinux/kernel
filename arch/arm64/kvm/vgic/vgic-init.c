@@ -13,6 +13,10 @@
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
+#ifdef CONFIG_ARM64_HISI_IPIV
+#include "hisilicon/hisi_virt.h"
+#endif
+
 /*
  * Initialization rules: there are multiple stages to the vgic
  * initialization, both for the distributor and the CPU interfaces.  The basic
@@ -663,6 +667,13 @@ int kvm_vgic_hyp_init(void)
 	kvm_info("vgic interrupt IRQ%d\n", kvm_vgic_global_state.maint_irq);
 
 #ifdef CONFIG_ARM64_HISI_IPIV
+	if (hisi_ipiv_supported()) {
+		ipiv_gicd_init();
+		kvm_info("KVM ipiv enabled\n");
+	} else {
+		kvm_info("KVM ipiv disabled\n");
+	}
+
 	if (static_branch_unlikely(&ipiv_enable)) {
 		ipiv_irq = acpi_register_gsi(NULL, 18, ACPI_EDGE_SENSITIVE,
 			ACPI_ACTIVE_HIGH);

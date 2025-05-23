@@ -64,11 +64,6 @@ bool kvm_ncsnp_support;
 /* Capability of DVMBM */
 bool kvm_dvmbm_support;
 
-#ifdef CONFIG_ARM64_HISI_IPIV
-/* Capability of IPIV */
-bool kvm_ipiv_support;
-#endif /* CONFIG_ARM64_HISI_IPIV */
-
 static DEFINE_PER_CPU(unsigned char, kvm_hyp_initialized);
 DEFINE_STATIC_KEY_FALSE(userspace_irqchip_in_use);
 
@@ -2688,17 +2683,8 @@ static __init int kvm_arm_init(void)
 	probe_hisi_cpu_type();
 	kvm_ncsnp_support = hisi_ncsnp_supported();
 	kvm_dvmbm_support = hisi_dvmbm_supported();
-#ifdef CONFIG_ARM64_HISI_IPIV
-	kvm_ipiv_support = hisi_ipiv_supported();
-#endif
 	kvm_info("KVM ncsnp %s\n", kvm_ncsnp_support ? "enabled" : "disabled");
 	kvm_info("KVM dvmbm %s\n", kvm_dvmbm_support ? "enabled" : "disabled");
-#ifdef CONFIG_ARM64_HISI_IPIV
-	kvm_info("KVM ipiv %s\n", kvm_ipiv_support ? "enabled" : "disabled");
-
-	if (kvm_ipiv_support)
-		ipiv_gicd_init();
-#endif
 
 	if (kvm_dvmbm_support)
 		kvm_get_pg_cfg();
