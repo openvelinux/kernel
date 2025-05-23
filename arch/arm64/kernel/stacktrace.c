@@ -256,6 +256,7 @@ unwind_reliable(struct unwind_state *state, stack_trace_consume_fn consume_entry
 {
 	struct task_struct *tsk = state->task;
 	int ret = 0;
+	struct code_range *r;
 	unsigned long pc;
 
 	if (unwind_recover_return_address(state))
@@ -263,10 +264,18 @@ unwind_reliable(struct unwind_state *state, stack_trace_consume_fn consume_entry
 
 	do {
 		pc = ptrauth_strip_kernel_insn_pac(state->pc);
-		/* Final frame for kthread; nothing to unwind */
-		if ((state->fp == (unsigned long)task_pt_regs(tsk)->stackframe)
-			&& (pc == (unsigned long)&kthread_return_to_user))
-			return 0;
+		if (state->fp == (unsigned long)task_pt_regs(tsk)->stackframe) {
+			/* Final frame for kthread; nothing to unwind */
+			if (pc == (unsigned long)&kthread_return_to_user)
+				return 0;
+
+			/* Kernel entry handler is considered a "reliable" stack trace */
+			for (r = (struct code_range *)__sym_kentry_functions_start;
+					r < (struct code_range *)__sym_kentry_functions_end; r++) {
+				if (pc >= r->start && pc < r->end)
+					return 0;
+			}
+		}
 
 		if (!unwind_state_is_reliable(state))
 			return -EINVAL;
