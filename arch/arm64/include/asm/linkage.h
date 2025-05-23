@@ -63,4 +63,14 @@
 		.quad	99b					;\
 		.popsection
 
+/*
+ * Record the address range of each kernel entry handler in a struct code_range
+ * in a special section.
+ */
+#define SYM_KENTRY_END(name)				\
+100 :	.pushsection "sym_kentry_functions", "aw"	;\
+		.quad   name                                    ;\
+		.quad   100b                                    ;\
+		.popsection
+
 #endif
