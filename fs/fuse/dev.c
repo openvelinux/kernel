@@ -2353,6 +2353,13 @@ static long fuse_dev_ioctl(struct file *file, unsigned int cmd,
 		}
 		fdput(f);
 		break;
+	case FUSE_DEV_IOC_RESTORE_REQ:
+		fud = fuse_get_dev(file);
+		if (!fud)
+			return -EPERM;
+
+		fuse_resend(fud->fc);
+		return 0;
 	default:
 		res = -ENOTTY;
 		break;
