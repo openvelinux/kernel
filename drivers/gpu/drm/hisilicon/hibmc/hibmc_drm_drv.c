@@ -133,7 +133,7 @@ static int hibmc_kms_init(struct hibmc_drm_private *priv)
 	ret = hibmc_de_init(priv);
 	if (ret) {
 		drm_err(dev, "failed to init de: %d\n", ret);
-		return ret;
+		goto err;
 	}
 
 	/*
@@ -143,17 +143,24 @@ static int hibmc_kms_init(struct hibmc_drm_private *priv)
 	ret = readl(priv->mmio + HIBMC_DP_HOST_SERDES_CTRL);
 	if (ret) {
 		ret = hibmc_dp_init(priv);
-		if (ret)
+		if (ret) {
 			drm_err(dev, "failed to init dp: %d\n", ret);
+			goto err;
+		}
 	}
 
 	ret = hibmc_vdac_init(priv);
 	if (ret) {
 		drm_err(dev, "failed to init vdac: %d\n", ret);
-		return ret;
+		goto err;
 	}
 
 	return 0;
+
+err:
+	drm_atomic_helper_shutdown(dev);
+
+	return ret;
 }
 
 /*
@@ -318,18 +325,20 @@ static int hibmc_load(struct drm_device *dev)
 
 	ret = hibmc_hw_init(priv);
 	if (ret)
-		goto err;
+		return ret;
 
 	ret = drmm_vram_helper_init(dev, pci_resource_start(pdev, 0),
 				    pci_resource_len(pdev, 0));
 	if (ret) {
 		drm_err(dev, "Error initializing VRAM MM; %d\n", ret);
-		goto err;
+		return ret;
 	}
 
 	ret = hibmc_kms_init(priv);
-	if (ret)
-		goto err;
+	if (ret) {
+		drm_err(dev, "hibmc kms init failed, ret:%d\n", ret);
+		return ret;
+	}
 
 	ret = drm_vblank_init(dev, dev->mode_config.num_crtc);
 	if (ret) {
