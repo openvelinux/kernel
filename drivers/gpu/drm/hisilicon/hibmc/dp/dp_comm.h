@@ -15,6 +15,7 @@
 
 #include "dp_hw.h"
 
+#define HIBMC_DP_LINK_RATE_CAL 27
 #define HIBMC_DP_LANE_NUM_MAX 2
 
 struct hibmc_link_status {
@@ -25,6 +26,9 @@ struct hibmc_link_status {
 struct hibmc_link_cap {
 	u8 link_rate;
 	u8 lanes;
+	int rx_dpcd_revision;
+	bool is_tps3;
+	bool is_tps4;
 };
 
 struct hibmc_dp_link {
@@ -62,7 +66,6 @@ struct hibmc_dp_dev {
 
 void hibmc_dp_aux_init(struct hibmc_dp *dp);
 int hibmc_dp_link_training(struct hibmc_dp_dev *dp);
-int hibmc_dp_serdes_init(struct hibmc_dp_dev *dp);
 int hibmc_dp_serdes_rate_switch(u8 rate, struct hibmc_dp_dev *dp);
 int hibmc_dp_serdes_set_tx_cfg(struct hibmc_dp_dev *dp, u8 train_set[HIBMC_DP_LANE_NUM_MAX]);
 

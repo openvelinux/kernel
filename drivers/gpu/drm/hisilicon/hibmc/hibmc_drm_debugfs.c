@@ -15,6 +15,44 @@
 
 #define MAX_BUF_SIZE 12
 
+static int hibmc_dp_show(struct seq_file *m, void *arg)
+{
+	struct drm_info_node *node = m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct hibmc_drm_private *priv = to_hibmc_drm_private(dev);
+	int idx, rate;
+
+	if (!drm_dev_enter(dev, &idx))
+		return -ENODEV;
+
+	switch (hibmc_dp_get_link_rate(&priv->dp)) {
+	case 0x1e:
+		rate = 810; // 8.1Gbps
+		break;
+	case 0x14:
+		rate = 540; // 5.4Gbps
+		break;
+	case 0xA:
+		rate = 270; // 2.7Gbps
+		break;
+	case 0x6:
+		rate = 162; // 1.62Gbps
+		break;
+	default:
+		rate = 0;
+	}
+
+	seq_printf(m, "enable lanes: %u\n", hibmc_dp_get_lanes(&priv->dp));
+	seq_printf(m, "link rate: %d\n", rate);
+	seq_printf(m, "vfresh: %d\n", drm_mode_vrefresh(&priv->crtc.mode));
+	seq_printf(m, "dpcd version: 0x%x\n", hibmc_dp_get_dpcd(&priv->dp));
+	seq_printf(m, "hpd status: %d\n", priv->dp.hpd_status);
+
+	drm_dev_exit(idx);
+
+	return 0;
+}
+
 static ssize_t hibmc_control_write(struct file *file, const char __user *user_buf,
 				   size_t count, loff_t *ppos)
 {
@@ -93,12 +131,19 @@ static const struct file_operations hibmc_dbg_fops = {
 	.release = single_release,
 };
 
+static struct drm_info_list hibmc_debugfs_list[] = {
+		{ "hibmc-dp", hibmc_dp_show },
+};
+
 void hibmc_debugfs_init(struct drm_connector *connector, struct dentry *root)
 {
 	struct drm_device *dev = connector->dev;
 	struct hibmc_drm_private *priv = to_hibmc_drm_private(dev);
+	struct drm_minor *minor = dev->primary;
 
 	/* create the file in drm directory, so we don't need to remove manually */
-	debugfs_create_file("colorbar-cfg", 0200,
-			    root, priv, &hibmc_dbg_fops);
+	debugfs_create_file("colorbar-cfg", 0200, root, priv, &hibmc_dbg_fops);
+
+	drm_debugfs_create_files(hibmc_debugfs_list, ARRAY_SIZE(hibmc_debugfs_list),
+				 minor->debugfs_root, minor);
 }

@@ -39,6 +39,14 @@ static int hibmc_dp_link_training_configure(struct hibmc_dp_dev *dp)
 	/* enhanced frame */
 	hibmc_dp_reg_write_field(dp, HIBMC_DP_VIDEO_CTRL, HIBMC_DP_CFG_STREAM_FRAME_MODE, 0x1);
 
+	ret = hibmc_dp_get_serdes_rate_cfg(dp);
+	if (ret < 0)
+		return ret;
+
+	ret = hibmc_dp_serdes_rate_switch(ret, dp);
+	if (ret)
+		return ret;
+
 	/* set rate and lane count */
 	buf[0] = dp->link.cap.link_rate;
 	buf[1] = DP_LANE_COUNT_ENHANCED_FRAME_EN | dp->link.cap.lanes;
@@ -201,21 +209,23 @@ static int hibmc_dp_link_training_cr(struct hibmc_dp_dev *dp)
 	bool level_changed;
 	u32 voltage_tries;
 	u32 cr_tries;
+	u32 max_cr;
 	int ret;
 
 	/*
 	 * DP 1.4 spec define 10 for maxtries value, for pre DP 1.4 version set a limit of 80
 	 * (4 voltage levels x 4 preemphasis levels x 5 identical voltage retries)
 	 */
+	max_cr = dp->link.cap.rx_dpcd_revision >= DP_DPCD_REV_14 ? 10 : 80;
 
 	voltage_tries = 1;
-	for (cr_tries = 0; cr_tries < 80; cr_tries++) {
+	for (cr_tries = 0; cr_tries < max_cr; cr_tries++) {
 		drm_dp_link_train_clock_recovery_delay(dp->aux, dp->dpcd);
 
 		ret = drm_dp_dpcd_read_link_status(dp->aux, lane_status);
 		if (ret != DP_LINK_STATUS_SIZE) {
-			drm_err(dp->dev, "Get lane status failed\n");
-			return ret;
+			drm_err(dp->dev, "Get lane status failed, ret: %d\n", ret);
+			return ret >= 0 ? -EIO : ret;
 		}
 
 		if (drm_dp_clock_recovery_ok(lane_status, dp->link.cap.lanes)) {
@@ -246,7 +256,7 @@ static int hibmc_dp_link_training_cr(struct hibmc_dp_dev *dp)
 		voltage_tries = level_changed ? 1 : voltage_tries + 1;
 	}
 
-	drm_err(dp->dev, "dp link training clock recovery 80 times failed\n");
+	drm_err(dp->dev, "dp link training clock recovery %u timers failed\n", max_cr);
 	dp->link.status.clock_recovered = false;
 
 	return 0;
@@ -256,9 +266,17 @@ static int hibmc_dp_link_training_channel_eq(struct hibmc_dp_dev *dp)
 {
 	u8 lane_status[DP_LINK_STATUS_SIZE] = {0};
 	u8 eq_tries;
+	int tps;
 	int ret;
 
-	ret = hibmc_dp_link_set_pattern(dp, DP_TRAINING_PATTERN_2);
+	if (dp->link.cap.is_tps4)
+		tps = DP_TRAINING_PATTERN_4;
+	else if (dp->link.cap.is_tps3)
+		tps = DP_TRAINING_PATTERN_3;
+	else
+		tps = DP_TRAINING_PATTERN_2;
+
+	ret = hibmc_dp_link_set_pattern(dp, tps);
 	if (ret)
 		return ret;
 
@@ -288,7 +306,7 @@ static int hibmc_dp_link_training_channel_eq(struct hibmc_dp_dev *dp)
 
 		ret = hibmc_dp_serdes_set_tx_cfg(dp, dp->link.train_set);
 		if (ret)
-			return ret;
+			break;
 
 		ret = drm_dp_dpcd_write(dp->aux, DP_TRAINING_LANE0_SET,
 					dp->link.train_set, dp->link.cap.lanes);
@@ -317,12 +335,36 @@ static int hibmc_dp_link_downgrade_training_cr(struct hibmc_dp_dev *dp)
 
 static int hibmc_dp_link_downgrade_training_eq(struct hibmc_dp_dev *dp)
 {
-	if ((dp->link.status.clock_recovered && !dp->link.status.channel_equalized)) {
+	u8 status[DP_LINK_STATUS_SIZE] = {0};
+	int ret;
+
+	ret = drm_dp_dpcd_read_link_status(dp->aux, status);
+	if (ret != DP_LINK_STATUS_SIZE) {
+		drm_err(dp->dev, "get lane status failed\n");
+		return ret >= 0 ? -EIO : ret;
+	}
+
+	if ((dp->link.status.clock_recovered && !dp->link.status.channel_equalized) ||
+	    (status[0] != 0 && !dp->link.status.clock_recovered)) { // at least one cr_done
 		if (!hibmc_dp_link_reduce_lane(dp))
 			return 0;
 	}
 
 	return hibmc_dp_link_reduce_rate(dp);
+}
+
+static void hibmc_dp_update_caps(struct hibmc_dp_dev *dp)
+{
+	dp->link.cap.rx_dpcd_revision = dp->dpcd[DP_DPCD_REV];
+
+	dp->link.cap.is_tps3 = (dp->dpcd[DP_DPCD_REV] >= DP_DPCD_REV_13) &&
+			       (dp->dpcd[DP_MAX_LANE_COUNT] & DP_TPS3_SUPPORTED);
+	dp->link.cap.is_tps4 = (dp->dpcd[DP_DPCD_REV] >= DP_DPCD_REV_14) &&
+			       (dp->dpcd[DP_MAX_DOWNSPREAD] & DP_TPS4_SUPPORTED);
+	dp->link.cap.link_rate = dp->dpcd[DP_MAX_LINK_RATE];
+	dp->link.cap.lanes = dp->dpcd[DP_MAX_LANE_COUNT] & DP_MAX_LANE_COUNT_MASK;
+	if (dp->link.cap.lanes > HIBMC_DP_LANE_NUM_MAX)
+		dp->link.cap.lanes = HIBMC_DP_LANE_NUM_MAX;
 }
 
 int hibmc_dp_link_training(struct hibmc_dp_dev *dp)
@@ -334,16 +376,7 @@ int hibmc_dp_link_training(struct hibmc_dp_dev *dp)
 	if (ret)
 		drm_err(dp->dev, "dp aux read dpcd failed, ret: %d\n", ret);
 
-	dp->link.cap.link_rate = dp->dpcd[DP_MAX_LINK_RATE];
-	dp->link.cap.lanes = 0x2;
-
-	ret = hibmc_dp_get_serdes_rate_cfg(dp);
-	if (ret < 0)
-		return ret;
-
-	ret = hibmc_dp_serdes_rate_switch(ret, dp);
-	if (ret)
-		return ret;
+	hibmc_dp_update_caps(dp);
 
 	while (true) {
 		ret = hibmc_dp_link_training_cr_pre(dp);
