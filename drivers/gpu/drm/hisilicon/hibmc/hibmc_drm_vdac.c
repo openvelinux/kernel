@@ -56,11 +56,36 @@ static void hibmc_connector_destroy(struct drm_connector *connector)
 	drm_connector_cleanup(connector);
 }
 
+static int hibmc_vdac_detect(struct drm_connector *connector, struct drm_modeset_acquire_ctx *ctx,
+			     bool force)
+{
+	struct hibmc_drm_private *priv = to_hibmc_drm_private(connector->dev);
+	struct hibmc_dp *dp = &priv->dp;
+
+	if (dp->hpd_status)
+		return connector_status_disconnected;
+
+	return connector_status_connected;
+}
+
 static const struct drm_connector_helper_funcs
 	hibmc_connector_helper_funcs = {
 	.get_modes = hibmc_connector_get_modes,
-	.detect_ctx = drm_connector_helper_detect_from_ddc,
+	.detect_ctx = hibmc_vdac_detect,
 };
+
+static void hibmc_vdac_force(struct drm_connector *connector)
+{
+	struct hibmc_drm_private *priv = to_hibmc_drm_private(connector->dev);
+	struct hibmc_dp *dp = &priv->dp;
+
+	if (dp->hpd_status) {
+		connector->status = connector_status_disconnected;
+		return;
+	}
+
+	connector->status = connector_status_connected;
+}
 
 static const struct drm_connector_funcs hibmc_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -68,6 +93,7 @@ static const struct drm_connector_funcs hibmc_connector_funcs = {
 	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
+	.force = hibmc_vdac_force,
 };
 
 static void hibmc_encoder_mode_set(struct drm_encoder *encoder,
