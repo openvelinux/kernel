@@ -3001,7 +3001,7 @@ int __sk_mem_raise_allocated(struct sock *sk, int size, int amt, int kind)
 	struct mem_cgroup *memcg = mem_cgroup_sockets_enabled ? sk->sk_memcg : NULL;
 	struct proto *prot = sk->sk_prot;
 	long allocated = sk_memory_allocated_add(sk, amt);
-	bool charged = false;
+	bool charged = true;
 
 	if (memcg) {
 		bool urgent = false;
@@ -3100,7 +3100,7 @@ suppress_allocation:
 
 	sk_memory_allocated_sub(sk, amt);
 
-	if (charged)
+	if (memcg && charged)
 		mem_cgroup_uncharge_skmem(memcg, amt);
 
 	return 0;
