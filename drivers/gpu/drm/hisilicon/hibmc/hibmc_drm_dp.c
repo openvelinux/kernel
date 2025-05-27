@@ -11,6 +11,7 @@
 #include <drm/drm_edid.h>
 
 #include "hibmc_drm_drv.h"
+#include "hibmc_drm_regs.h"
 #include "dp/dp_hw.h"
 
 #define HIBMC_DP_MASKED_SINK_HPD_PLUG_INT	BIT(2)
@@ -19,13 +20,53 @@
 static int hibmc_dp_connector_get_modes(struct drm_connector *connector)
 {
 	int count;
+	struct hibmc_dp *dp = to_hibmc_dp(connector);
+	struct edid *edid;
+
+	edid = drm_get_edid(connector, &dp->aux.ddc);
+	if (edid) {
+		drm_connector_update_edid_property(connector, edid);
+		count = drm_add_edid_modes(connector, edid);
+		if (count) {
+			dp->is_connected = true;
+			goto out;
+		}
+	}
+
+	dp->is_connected = false;
 
 	count = drm_add_modes_noedid(connector,
 				     connector->dev->mode_config.max_width,
 				     connector->dev->mode_config.max_height);
 	drm_set_preferred_mode(connector, 1024, 768);
 
+out:
+	kfree(edid);
+
 	return count;
+}
+ 
+static int hibmc_dp_mode_valid(struct drm_connector *connector,
+			       struct drm_display_mode *mode,
+			       struct drm_modeset_acquire_ctx *ctx,
+			       enum drm_mode_status *status)
+{
+	struct hibmc_dp *dp = to_hibmc_dp(connector);
+	u64 cur_val, max_val;
+
+	if (!dp->is_connected) {
+		*status = MODE_OK;
+		return 0;
+	}
+
+	cur_val = (u64)mode->htotal * mode->vtotal * drm_mode_vrefresh(mode) * BPP_24;
+	max_val = (u64)hibmc_dp_get_link_rate(dp) * DP_MODE_VALI_CAL * hibmc_dp_get_lanes(dp);
+	if (cur_val > max_val)
+		*status = MODE_CLOCK_HIGH;
+	else
+		*status = MODE_OK;
+
+	return 0;
 }
 
 static int hibmc_dp_detect(struct drm_connector *connector,
@@ -41,6 +82,7 @@ static int hibmc_dp_detect(struct drm_connector *connector,
 
 static const struct drm_connector_helper_funcs hibmc_dp_conn_helper_funcs = {
 	.get_modes = hibmc_dp_connector_get_modes,
+	.mode_valid_ctx = hibmc_dp_mode_valid,
 	.detect_ctx = hibmc_dp_detect,
 };
 
@@ -105,9 +147,26 @@ static void hibmc_dp_encoder_disable(struct drm_encoder *drm_encoder,
 	hibmc_dp_display_en(dp, false);
 }
 
+static void hibmc_dp_encoder_mode_set(struct drm_encoder *encoder,
+				      struct drm_crtc_state *crtc_state,
+				      struct drm_connector_state *conn_state)
+{
+	u32 reg;
+	struct drm_device *dev = encoder->dev;
+	struct hibmc_drm_private *priv = to_hibmc_drm_private(dev);
+
+	reg = readl(priv->mmio + HIBMC_DISPLAY_CONTROL_HISILE);
+	reg |= HIBMC_DISPLAY_CONTROL_FPVDDEN(1);
+	reg |= HIBMC_DISPLAY_CONTROL_PANELDATE(1);
+	reg |= HIBMC_DISPLAY_CONTROL_FPEN(1);
+	reg |= HIBMC_DISPLAY_CONTROL_VBIASEN(1);
+	writel(reg, priv->mmio + HIBMC_DISPLAY_CONTROL_HISILE);
+}
+
 static const struct drm_encoder_helper_funcs hibmc_dp_encoder_helper_funcs = {
 	.atomic_enable = hibmc_dp_encoder_enable,
 	.atomic_disable = hibmc_dp_encoder_disable,
+	.atomic_mode_set = hibmc_dp_encoder_mode_set,
 };
 
 irqreturn_t hibmc_dp_hpd_isr(int irq, void *arg)
@@ -127,6 +186,8 @@ irqreturn_t hibmc_dp_hpd_isr(int irq, void *arg)
 			dp->hpd_status = 0;
 			if (dev->registered)
 				drm_helper_hpd_irq_event(dev);
+		} else {
+			drm_dbg_dp(dev, "HPD OUT occur but err!\n");
 		}
 	} else {
 		if (dp->irq_status & HIBMC_DP_MASKED_SINK_HPD_PLUG_INT) {
@@ -135,6 +196,8 @@ irqreturn_t hibmc_dp_hpd_isr(int irq, void *arg)
 			dp->hpd_status = 1;
 			if (dev->registered)
 				drm_helper_hpd_irq_event(dev);
+		} else {
+			drm_dbg_dp(dev, "HPD IN occur but err!\n");
 		}
 	}
 
