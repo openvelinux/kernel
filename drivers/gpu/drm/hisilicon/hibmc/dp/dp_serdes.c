@@ -57,15 +57,3 @@ int hibmc_dp_serdes_rate_switch(u8 rate, struct hibmc_dp_dev *dp)
 
 	return 0;
 }
-
-int hibmc_dp_serdes_init(struct hibmc_dp_dev *dp)
-{
-	dp->serdes_base = dp->base + HIBMC_DP_HOST_OFFSET;
-
-	writel(FIELD_PREP(HIBMC_DP_PMA_TXDEEMPH, DP_SERDES_VOL0_PRE0),
-	       dp->serdes_base + HIBMC_DP_PMA_LANE0_OFFSET);
-	writel(FIELD_PREP(HIBMC_DP_PMA_TXDEEMPH, DP_SERDES_VOL0_PRE0),
-	       dp->serdes_base + HIBMC_DP_PMA_LANE1_OFFSET);
-
-	return hibmc_dp_serdes_rate_switch(DP_SERDES_BW_8_1, dp);
-}
