@@ -22,6 +22,7 @@ enum adf_cfg_service_type {
 	COMP,
 	SYM,
 	ASYM,
+	DECOMP,
 	USED
 };
 
