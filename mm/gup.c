@@ -1943,6 +1943,33 @@ struct page *get_dump_page(unsigned long addr)
 #endif /* CONFIG_ELF_CORE */
 
 #ifdef CONFIG_MIGRATION
+static struct folio *pofs_next_folio(struct folio *folio,
+		unsigned long nr_pages,
+		struct page **pages,
+		long *index_ptr)
+{
+	long i = *index_ptr + 1;
+
+	if (folio_test_large(folio)) {
+		const unsigned long start_pfn = folio_pfn(folio);
+		const unsigned long end_pfn = start_pfn + folio_nr_pages(folio);
+
+		for (; i < nr_pages; i++) {
+			unsigned long pfn = page_to_pfn(pages[i]);
+
+			/* Is this page part of this folio? */
+			if (pfn < start_pfn || pfn >= end_pfn)
+				break;
+		}
+	}
+
+	if (unlikely(i == nr_pages))
+		return NULL;
+	*index_ptr = i;
+
+	return page_folio(pages[i]);
+}
+
 /*
  * Returns the number of collected pages. Return value is always >= 0.
  */
@@ -1951,16 +1978,12 @@ static void collect_longterm_unpinnable_pages(
 					unsigned long nr_pages,
 					struct page **pages)
 {
-	struct folio *prev_folio = NULL;
 	bool drain_allow = true;
-	unsigned long i;
+	struct folio *folio;
+	long i = 0;
 
-	for (i = 0; i < nr_pages; i++) {
-		struct folio *folio = page_folio(pages[i]);
-
-		if (folio == prev_folio)
-			continue;
-		prev_folio = folio;
+	for (folio = page_folio(pages[i]); folio;
+	     folio = pofs_next_folio(folio, nr_pages, pages, &i)) {
 
 		if (folio_is_longterm_pinnable(folio))
 			continue;
