@@ -150,6 +150,11 @@ static bool io_acct_cancel_pending_work(struct io_wqe *wqe,
 static void create_worker_cb(struct callback_head *cb);
 static void io_wq_cancel_tw_create(struct io_wq *wq);
 
+static inline unsigned int io_get_work_hash(struct io_wq_work *work)
+{
+	return work->flags >> IO_WQ_HASH_SHIFT;
+}
+
 static bool io_worker_get(struct io_worker *worker)
 {
 	return refcount_inc_not_zero(&worker->ref);
@@ -403,18 +408,45 @@ fail:
 	io_worker_ref_put(wq);
 	return false;
 }
+/* Defer if current and next work are both hashed to the same chain */
+static bool io_wqe_hash_defer(struct io_wq_work *work, struct io_wqe_acct *acct)
+{
+	unsigned int hash;
+	struct io_wq_work *next;
+
+	if (!io_wq_is_hashed(work))
+		return false;
+
+	/* should not happen, io_acct_run_queue() said we had work */
+	if (wq_list_empty(&acct->work_list))
+		return true;
+
+	hash = io_get_work_hash(work);
+	next = container_of(acct->work_list.first, struct io_wq_work, list);
+	if (!io_wq_is_hashed(next))
+		return false;
+	return hash == io_get_work_hash(next);
+}
 
 static void io_wqe_dec_running(struct io_worker *worker)
 {
 	struct io_wqe_acct *acct = io_wqe_get_acct(worker);
 	struct io_wqe *wqe = worker->wqe;
+	bool defer = false;
 
 	if (!(worker->flags & IO_WORKER_F_UP))
 		return;
 
 	if (!atomic_dec_and_test(&acct->nr_running))
 		return;
+	if (!worker->cur_work)
+		return;
 	if (!io_acct_run_queue(acct))
+		return;
+	raw_spin_lock(&acct->lock);
+	defer = io_wqe_hash_defer(worker->cur_work, acct);
+	raw_spin_unlock(&acct->lock);
+	if (defer)
 		return;
 
 	atomic_inc(&acct->nr_running);
@@ -450,11 +482,6 @@ static void __io_worker_idle(struct io_wqe *wqe, struct io_worker *worker)
 		worker->flags |= IO_WORKER_F_FREE;
 		hlist_nulls_add_head_rcu(&worker->nulls_node, &wqe->free_list);
 	}
-}
-
-static inline unsigned int io_get_work_hash(struct io_wq_work *work)
-{
-	return work->flags >> IO_WQ_HASH_SHIFT;
 }
 
 static bool io_wait_on_hash(struct io_wqe *wqe, unsigned int hash)
