@@ -1779,6 +1779,32 @@ struct page *get_dump_page(unsigned long addr)
 #endif /* CONFIG_ELF_CORE */
 
 #ifdef CONFIG_MIGRATION
+static struct page *pofs_next_head(struct page *page,
+		struct page **pages, long *index_ptr,
+		unsigned long nr_pages)
+{
+	long i = *index_ptr + 1;
+	struct page *head = compound_head(page);
+
+	if (PageCompound(head)) {
+		const unsigned long start_pfn = page_to_pfn(page);
+		const unsigned long end_pfn = start_pfn + compound_nr(head);
+
+		for (; i < nr_pages; i++) {
+			unsigned long pfn = page_to_pfn(pages[i]);
+
+			/* Is this page part of this compound page? */
+			if (pfn < start_pfn || pfn >= end_pfn)
+				break;
+		}
+	}
+	if (unlikely(i == nr_pages))
+		return NULL;
+	*index_ptr = i;
+
+	return pages[i];
+}
+
 /*
  * Check whether all pages are pinnable, if so return number of pages.  If some
  * pages are not pinnable, migrate them, and unpin all pages. Return zero if
@@ -1789,23 +1815,19 @@ static long check_and_migrate_movable_pages(unsigned long nr_pages,
 					    struct page **pages,
 					    unsigned int gup_flags)
 {
-	unsigned long i;
 	unsigned long isolation_error_count = 0;
 	bool drain_allow = true;
 	LIST_HEAD(movable_page_list);
 	long ret = 0;
-	struct page *prev_head = NULL;
+	long i = 0;
 	struct page *head;
 	struct migration_target_control mtc = {
 		.nid = NUMA_NO_NODE,
 		.gfp_mask = GFP_USER | __GFP_NOWARN,
 	};
 
-	for (i = 0; i < nr_pages; i++) {
-		head = compound_head(pages[i]);
-		if (head == prev_head)
-			continue;
-		prev_head = head;
+	for (head = pages[0]; head;
+	     head = pofs_next_head(head, pages, &i, nr_pages)) {
 		/*
 		 * If we get a movable page, since we are going to be pinning
 		 * these entries, try to move them out if possible.
