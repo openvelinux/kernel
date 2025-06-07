@@ -622,10 +622,10 @@ struct kvm_vcpu_arch {
 #endif
 #ifdef CONFIG_ARM64_HDBSS
 	/* HDBSS registers info */
-	KABI_EXTEND(struct {
+	struct {
 		u64 br_el2;
 		u64 prod_el2;
-	} hdbss)
+	} hdbss;
 #endif
 
 };
