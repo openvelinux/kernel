@@ -631,6 +631,8 @@ SYSCALL_DEFINE0(sigreturn)
 
 	frame = (struct sigframe __user *)(regs->sp - 8);
 
+	prevent_single_step_upon_eretu(regs);
+
 	if (!access_ok(frame, sizeof(*frame)))
 		goto badframe;
 	if (__get_user(set.sig[0], &frame->sc.oldmask) ||
@@ -660,6 +662,8 @@ SYSCALL_DEFINE0(rt_sigreturn)
 	struct rt_sigframe __user *frame;
 	sigset_t set;
 	unsigned long uc_flags;
+
+	prevent_single_step_upon_eretu(regs);
 
 	frame = (struct rt_sigframe __user *)(regs->sp - sizeof(long));
 	if (!access_ok(frame, sizeof(*frame)))
