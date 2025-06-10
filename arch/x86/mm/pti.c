@@ -119,6 +119,11 @@ autosel:
 		return;
 enable:
 	setup_force_cpu_cap(X86_FEATURE_PTI);
+
+	if (cpu_feature_enabled(X86_FEATURE_INVLPGB)) {
+		pr_debug("PTI enabled, disabling INVLPGB\n");
+		setup_clear_cpu_cap(X86_FEATURE_INVLPGB);
+	}
 }
 
 pgd_t __pti_set_user_pgtbl(pgd_t *pgdp, pgd_t pgd)
