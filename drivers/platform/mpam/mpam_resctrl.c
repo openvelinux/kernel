@@ -693,8 +693,10 @@ static void mpam_resctrl_pick_caches(void)
 			continue;
 		}
 
-		if (mpam_has_feature(mpam_feat_msmon_csu, cprops))
-			update_rmid_limits(cache_size);
+		if (mpam_has_feature(mpam_feat_msmon_csu, cprops)) {
+			if (class->level == 3)
+				update_rmid_limits(cache_size);
+		}
 
 		if (has_cpor) {
 			if (class->level == 2) {
