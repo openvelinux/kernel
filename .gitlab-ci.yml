@@ -1,5 +1,1 @@
-variables:
-  TAG_PATTERN: v6.6.*.bsk.*
-  BaseBranch: v6.6.y.bsk.z
-
 include: 'https://sysrepo.byted.org/kernel-ci/kernel-ci/raw/master/gitlab-ci.yml'
