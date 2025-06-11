@@ -1973,7 +1973,7 @@ static struct folio *pofs_next_folio(struct folio *folio,
 /*
  * Returns the number of collected pages. Return value is always >= 0.
  */
-static void collect_longterm_unpinnable_pages(
+static unsigned long collect_longterm_unpinnable_pages(
 					struct list_head *movable_page_list,
 					unsigned long nr_pages,
 					struct page **pages)
@@ -1981,12 +1981,15 @@ static void collect_longterm_unpinnable_pages(
 	bool drain_allow = true;
 	struct folio *folio;
 	long i = 0;
+	unsigned long collected = 0;
 
 	for (folio = page_folio(pages[i]); folio;
 	     folio = pofs_next_folio(folio, nr_pages, pages, &i)) {
 
 		if (folio_is_longterm_pinnable(folio))
 			continue;
+
+		collected++;
 
 		if (folio_is_device_coherent(folio))
 			continue;
@@ -2009,6 +2012,8 @@ static void collect_longterm_unpinnable_pages(
 				    NR_ISOLATED_ANON + folio_is_file_lru(folio),
 				    folio_nr_pages(folio));
 	}
+
+	return collected;
 }
 
 /*
@@ -2101,10 +2106,12 @@ err:
 static long check_and_migrate_movable_pages(unsigned long nr_pages,
 					    struct page **pages)
 {
+	unsigned long collected;
 	LIST_HEAD(movable_page_list);
 
-	collect_longterm_unpinnable_pages(&movable_page_list, nr_pages, pages);
-	if (list_empty(&movable_page_list))
+	collected = collect_longterm_unpinnable_pages(&movable_page_list,
+						nr_pages, pages);
+	if (!collected)
 		return 0;
 
 	return migrate_longterm_unpinnable_pages(&movable_page_list, nr_pages,
