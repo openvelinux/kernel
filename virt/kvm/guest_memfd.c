@@ -208,6 +208,28 @@ static int kvm_gmem_shareability_apply(struct inode *inode,
 	struct maple_tree *mt;
 
 	mt = &KVM_GMEM_I(inode)->shareability;
+
+	/*
+	 * If a folio has been allocated then it was possibly in a private
+	 * state prior to conversion. Ensure arch invalidations are issued
+	 * to return the folio to a normal/shared state as defined by the
+	 * architecture before tracking it as shared in gmem.
+	 */
+	if (m == SHAREABILITY_ALL) {
+		pgoff_t idx;
+
+		for (idx = work->start; idx < work->start + work->nr_pages; idx++) {
+			struct folio *folio = filemap_lock_folio(inode->i_mapping, idx);
+
+			if (!IS_ERR(folio)) {
+				kvm_arch_gmem_invalidate(folio_pfn(folio),
+							 folio_pfn(folio) + folio_nr_pages(folio));
+				folio_unlock(folio);
+				folio_put(folio);
+			}
+		}
+	}
+
 	return kvm_gmem_shareability_store(mt, work->start, work->nr_pages, m);
 }
 
