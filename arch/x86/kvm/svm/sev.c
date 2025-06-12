@@ -2260,6 +2260,7 @@ struct sev_gmem_populate_args {
 	__u8 type;
 	int sev_fd;
 	int fw_error;
+	bool gmem_supports_shared;
 };
 
 static int sev_gmem_post_populate(struct kvm *kvm, gfn_t gfn_start, kvm_pfn_t pfn,
@@ -2271,7 +2272,8 @@ static int sev_gmem_post_populate(struct kvm *kvm, gfn_t gfn_start, kvm_pfn_t pf
 	int npages = (1 << order);
 	gfn_t gfn;
 
-	if (WARN_ON_ONCE(sev_populate_args->type != KVM_SEV_SNP_PAGE_TYPE_ZERO && !src))
+	if (WARN_ON_ONCE(sev_populate_args->type != KVM_SEV_SNP_PAGE_TYPE_ZERO &&
+			 !sev_populate_args->gmem_supports_shared && !src))
 		return -EINVAL;
 
 	for (gfn = gfn_start, i = 0; gfn < gfn_start + npages; gfn++, i++) {
@@ -2360,7 +2362,7 @@ static int snp_launch_update(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	struct kvm_sev_snp_launch_update params;
 	struct kvm_memory_slot *memslot;
 	long npages, count;
-	void __user *src;
+	void __user *src = NULL;
 	int ret = 0;
 
 	if (!sev_snp_guest(kvm) || !sev->snp_context)
@@ -2411,7 +2413,11 @@ static int snp_launch_update(struct kvm *kvm, struct kvm_sev_cmd *argp)
 
 	sev_populate_args.sev_fd = argp->sev_fd;
 	sev_populate_args.type = params.type;
-	src = params.type == KVM_SEV_SNP_PAGE_TYPE_ZERO ? NULL : u64_to_user_ptr(params.uaddr);
+	sev_populate_args.gmem_supports_shared = kvm_memslot_is_gmem_only(memslot);
+
+	if (!kvm_memslot_is_gmem_only(memslot))
+		src = params.type == KVM_SEV_SNP_PAGE_TYPE_ZERO ? NULL
+								: u64_to_user_ptr(params.uaddr);
 
 	count = kvm_gmem_populate(kvm, params.gfn_start, src, npages,
 				  sev_gmem_post_populate, &sev_populate_args);
@@ -2423,7 +2429,8 @@ static int snp_launch_update(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	} else {
 		params.gfn_start += count;
 		params.len -= count * PAGE_SIZE;
-		if (params.type != KVM_SEV_SNP_PAGE_TYPE_ZERO)
+		if (!kvm_memslot_is_gmem_only(memslot) &&
+		    params.type != KVM_SEV_SNP_PAGE_TYPE_ZERO)
 			params.uaddr += count * PAGE_SIZE;
 
 		ret = 0;

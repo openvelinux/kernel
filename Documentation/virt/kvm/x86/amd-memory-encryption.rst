@@ -513,7 +513,9 @@ calling this command until those fields indicate the entire range has been
 processed, e.g. ``len`` is 0, ``gfn_start`` is equal to the last GFN in the
 range plus 1, and ``uaddr`` is the last byte of the userspace-provided source
 buffer address plus 1. In the case where ``type`` is KVM_SEV_SNP_PAGE_TYPE_ZERO,
-``uaddr`` will be ignored completely.
+``uaddr`` will be ignored completely. If the guest_memfd instance backing the
+GFN range has the GUEST_MEMFD_FLAG_MMAP flag set, then ``uaddr`` will
+be ignored for all KVM_SEV_SNP_PAGE_TYPE_*'s.
 
 Parameters (in): struct  kvm_sev_snp_launch_update
 

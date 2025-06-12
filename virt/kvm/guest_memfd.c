@@ -1505,6 +1505,14 @@ long kvm_gmem_populate(struct kvm *kvm, gfn_t start_gfn, void __user *src, long 
 			}
 		} else {
 			max_order = 0;
+
+			/*
+			 * If shared memory is available, it is expected that
+			 * userspace will populate memory contents directly and
+			 * not provide an intermediate buffer to copy from.
+			 */
+			if (src)
+				return -EINVAL;
 		}
 
 		p = src ? src + i * PAGE_SIZE : NULL;
