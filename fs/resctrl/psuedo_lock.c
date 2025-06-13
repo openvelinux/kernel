@@ -656,7 +656,7 @@ bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_domain *d)
 	lockdep_assert_cpus_held();
 
 	if (!IS_ENABLED(CONFIG_RESCTRL_FS_PSEUDO_LOCK))
-		return -EOPNOTSUPP;
+		return false;
 
 	if (!zalloc_cpumask_var(&cpu_with_psl, GFP_KERNEL))
 		return true;
