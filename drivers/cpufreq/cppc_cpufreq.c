@@ -170,16 +170,14 @@ static void cppc_cpufreq_cpu_fie_init(struct cpufreq_policy *policy)
 		init_irq_work(&cppc_fi->irq_work, cppc_irq_work);
 
 		ret = cppc_get_perf_ctrs(cpu, &cppc_fi->prev_perf_fb_ctrs);
-		if (ret) {
-			pr_warn("%s: failed to read perf counters for cpu:%d: %d\n",
-				__func__, cpu, ret);
-
+		if (ret && cpu_online(cpu)) {
 			/*
 			 * Don't abort if the CPU was offline while the driver
 			 * was getting registered.
 			 */
-			if (cpu_online(cpu))
-				return;
+			pr_debug("%s: failed to read perf counters for cpu:%d: %d\n",
+				__func__, cpu, ret);
+			return;
 		}
 	}
 
