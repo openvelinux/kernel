@@ -42,6 +42,11 @@ static unsigned int poll_queues;
 module_param(poll_queues, uint, 0644);
 MODULE_PARM_DESC(poll_queues, "The number of dedicated virtqueues for polling I/O");
 
+static bool force_remove;
+module_param(force_remove, bool, 0644);
+MODULE_PARM_DESC(force_remove,
+	"Enable removing device regardless of inflight I/Os");
+
 static int major;
 static DEFINE_IDA(vd_index_ida);
 
@@ -108,6 +113,7 @@ struct virtblk_req {
 	size_t in_hdr_len;
 
 	struct sg_table sg_table;
+	u32 retries;
 	struct scatterlist sg[];
 };
 
@@ -250,6 +256,7 @@ static blk_status_t virtblk_setup_cmd(struct virtio_device *vdev,
 
 	/* Set fields for all request types */
 	vbr->out_hdr.ioprio = cpu_to_virtio32(vdev, req_get_ioprio(req));
+	vbr->retries = 0;
 
 	switch (req_op(req)) {
 	case REQ_OP_READ:
@@ -1289,6 +1296,41 @@ static int virtblk_poll(struct blk_mq_hw_ctx *hctx, struct io_comp_batch *iob)
 	return found;
 }
 
+static enum blk_eh_timer_return virtblk_timeout(struct request *req)
+{
+	struct virtblk_req *vbr = blk_mq_rq_to_pdu(req);
+	struct virtio_blk *vblk = req->mq_hctx->queue->queuedata;
+	struct blk_mq_hw_ctx *hctx = req->mq_hctx;
+	struct virtio_blk_vq *vq = &vblk->vqs[hctx->queue_num];
+
+	if (virtqueue_is_broken(vq->vq)) {
+		dev_warn(disk_to_dev(vblk->disk),
+			 "Request: %llu,%uB in broken queue %u\n",
+			 (unsigned long long)blk_rq_pos(req) << 9,
+			 blk_rq_bytes(req), hctx->queue_num);
+		vbr->in_hdr.status = VIRTIO_BLK_S_IOERR;
+		blk_mq_complete_request(req);
+		return BLK_EH_DONE;
+	}
+
+	if (force_remove && blk_queue_dying(req->q)) {
+		dev_warn(disk_to_dev(vblk->disk),
+			 "Abort Request: %p: %llu,%uB\n", req,
+			 (unsigned long long)blk_rq_pos(req) << 9,
+			 blk_rq_bytes(req));
+		vbr->in_hdr.status = VIRTIO_BLK_S_IOERR;
+		blk_mq_complete_request(req);
+		return BLK_EH_DONE;
+	}
+
+	dev_info(disk_to_dev(vblk->disk),
+		 "Possible stuck request %p: %llu,%uB. Runtime %u seconds\n",
+		 req, (unsigned long long)blk_rq_pos(req) << 9,
+		 blk_rq_bytes(req), (req->timeout / HZ) * (++vbr->retries));
+
+	return BLK_EH_RESET_TIMER;
+}
+
 static const struct blk_mq_ops virtio_mq_ops = {
 	.queue_rq	= virtio_queue_rq,
 	.queue_rqs	= virtio_queue_rqs,
@@ -1296,6 +1338,7 @@ static const struct blk_mq_ops virtio_mq_ops = {
 	.complete	= virtblk_request_done,
 	.map_queues	= virtblk_map_queues,
 	.poll		= virtblk_poll,
+	.timeout	= virtblk_timeout,
 };
 
 static unsigned int virtblk_queue_depth;
@@ -1378,6 +1421,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 	vblk->tag_set.nr_maps = 1;
 	if (vblk->io_queues[HCTX_TYPE_POLL])
 		vblk->tag_set.nr_maps = 3;
+	vblk->tag_set.timeout = 120 * HZ;
 
 	err = blk_mq_alloc_tag_set(&vblk->tag_set);
 	if (err)
@@ -1601,6 +1645,7 @@ out:
 static void virtblk_remove(struct virtio_device *vdev)
 {
 	struct virtio_blk *vblk = vdev->priv;
+	int i;
 
 	/* Make sure no work handler is accessing the device. */
 	flush_work(&vblk->config_work);
@@ -1609,6 +1654,14 @@ static void virtblk_remove(struct virtio_device *vdev)
 	blk_mq_free_tag_set(&vblk->tag_set);
 
 	mutex_lock(&vblk->vdev_mutex);
+
+	for (i = 0; i < vblk->num_vqs; i++) {
+		if (!force_remove)
+			continue;
+
+		while (virtqueue_detach_unused_buf(vblk->vqs[i].vq))
+			;
+	}
 
 	/* Stop all the virtqueues. */
 	virtio_reset_device(vdev);
