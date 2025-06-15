@@ -31,6 +31,8 @@ MODULE_ALIAS("devname:fuse");
 
 static struct kmem_cache *fuse_req_cachep;
 
+static void end_requests(struct list_head *head);
+
 static struct fuse_dev *fuse_get_dev(struct file *file)
 {
 	/*
@@ -1777,6 +1779,69 @@ copy_finish:
 	return err;
 }
 
+/*
+ * Resending all processing queue requests.
+ *
+ * During a FUSE daemon panics and failover, it is possible for some inflight
+ * requests to be lost and never returned. As a result, applications awaiting
+ * replies would become stuck forever. To address this, we can use notification
+ * to trigger resending of these pending requests to the FUSE daemon, ensuring
+ * they are properly processed again.
+ *
+ * Please note that this strategy is applicable only to idempotent requests or
+ * if the FUSE daemon takes careful measures to avoid processing duplicated
+ * non-idempotent requests.
+ */
+static void fuse_resend(struct fuse_conn *fc)
+{
+	struct fuse_dev *fud;
+	struct fuse_req *req, *next;
+	struct fuse_iqueue *fiq = &fc->iq;
+	LIST_HEAD(to_queue);
+	unsigned int i;
+
+	spin_lock(&fc->lock);
+	if (!fc->connected) {
+		spin_unlock(&fc->lock);
+		return;
+	}
+
+	list_for_each_entry(fud, &fc->devices, entry) {
+		struct fuse_pqueue *fpq = &fud->pq;
+
+		spin_lock(&fpq->lock);
+		for (i = 0; i < FUSE_PQ_HASH_SIZE; i++)
+			list_splice_tail_init(&fpq->processing[i], &to_queue);
+		spin_unlock(&fpq->lock);
+	}
+	spin_unlock(&fc->lock);
+
+	list_for_each_entry_safe(req, next, &to_queue, list) {
+		set_bit(FR_PENDING, &req->flags);
+		clear_bit(FR_SENT, &req->flags);
+		/* mark the request as resend request */
+		req->in.h.unique |= FUSE_UNIQUE_RESEND;
+	}
+
+	spin_lock(&fiq->lock);
+	if (!fiq->connected) {
+		spin_unlock(&fiq->lock);
+		list_for_each_entry(req, &to_queue, list)
+			clear_bit(FR_PENDING, &req->flags);
+		end_requests(&to_queue);
+		return;
+	}
+	/* iq and pq requests are both oldest to newest */
+	list_splice(&to_queue, &fiq->pending);
+	fiq->ops->wake_pending_and_unlock(fiq);
+}
+
+static int fuse_notify_resend(struct fuse_conn *fc)
+{
+	fuse_resend(fc);
+	return 0;
+}
+
 static int fuse_notify(struct fuse_conn *fc, enum fuse_notify_code code,
 		       unsigned int size, struct fuse_copy_state *cs)
 {
@@ -1801,6 +1866,9 @@ static int fuse_notify(struct fuse_conn *fc, enum fuse_notify_code code,
 
 	case FUSE_NOTIFY_DELETE:
 		return fuse_notify_delete(fc, size, cs);
+
+	case FUSE_NOTIFY_RESEND:
+		return fuse_notify_resend(fc);
 
 	default:
 		fuse_copy_finish(cs);
@@ -2285,6 +2353,13 @@ static long fuse_dev_ioctl(struct file *file, unsigned int cmd,
 		}
 		fdput(f);
 		break;
+	case FUSE_DEV_IOC_RESTORE_REQ:
+		fud = fuse_get_dev(file);
+		if (!fud)
+			return -EPERM;
+
+		fuse_resend(fud->fc);
+		return 0;
 	default:
 		res = -ENOTTY;
 		break;
