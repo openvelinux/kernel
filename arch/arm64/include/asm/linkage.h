@@ -9,6 +9,15 @@
 #define __ALIGN_STR	".balign " #CONFIG_FUNCTION_ALIGNMENT
 
 /*
+ * Annotate sym code that only executed by user space
+ */
+#define SYM_CODE_START_USER(name)			\
+	SYM_CODE_START(name)
+
+#define SYM_CODE_END_USER(name)			\
+	SYM_END(name, SYM_T_NONE)
+
+/*
  * When using in-kernel BTI we need to ensure that PCS-conformant
  * assembly functions have suitable annotations.  Override
  * SYM_FUNC_START to insert a BTI landing pad at the start of
@@ -42,5 +51,26 @@
 #define SYM_TYPED_FUNC_START(name)				\
 	SYM_TYPED_START(name, SYM_L_GLOBAL, SYM_A_ALIGN)	\
 	bti c ;
+
+/*
+ * Record the address range of each SYM_CODE function in a struct code_range
+ * in a special section.
+ */
+#define SYM_CODE_END(name)				\
+	SYM_END(name, SYM_T_NONE)			;\
+99 :	.pushsection "sym_code_functions", "aw"		;\
+		.quad	name					;\
+		.quad	99b					;\
+		.popsection
+
+/*
+ * Record the address range of each kernel entry handler in a struct code_range
+ * in a special section.
+ */
+#define SYM_KENTRY_END(name)				\
+100 :	.pushsection "sym_kentry_functions", "aw"	;\
+		.quad   name                                    ;\
+		.quad   100b                                    ;\
+		.popsection
 
 #endif

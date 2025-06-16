@@ -134,6 +134,22 @@ jiffies = jiffies_64;
 #define UNWIND_DATA_SECTIONS
 #endif
 
+#define SYM_CODE_FUNCTIONS				\
+	. = ALIGN(16);					\
+	.symcode : AT(ADDR(.symcode) - LOAD_OFFSET) {	\
+		__sym_code_functions_start = .;		\
+		KEEP(*(sym_code_functions))		\
+		__sym_code_functions_end = .;		\
+	}
+
+#define SYM_KENTRY_FUNCTIONS					\
+	. = ALIGN(16);                                  	\
+	.symkentry : AT(ADDR(.symkentry) - LOAD_OFFSET) {   	\
+		__sym_kentry_functions_start = .;       	\
+		KEEP(*(sym_kentry_functions))           	\
+		__sym_kentry_functions_end = .;			\
+	}
+
 /*
  * The size of the PE/COFF section that covers the kernel image, which
  * runs from _stext to _edata, must be a round multiple of the PE/COFF
@@ -222,6 +238,10 @@ SECTIONS
 
 	swapper_pg_dir = .;
 	. += PAGE_SIZE;
+
+	SYM_CODE_FUNCTIONS
+
+	SYM_KENTRY_FUNCTIONS
 
 	. = ALIGN(SEGMENT_ALIGN);
 	__init_begin = .;

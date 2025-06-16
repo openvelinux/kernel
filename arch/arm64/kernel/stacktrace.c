@@ -18,6 +18,13 @@
 #include <asm/stack_pointer.h>
 #include <asm/stacktrace.h>
 
+extern void *kthread_return_to_user;
+
+struct code_range {
+	unsigned long start;
+	unsigned long end;
+};
+
 /*
  * Start an unwind from a pt_regs.
  *
@@ -206,6 +213,117 @@ noinline noinstr void arch_stack_walk(stack_trace_consume_fn consume_entry,
 	}
 
 	unwind(&state, consume_entry, cookie);
+}
+
+static inline bool unwind_state_is_reliable(struct unwind_state *state)
+{
+	struct code_range *r;
+	unsigned long pc;
+
+	pc = ptrauth_strip_kernel_insn_pac(state->pc);
+
+	if (!__kernel_text_address(pc))
+		return false;
+	/*
+	 * Check the return PC against sym_code_functions[]. If there is a
+	 * match, then the consider the stack frame unreliable.
+	 *
+	 * As SYM_CODE functions don't follow the usual calling conventions,
+	 * we assume by default that any SYM_CODE function cannot be unwound
+	 * reliably.
+	 *
+	 * Note that this includes:
+	 *
+	 * - Exception handlers and entry assembly
+	 * - Trampoline assembly (e.g., ftrace, kprobes)
+	 * - Hypervisor-related assembly
+	 * - Hibernation-related assembly
+	 * - CPU start-stop, suspend-resume assembly
+	 * - Kernel relocation assembly
+	 */
+	for (r = (struct code_range *)__sym_code_functions_start;
+		r < (struct code_range *)__sym_code_functions_end; r++) {
+		if (pc >= r->start && pc < r->end)
+			return false;
+	}
+
+	return true;
+}
+
+static __always_inline int
+unwind_reliable(struct unwind_state *state, stack_trace_consume_fn consume_entry,
+		void *cookie)
+{
+	struct task_struct *tsk = state->task;
+	int ret = 0;
+	struct code_range *r;
+	unsigned long pc;
+
+	if (unwind_recover_return_address(state))
+		return -EINVAL;
+
+	do {
+		pc = ptrauth_strip_kernel_insn_pac(state->pc);
+		if (state->fp == (unsigned long)task_pt_regs(tsk)->stackframe) {
+			/* Final frame for kthread; nothing to unwind */
+			if (pc == (unsigned long)&kthread_return_to_user)
+				return 0;
+
+			/* Kernel entry handler is considered a "reliable" stack trace */
+			for (r = (struct code_range *)__sym_kentry_functions_start;
+					r < (struct code_range *)__sym_kentry_functions_end; r++) {
+				if (pc >= r->start && pc < r->end)
+					return 0;
+			}
+		}
+
+		if (!unwind_state_is_reliable(state))
+			return -EINVAL;
+
+		if (!consume_entry(cookie, pc))
+			return -EINVAL;
+		ret = unwind_next(state);
+		if (ret < 0)
+			break;
+	} while (1);
+
+	if (ret == -ENOENT)
+		ret = 0;
+
+	return ret;
+}
+
+noinline noinstr int arch_stack_walk_reliable(stack_trace_consume_fn consume_entry,
+				      void *cookie, struct task_struct *task)
+{
+	int ret;
+	struct stack_info stacks[] = {
+		stackinfo_get_task(task),
+		STACKINFO_CPU(irq),
+#if defined(CONFIG_VMAP_STACK)
+		STACKINFO_CPU(overflow),
+#endif
+#if defined(CONFIG_VMAP_STACK) && defined(CONFIG_ARM_SDE_INTERFACE)
+		STACKINFO_SDEI(normal),
+		STACKINFO_SDEI(critical),
+#endif
+#ifdef CONFIG_EFI
+		STACKINFO_EFI,
+#endif
+	};
+	struct unwind_state state = {
+		.stacks = stacks,
+		.nr_stacks = ARRAY_SIZE(stacks),
+	};
+
+	if (task != current)
+		unwind_init_from_task(&state, task);
+	else
+		unwind_init_from_caller(&state);
+
+	ret = unwind_reliable(&state, consume_entry, cookie);
+
+	return ret;
 }
 
 static bool dump_backtrace_entry(void *arg, unsigned long where)
