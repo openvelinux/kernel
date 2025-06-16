@@ -46,6 +46,7 @@
 #define L3C_TRACETAG_MARK_EN	BIT(0)
 #define L3C_TRACETAG_REQ_EN	(L3C_TRACETAG_MARK_EN | BIT(2))
 #define L3C_TRACETAG_CORE_EN	(L3C_TRACETAG_MARK_EN | BIT(3))
+#define L3C_TRACETAG_CACHEABLE_EN	BIT(12)
 #define L3C_CORE_EN		BIT(20)
 #define L3C_COER_NONE		0x0
 #define L3C_DATSRC_MASK		0xFF
@@ -59,6 +60,7 @@ HISI_PMU_EVENT_ATTR_EXTRACTOR(ext, config, 16, 16);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(tt_req, config1, 10, 8);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(datasrc_cfg, config1, 15, 11);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(datasrc_skt, config1, 16, 16);
+HISI_PMU_EVENT_ATTR_EXTRACTOR(tt_cacheable, config1, 17, 17);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(tt_core, config2, 15, 0);
 
 struct hisi_l3c_pmu {
@@ -157,6 +159,10 @@ static void hisi_l3c_pmu_config_req_tracetag(struct perf_event *event)
 		val = hisi_l3c_pmu_event_readl(hwc, L3C_TRACETAG_CTRL);
 		val |= tt_req << L3C_TRACETAG_REQ_SHIFT;
 		val |= L3C_TRACETAG_REQ_EN;
+
+		if (hisi_get_tt_cacheable(event))
+			val |= L3C_TRACETAG_CACHEABLE_EN;
+
 		hisi_l3c_pmu_event_writel(hwc, L3C_TRACETAG_CTRL, val);
 
 		/* Enable request-tracetag statistics */
@@ -178,6 +184,10 @@ static void hisi_l3c_pmu_clear_req_tracetag(struct perf_event *event)
 		val = hisi_l3c_pmu_event_readl(hwc, L3C_TRACETAG_CTRL);
 		val &= ~(tt_req << L3C_TRACETAG_REQ_SHIFT);
 		val &= ~L3C_TRACETAG_REQ_EN;
+
+		if (hisi_get_tt_cacheable(event))
+			val &= ~L3C_TRACETAG_CACHEABLE_EN;
+
 		hisi_l3c_pmu_event_writel(hwc, L3C_TRACETAG_CTRL, val);
 
 		/* Disable request-tracetag statistics */
@@ -566,6 +576,7 @@ static struct attribute *hisi_l3c_pmu_v3_format_attr[] = {
 	HISI_PMU_FORMAT_ATTR(event, "config:0-7"),
 	HISI_PMU_FORMAT_ATTR(ext, "config:16"),
 	HISI_PMU_FORMAT_ATTR(tt_req, "config1:8-10"),
+	HISI_PMU_FORMAT_ATTR(tt_cacheable, "config1:17"),
 	HISI_PMU_FORMAT_ATTR(tt_core, "config2:0-15"),
 	NULL
 };
