@@ -202,7 +202,7 @@ static int hisi_cpa_pmu_init_data(struct platform_device *pdev,
 }
 
 static struct attribute *hisi_cpa_pmu_format_attr[] = {
-	HISI_PMU_FORMAT_ATTR(event, "config:0-15"),
+	HISI_PMU_FORMAT_ATTR(event, "config:0-7"),
 	NULL
 };
 
