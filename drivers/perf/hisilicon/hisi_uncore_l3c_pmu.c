@@ -653,8 +653,6 @@ HISI_L3C_PMU_EVENT_ATTR(io_rd_hit_spipe, 0x1d, false);
 HISI_L3C_PMU_EVENT_ATTR(io_wr_spipe,	 0x1e, false);
 HISI_L3C_PMU_EVENT_ATTR(io_wr_hit_spipe, 0x1f, false);
 HISI_L3C_PMU_EVENT_ATTR(cycles,		 0x7f, false);
-HISI_L3C_PMU_EVENT_ATTR(l3t_comp_sum,	 0x80, false);
-HISI_L3C_PMU_EVENT_ATTR(l3t_rdnotram,	 0x83, true);
 HISI_L3C_PMU_EVENT_ATTR(l3c_ref,	 0xbc, false);
 HISI_L3C_PMU_EVENT_ATTR(l3c2ring,	 0xbd, true);
 
@@ -677,8 +675,6 @@ static struct attribute *hisi_l3c_pmu_v3_events_attr[] = {
 	&hisi_l3c_io_wr_spipe_attr.attr.attr,
 	&hisi_l3c_io_wr_hit_spipe_attr.attr.attr,
 	&hisi_l3c_cycles_attr.attr.attr,
-	&hisi_l3c_l3t_comp_sum_attr.attr.attr,
-	&hisi_l3c_l3t_rdnotram_attr.attr.attr,
 	&hisi_l3c_l3c_ref_attr.attr.attr,
 	&hisi_l3c_l3c2ring_attr.attr.attr,
 	NULL
