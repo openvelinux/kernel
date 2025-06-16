@@ -37,6 +37,9 @@ enum memcg_stat_item {
 	MEMCG_KMEM,
 	MEMCG_ZSWAP_B,
 	MEMCG_ZSWAPPED,
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	MEMCG_BGD_RECLAIM,
+#endif
 	MEMCG_NR_STAT,
 };
 
@@ -200,6 +203,38 @@ struct obj_cgroup {
 	};
 };
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+enum memcg_watermarks {
+	MEMCG_WMARK_LOW,
+	MEMCG_WMARK_HIGH,
+	NR_MEMCG_WMARK
+};
+
+#define memcg_low_wmark_pages(memcg) ((memcg)->watermark[MEMCG_WMARK_LOW])
+#define memcg_high_wmark_pages(memcg) ((memcg)->watermark[MEMCG_WMARK_HIGH])
+
+#define memcg_set_low_wmark_pages(memcg, val)	\
+	(memcg_low_wmark_pages(memcg) = (val))
+#define memcg_set_high_wmark_pages(memcg, val)	\
+	(memcg_high_wmark_pages(memcg) = (val))
+
+#define memcg_wmark_lock_init(memcg)	mutex_init(&(memcg)->wmark_lock)
+#define memcg_wmark_lock(memcg)		mutex_lock(&(memcg)->wmark_lock)
+#define memcg_wmark_unlock(memcg)	mutex_unlock(&(memcg)->wmark_lock)
+
+extern int memcg_watermark_scale_factor;
+extern int memcg_mem_reclaim_wq_max_active;
+
+int memcg_wq_max_active_sysctl_handler(struct ctl_table *table, int write,
+				       void __user *buffer, size_t *length,
+				       loff_t *ppos);
+#else
+#define memcg_wmark_lock_init(memcg) ((void)(memcg))
+#define memcg_wmark_lock(memcg) ((void)(memcg))
+#define memcg_wmark_unlock(memcg) ((void)(memcg))
+#endif
+
+
 /*
  * The memory controller data structure. The memory controller controls both
  * page cache and RSS per cgroup. We would eventually like to provide
@@ -252,6 +287,10 @@ struct mem_cgroup {
 	/* memory.events and memory.events.local */
 	struct cgroup_file events_file;
 	struct cgroup_file events_local_file;
+
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	struct cgroup_file wmark_low_event;
+#endif
 
 	/* handle for "memory.swap.events" */
 	struct cgroup_file swap_events_file;
@@ -333,6 +372,14 @@ struct mem_cgroup {
 	struct lru_gen_mm_list mm_list;
 #endif
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	struct work_struct mem_reclaim_work;
+	/* Number of 'reclaimed == 0' runs */
+	unsigned int reclaim_failures;
+	unsigned int watermark_scale_factor;
+	unsigned long watermark[NR_MEMCG_WMARK];
+	struct mutex wmark_lock;
+#endif
 	struct mem_cgroup_per_node *nodeinfo[];
 };
 

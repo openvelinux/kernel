@@ -6157,6 +6157,26 @@ static struct ctl_table page_alloc_sysctl_table[] = {
 		.extra1		= SYSCTL_ONE,
 		.extra2		= SYSCTL_THREE_THOUSAND,
 	},
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{
+		.procname	= "memcg_watermark_scale_factor",
+		.data		= &memcg_watermark_scale_factor,
+		.maxlen		= sizeof(memcg_watermark_scale_factor),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE_THOUSAND,
+	},
+	{
+		.procname	= "memcg_mem_reclaim_wq_max_active",
+		.data		= &memcg_mem_reclaim_wq_max_active,
+		.maxlen		= sizeof(memcg_mem_reclaim_wq_max_active),
+		.mode		= 0644,
+		.proc_handler	= memcg_wq_max_active_sysctl_handler,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= SYSCTL_ONE_HUNDRED,
+	},
+#endif
 	{
 		.procname	= "percpu_pagelist_high_fraction",
 		.data		= &percpu_pagelist_high_fraction,

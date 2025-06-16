@@ -1522,7 +1522,9 @@ static const struct memory_stat memory_stats[] = {
 	{ "unevictable",		NR_UNEVICTABLE			},
 	{ "slab_reclaimable",		NR_SLAB_RECLAIMABLE_B		},
 	{ "slab_unreclaimable",		NR_SLAB_UNRECLAIMABLE_B		},
-
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{ "bgd_reclaim",		MEMCG_BGD_RECLAIM		},
+#endif
 	/* The memory events */
 	{ "workingset_refault_anon",	WORKINGSET_REFAULT_ANON		},
 	{ "workingset_refault_file",	WORKINGSET_REFAULT_FILE		},
@@ -2414,6 +2416,125 @@ static void high_work_func(struct work_struct *work)
 	reclaim_high(memcg, MEMCG_CHARGE_BATCH, GFP_KERNEL);
 }
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+#define MEMCG_RECLAIM_RETRY	2
+
+static struct workqueue_struct *memcg_reclaim_wq;
+int memcg_watermark_scale_factor;
+int memcg_mem_reclaim_wq_max_active = 1;
+
+int memcg_wq_max_active_sysctl_handler(struct ctl_table *table, int write,
+				       void __user *buffer, size_t *length,
+				       loff_t *ppos)
+{
+	int ret;
+
+	ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+	if (ret == 0)
+		workqueue_set_max_active(memcg_reclaim_wq,
+					 memcg_mem_reclaim_wq_max_active);
+	return ret;
+}
+
+static int __init memcg_watermark_scale_factor_parm(char *str)
+{
+	int factor;
+
+	if (get_option(&str, &factor) && factor >= 0 && factor <= 1000)
+		memcg_watermark_scale_factor = factor;
+
+	return 0;
+}
+early_param("memcg_watermark_scale_factor", memcg_watermark_scale_factor_parm);
+
+static inline bool memcg_watermark_ok(struct mem_cgroup *memcg)
+{
+	unsigned long free;
+
+	free = memcg->memory.max - page_counter_read(&memcg->memory);
+
+	return free >= memcg_low_wmark_pages(memcg);
+}
+
+static inline bool memcg_should_reclaim(struct mem_cgroup *memcg)
+{
+	return memcg->reclaim_failures < MEMCG_RECLAIM_RETRY &&
+	       !memcg_watermark_ok(memcg);
+}
+
+static void memcg_reclaim_work(struct work_struct *work)
+{
+	struct mem_cgroup *memcg = container_of(work, struct mem_cgroup,
+						mem_reclaim_work);
+	unsigned long low, high, free;
+	unsigned long nr_reclaimed;
+
+	memcg_wmark_lock(memcg);
+	low = memcg_low_wmark_pages(memcg);
+	high = memcg_high_wmark_pages(memcg);
+	free = memcg->memory.max - page_counter_read(&memcg->memory);
+	memcg_wmark_unlock(memcg);
+
+	if (free >= low)
+		return;
+
+	cgroup_file_notify(&memcg->wmark_low_event);
+
+	if (memcg->reclaim_failures >= MEMCG_RECLAIM_RETRY)
+		return;
+
+	nr_reclaimed = try_to_free_mem_cgroup_pages_async(memcg, high - free,
+							 GFP_KERNEL);
+	if (!nr_reclaimed)
+		memcg->reclaim_failures++;
+	else
+		mod_memcg_state(memcg, MEMCG_BGD_RECLAIM, nr_reclaimed);
+}
+
+static inline void queue_reclaim_work(struct mem_cgroup *memcg)
+{
+	queue_work(memcg_reclaim_wq, &memcg->mem_reclaim_work);
+}
+
+static inline void __set_memcg_watermark(struct mem_cgroup *memcg)
+{
+	unsigned long factor = memcg->watermark_scale_factor;
+	unsigned long nr_pages = mult_frac(memcg->memory.max, factor, 10000);
+
+	if (memcg->memory.max == PAGE_COUNTER_MAX)
+		nr_pages = 0;
+
+	memcg_set_low_wmark_pages(memcg, nr_pages);
+	memcg_set_high_wmark_pages(memcg, nr_pages << 1);
+}
+
+static void memcg_watermark_init(struct mem_cgroup *memcg, unsigned int factor)
+{
+	/* Can't set watermark_scale_factor on root */
+	if (mem_cgroup_is_root(memcg))
+		factor = 0;
+
+	memcg->watermark_scale_factor = factor;
+	__set_memcg_watermark(memcg);
+}
+#else
+#define memcg_watermark_init(memcg, factor) \
+	({ (void)(memcg); (void)(factor); })
+
+static inline bool memcg_should_reclaim(struct mem_cgroup *memcg)
+{
+	return false;
+}
+
+static inline void queue_reclaim_work(struct mem_cgroup *memcg)
+{
+}
+
+static inline void __set_memcg_watermark(struct mem_cgroup *memcg)
+{
+}
+#endif
+
 /*
  * Clamp the maximum sleep time per allocation batch to 2 seconds. This is
  * enough to still cause a significant slowdown in most cases, while still
@@ -2773,6 +2894,9 @@ force:
 done_restock:
 	if (batch > nr_pages)
 		refill_stock(memcg, batch - nr_pages);
+
+	if (memcg_should_reclaim(memcg))
+		queue_reclaim_work(memcg);
 
 	/*
 	 * If the hierarchy is above the normal consumption range, schedule
@@ -3498,7 +3622,11 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 		}
 		if (max > counter->max)
 			enlarge = true;
+		memcg_wmark_lock(memcg);
 		ret = page_counter_set_max(counter, max);
+		if (!ret && !memsw)
+			__set_memcg_watermark(memcg);
+		memcg_wmark_unlock(memcg);
 		mutex_unlock(&memcg_max_mutex);
 
 		if (!ret)
@@ -4068,6 +4196,9 @@ static const unsigned int memcg1_stats[] = {
 	WORKINGSET_REFAULT_ANON,
 	WORKINGSET_REFAULT_FILE,
 	MEMCG_SWAP,
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	MEMCG_BGD_RECLAIM,
+#endif
 };
 
 static const char *const memcg1_stat_names[] = {
@@ -4083,6 +4214,9 @@ static const char *const memcg1_stat_names[] = {
 	"workingset_refault_anon",
 	"workingset_refault_file",
 	"swap",
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	"bgd_reclaim",
+#endif
 };
 
 /* Universal VM events cgroup1 shows, original sort order */
@@ -5015,6 +5149,46 @@ static int mem_cgroup_slab_show(struct seq_file *m, void *p)
 
 static int memory_stat_show(struct seq_file *m, void *v);
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+static int memory_wmark_scale_factor_write(struct cgroup_subsys_state *css,
+					   struct cftype *cft, u64 factor)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	if (factor > 1000)
+		return -EINVAL;
+
+	/* Can't set watermark_scale_factor on root */
+	if (mem_cgroup_is_root(memcg))
+		return -EPERM;
+
+	memcg_wmark_lock(memcg);
+	memcg->watermark_scale_factor = factor;
+	__set_memcg_watermark(memcg);
+	memcg_wmark_unlock(memcg);
+
+	return 0;
+}
+
+static u64 memory_wmark_scale_factor_read(struct cgroup_subsys_state *css,
+					  struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return (u64)memcg->watermark_scale_factor;
+}
+
+static int memory_wmark_read(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(seq_css(m));
+
+	seq_printf(m, "low  %lu\n", memcg_low_wmark_pages(memcg) * PAGE_SIZE);
+	seq_printf(m, "high %lu\n", memcg_high_wmark_pages(memcg) * PAGE_SIZE);
+
+	return 0;
+}
+#endif
+
 static struct cftype mem_cgroup_legacy_files[] = {
 	{
 		.name = "usage_in_bytes",
@@ -5141,6 +5315,18 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.write = mem_cgroup_reset,
 		.read_u64 = mem_cgroup_read_u64,
 	},
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{
+		.name = "watermark_scale_factor",
+		.write_u64 = memory_wmark_scale_factor_write,
+		.read_u64 = memory_wmark_scale_factor_read,
+	},
+	{
+		.name = "watermark",
+		.file_offset = offsetof(struct mem_cgroup, wmark_low_event),
+		.seq_show = memory_wmark_read,
+	},
+#endif
 	{ },	/* terminate */
 };
 
@@ -5337,6 +5523,9 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 		goto fail;
 
 	INIT_WORK(&memcg->high_work, high_work_func);
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	INIT_WORK(&memcg->mem_reclaim_work, memcg_reclaim_work);
+#endif
 	INIT_LIST_HEAD(&memcg->oom_notify);
 	mutex_init(&memcg->thresholds_lock);
 	spin_lock_init(&memcg->move_lock);
@@ -5385,6 +5574,10 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	memcg->zswap_max = PAGE_COUNTER_MAX;
 #endif
 	page_counter_set_high(&memcg->swap, PAGE_COUNTER_MAX);
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	memcg_wmark_lock_init(memcg);
+	memcg_watermark_init(memcg, memcg_watermark_scale_factor);
+#endif
 	if (parent) {
 		WRITE_ONCE(memcg->swappiness, mem_cgroup_swappiness(parent));
 		WRITE_ONCE(memcg->oom_kill_disable, READ_ONCE(parent->oom_kill_disable));
@@ -5521,6 +5714,9 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 
 	vmpressure_cleanup(&memcg->vmpressure);
 	cancel_work_sync(&memcg->high_work);
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	cancel_work_sync(&memcg->mem_reclaim_work);
+#endif
 	mem_cgroup_remove_from_trees(memcg);
 	free_shrinker_info(memcg);
 	mem_cgroup_free(memcg);
@@ -5553,6 +5749,7 @@ static void mem_cgroup_css_reset(struct cgroup_subsys_state *css)
 	WRITE_ONCE(memcg->soft_limit, PAGE_COUNTER_MAX);
 	page_counter_set_high(&memcg->swap, PAGE_COUNTER_MAX);
 	memcg_wb_domain_size_changed(memcg);
+	memcg_watermark_init(memcg, 0);
 }
 
 static void mem_cgroup_css_rstat_flush(struct cgroup_subsys_state *css, int cpu)
@@ -6591,7 +6788,10 @@ static ssize_t memory_max_write(struct kernfs_open_file *of,
 	if (err)
 		return err;
 
+	memcg_wmark_lock(memcg);
 	xchg(&memcg->memory.max, max);
+	__set_memcg_watermark(memcg);
+	memcg_wmark_unlock(memcg);
 
 	for (;;) {
 		unsigned long nr_pages = page_counter_read(&memcg->memory);
@@ -6845,6 +7045,20 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
 	},
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	{
+		.name = "watermark_scale_factor",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write_u64 = memory_wmark_scale_factor_write,
+		.read_u64 = memory_wmark_scale_factor_read,
+	},
+	{
+		.name = "watermark",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.file_offset = offsetof(struct mem_cgroup, wmark_low_event),
+		.seq_show = memory_wmark_read,
+	},
+#endif
 	{ }	/* terminate */
 };
 
@@ -7438,6 +7652,11 @@ static int __init mem_cgroup_init(void)
 	 */
 	BUILD_BUG_ON(MEMCG_CHARGE_BATCH > S32_MAX / PAGE_SIZE);
 
+#ifdef CONFIG_MEMCG_BGD_RECLAIM
+	memcg_reclaim_wq = alloc_workqueue("memcg_reclaim_wq", WQ_UNBOUND, 1);
+	if (!memcg_reclaim_wq)
+		panic("Failed to create memcg_reclaim_wq\n");
+#endif
 	cpuhp_setup_state_nocalls(CPUHP_MM_MEMCQ_DEAD, "mm/memctrl:dead", NULL,
 				  memcg_hotplug_cpu_dead);
 
