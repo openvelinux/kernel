@@ -22,6 +22,10 @@
 #include "util/iostat.h"
 #include "util/pmu.h"
 
+/* From include/uapi/linux/pci.h */
+#define PCI_SLOT(devfn)		(((devfn) >> 3) & 0x1f)
+#define PCI_DEVFN(slot, func)	((((slot) & 0x1f) << 3) | ((func) & 0x07))
+
 #define PCI_DEFAULT_DOMAIN		0
 #define PCI_DEVICE_NAME_PATTERN		"%04x:%02hhx:%02hhx.%hhu"
 #define PCI_ROOT_BUS_DEVICES_PATH	"bus/pci/devices"
@@ -69,9 +73,9 @@ struct hisi_pcie_root_port {
 LIST_HEAD(hisi_pcie_root_ports_list);
 static int hisi_pcie_root_ports_num;
 
-static void hisi_pcie_init_root_port_mask(struct hisi_pcie_root_port *rp)
+static void hisi_pcie_init_root_port_mask(struct hisi_pcie_root_port *rp, u16 devbase)
 {
-	rp->mask = BIT(rp->dev << 1);
+	rp->mask = BIT((rp->dev - devbase) << 1);
 }
 
 /*
@@ -100,7 +104,8 @@ static void hisi_pcie_root_ports_select_all(void)
 		rp->selected = true;
 }
 
-static void hisi_pcie_root_ports_add(u16 sicl_id, u16 core_id, u8 target_bus)
+static void hisi_pcie_root_ports_add(u16 sicl_id, u16 core_id, u8 target_bus,
+				     u16 bdf_min, u16 bdf_max)
 {
 	const char *sysfs = sysfs__mountpoint();
 	struct hisi_pcie_root_port *rp;
@@ -109,6 +114,7 @@ static void hisi_pcie_root_ports_add(u16 sicl_id, u16 core_id, u8 target_bus)
 	u8 bus, dev, fn;
 	u32 domain;
 	DIR *dir;
+	u16 bdf;
 	int ret;
 
 	snprintf(path, PATH_MAX, "%s/%s", sysfs, PCI_ROOT_BUS_DEVICES_PATH);
@@ -123,6 +129,10 @@ static void hisi_pcie_root_ports_add(u16 sicl_id, u16 core_id, u8 target_bus)
 		if (ret != 4 || bus != target_bus)
 			continue;
 
+		bdf = (bus << 8) | PCI_DEVFN(dev, fn);
+		if (bdf < bdf_min || bdf > bdf_max)
+			continue;
+
 		rp = zalloc(sizeof(*rp));
 		if (!rp)
 			continue;
@@ -135,7 +145,7 @@ static void hisi_pcie_root_ports_add(u16 sicl_id, u16 core_id, u8 target_bus)
 		rp->dev = dev;
 		rp->fn = fn;
 
-		hisi_pcie_init_root_port_mask(rp);
+		hisi_pcie_init_root_port_mask(rp, PCI_SLOT(bdf_min));
 
 		list_add(&rp->list, &hisi_pcie_root_ports_list);
 		hisi_pcie_root_ports_num++;
@@ -150,7 +160,7 @@ static void hisi_pcie_root_ports_add(u16 sicl_id, u16 core_id, u8 target_bus)
 static int hisi_pcie_root_ports_init(void)
 {
 	char event_source[PATH_MAX], bus_path[PATH_MAX];
-	unsigned long long bus;
+	unsigned long long bus, bdf_max, bdf_min;
 	u16 sicl_id, core_id;
 	struct dirent *dent;
 	DIR *dir;
@@ -182,9 +192,19 @@ static int hisi_pcie_root_ports_init(void)
 		if (filename__read_ull(bus_path, &bus))
 			continue;
 
+		scnprintf(bus_path, sizeof(bus_path), "%s/hisi_pcie%hu_core%hu/bdf_max",
+			  event_source, sicl_id, core_id);
+		if (filename__read_xll(bus_path, &bdf_max))
+			bdf_max = -1;
+
+		scnprintf(bus_path, sizeof(bus_path), "%s/hisi_pcie%hu_core%hu/bdf_min",
+			  event_source, sicl_id, core_id);
+		if (filename__read_xll(bus_path, &bdf_min))
+			bdf_min = 0;
+
 		pr_debug3("Found pmu %s bus 0x%llx\n", dent->d_name, bus);
 
-		hisi_pcie_root_ports_add(sicl_id, core_id, (u8)bus);
+		hisi_pcie_root_ports_add(sicl_id, core_id, (u8)bus, (u16)bdf_min, (u16)bdf_max);
 	}
 
 	closedir(dir);
@@ -209,6 +229,7 @@ static int hisi_iostat_add_events(struct evlist *evl)
 {
 	struct hisi_pcie_root_port *rp;
 	struct evsel *evsel;
+	struct parse_events_error err;
 	unsigned int i, j;
 	char *iostat_cmd;
 	int pos = 0;
@@ -237,7 +258,7 @@ static int hisi_iostat_add_events(struct evlist *evl)
 				iostat_cmd[pos++] = ',';
 		}
 
-		ret = parse_event(evl, iostat_cmd);
+		ret = parse_events(evl, iostat_cmd, &err);
 		if (ret)
 			break;
 
@@ -411,7 +432,7 @@ void iostat_prefix(struct evlist *evlist, struct perf_stat_config *config,
 
 void iostat_print_counters(struct evlist *evlist, struct perf_stat_config *config,
 			   struct timespec *ts, char *prefix,
-			   iostat_print_counter_t print_cnt_cb, void *arg)
+			   iostat_print_counter_t print_cnt_cb)
 {
 	struct evsel *counter = evlist__first(evlist);
 	void *perf_device;
@@ -426,7 +447,7 @@ void iostat_print_counters(struct evlist *evlist, struct perf_stat_config *confi
 			iostat_prefix(evlist, config, prefix, ts);
 			fprintf(config->output, "\n%s", prefix);
 		}
-		print_cnt_cb(config, counter, arg);
+		print_cnt_cb(config, counter, prefix);
 	}
 	fputc('\n', config->output);
 }
