@@ -320,8 +320,8 @@ static const struct attribute_group hisi_pa_pmu_v2_format_group = {
 };
 
 static struct attribute *hisi_pa_pmu_v2_events_attr[] = {
-	HISI_PMU_EVENT_ATTR(rx_req,		0x40),
-	HISI_PMU_EVENT_ATTR(tx_req,             0x5c),
+	HISI_PMU_EVENT_ATTR(pa_rx_req_link0,	0x40),
+	HISI_PMU_EVENT_ATTR(pa_tx_req_link0,	0x60),
 	HISI_PMU_EVENT_ATTR(cycle,		0x78),
 	NULL
 };
