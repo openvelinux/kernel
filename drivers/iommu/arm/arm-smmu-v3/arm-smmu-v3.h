@@ -129,6 +129,8 @@
 #define ARM_SMMU_GERROR_IRQ_CFG1	0x70
 #define ARM_SMMU_GERROR_IRQ_CFG2	0x74
 
+#define ARM_SMMU_USER_CFG1		0xe04
+
 #define ARM_SMMU_STRTAB_BASE		0x80
 #define STRTAB_BASE_RA			(1UL << 62)
 #define STRTAB_BASE_ADDR_MASK		GENMASK_ULL(51, 6)
@@ -653,6 +655,7 @@ struct arm_smmu_device {
 #define ARM_SMMU_OPT_MSIPOLL		(1 << 2)
 #define ARM_SMMU_OPT_CMDQ_FORCE_SYNC	(1 << 3)
 #define ARM_SMMU_OPT_SYNC_MAP		(1 << 4)
+#define ARM_SMMU_OPT_SYNC_BATCH		(1 << 5)
 	u32				options;
 
 	struct arm_smmu_cmdq		cmdq;
