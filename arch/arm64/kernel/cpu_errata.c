@@ -55,6 +55,29 @@ is_kryo_midr(const struct arm64_cpu_capabilities *entry, int scope)
 	return model == entry->midr_range.model;
 }
 
+#ifdef CONFIG_HISILICON_ERRATUM_1980005
+static bool
+hisilicon_1980005_match(const struct arm64_cpu_capabilities *entry,
+		int scope)
+{
+	static const struct midr_range idc_support_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_HISI_TSV110),
+		MIDR_REV(MIDR_HISI_TSV200, 1, 0),
+		{ /* sentinel */ }
+	};
+
+	return  is_midr_in_range_list(read_cpuid_id(), idc_support_list);
+}
+
+static void
+hisilicon_1980005_enable(const struct arm64_cpu_capabilities *__unused)
+{
+	cpus_set_cap(ARM64_HAS_CACHE_IDC);
+	arm64_ftr_reg_ctrel0.sys_val |= BIT(CTR_IDC_SHIFT);
+	sysreg_clear_set(sctlr_el1, SCTLR_EL1_UCT, 0);
+}
+#endif
+
 static bool
 has_mismatched_cache_type(const struct arm64_cpu_capabilities *entry,
 			  int scope)
@@ -541,6 +564,15 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
 		.cpu_enable = cpu_enable_trap_ctr_access,
 	},
+#ifdef CONFIG_HISILICON_ERRATUM_1980005
+	{
+		.desc = "Taishan IDC coherence workaround",
+		.capability = ARM64_WORKAROUND_HISILICON_1980005,
+		.matches = hisilicon_1980005_match,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.cpu_enable = hisilicon_1980005_enable,
+	},
+#endif
 #ifdef CONFIG_QCOM_FALKOR_ERRATUM_1003
 	{
 		.desc = "Qualcomm Technologies Falkor/Kryo erratum 1003",
