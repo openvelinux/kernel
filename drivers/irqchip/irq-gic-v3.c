@@ -1375,11 +1375,7 @@ void gic_dist_enable_ipiv(void)
 {
 	u32 val;
 
-	val = readl_relaxed(gic_data.dist_base + GICD_MISC_CTRL);
-	val |= GICD_MISC_CTRL_CFG_IPIV_EN;
-	writel_relaxed(val, gic_data.dist_base + GICD_MISC_CTRL);
 	static_branch_enable(&ipiv_enable);
-
 	val = (0 << GICD_IPIV_CTRL_AFF_DIRECT_VPEID_SHIFT) |
 		(4 << GICD_IPIV_CTRL_AFF1_LEFT_SHIFT_SHIFT) |
 		(12 << GICD_IPIV_CTRL_AFF2_LEFT_SHIFT_SHIFT) |
@@ -1391,6 +1387,18 @@ void gic_dist_enable_ipiv(void)
 	writel_relaxed(0x4880, gic_data.dist_base + GICD_IPIV_ITS_TA_BASE);
 }
 EXPORT_SYMBOL(gic_dist_enable_ipiv);
+
+bool gic_get_ipiv_status(void)
+{
+	u32 val;
+
+	val = readl_relaxed(gic_data.dist_base + GICD_MISC_CTRL);
+	if (val & GICD_MISC_CTRL_CFG_IPIV_EN)
+		return true;
+
+	return false;
+}
+EXPORT_SYMBOL(gic_get_ipiv_status);
 #endif /* CONFIG_ARM64_HISI_IPIV */
 
 static void gic_cpu_init(void)

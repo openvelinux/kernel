@@ -179,6 +179,11 @@ bool hisi_ipiv_supported(void)
 		return false;
 	}
 
+	if (!gic_get_ipiv_status()) {
+		kvm_info("Hisi ipiv is disabled by BIOS\n");
+		return false;
+	}
+
 	/* User provided kernel command-line parameter */
 	if (!ipiv_enabled || !is_kernel_in_hyp_mode())
 		return false;
