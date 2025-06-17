@@ -1235,6 +1235,16 @@ config HISILICON_ERRATUM_1980005
 
 	  If unsure, say N.
 
+config HISILICON_ERRATUM_162100801
+	bool "Hip09 162100801 erratum support"
+	default y
+	help
+	  When enabled GICv4.1 in hip09, there are some invalid vPE config
+	  in configuration tables for some situation, which will cause vSGI
+	  interrupts lost. So fix it by sending vinvall commands after vmovp.
+
+	  If unsure, say Y.
+
 config HISILICON_ERRATUM_162100125
 	bool "Hisilicon erratum 162100125"
 	default y
