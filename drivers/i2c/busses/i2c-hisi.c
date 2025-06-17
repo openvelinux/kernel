@@ -530,3 +530,4 @@ module_platform_driver(hisi_i2c_driver);
 MODULE_AUTHOR("Yicong Yang <yangyicong@hisilicon.com>");
 MODULE_DESCRIPTION("HiSilicon I2C Controller Driver");
 MODULE_LICENSE("GPL");
+MODULE_SOFTDEP("pre: gpio-hisi");
