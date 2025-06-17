@@ -289,6 +289,13 @@ static const struct midr_range cavium_erratum_30115_cpus[] = {
 };
 #endif
 
+#ifdef CONFIG_HISILICON_ERRATUM_162100125
+static const struct midr_range hisilicon_erratum_162100125_cpus[] = {
+	MIDR_REV(MIDR_HISI_LINXICORE9100, 0, 0),
+	{},
+};
+#endif
+
 #ifdef CONFIG_QCOM_FALKOR_ERRATUM_1003
 static const struct arm64_cpu_capabilities qcom_erratum_1003_list[] = {
 	{
@@ -571,6 +578,13 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.matches = hisilicon_1980005_match,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.cpu_enable = hisilicon_1980005_enable,
+	},
+#endif
+#ifdef CONFIG_HISILICON_ERRATUM_162100125
+	{
+		.desc = "Hisilicon erratum 162100125",
+		.capability = ARM64_WORKAROUND_HISILICON_ERRATUM_162100125,
+		ERRATA_MIDR_RANGE_LIST(hisilicon_erratum_162100125_cpus),
 	},
 #endif
 #ifdef CONFIG_QCOM_FALKOR_ERRATUM_1003
