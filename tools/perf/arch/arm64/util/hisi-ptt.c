@@ -113,7 +113,6 @@ static int hisi_ptt_recording_options(struct auxtrace_record *itr,
 			}
 			evsel->core.attr.freq = 0;
 			evsel->core.attr.sample_period = 1;
-			evsel->needs_auxtrace_mmap = true;
 			hisi_ptt_evsel = evsel;
 			opts->full_auxtrace = true;
 		}
@@ -126,16 +125,16 @@ static int hisi_ptt_recording_options(struct auxtrace_record *itr,
 	 * To obtain the auxtrace buffer file descriptor, the auxtrace event
 	 * must come first.
 	 */
-	evlist__to_front(evlist, hisi_ptt_evsel);
+	perf_evlist__to_front(evlist, hisi_ptt_evsel);
 	evsel__set_sample_bit(hisi_ptt_evsel, TIME);
 
 	/* Add dummy event to keep tracking */
-	err = parse_event(evlist, "dummy:u");
+	err = parse_events(evlist, "dummy:u", NULL);
 	if (err)
 		return err;
 
 	tracking_evsel = evlist__last(evlist);
-	evlist__set_tracking_event(evlist, tracking_evsel);
+	perf_evlist__set_tracking_event(evlist, tracking_evsel);
 
 	tracking_evsel->core.attr.freq = 0;
 	tracking_evsel->core.attr.sample_period = 1;

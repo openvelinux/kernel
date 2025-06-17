@@ -5,10 +5,12 @@
  * Copyright (c) 2021 HiSilicon Technologies Co., Ltd.
  */
 
+#include <linux/acpi.h>
 #include <linux/bits.h>
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -57,6 +59,8 @@
 #define   HISI_I2C_FS_SPK_LEN_CNT	GENMASK(7, 0)
 #define HISI_I2C_HS_SPK_LEN		0x003c
 #define   HISI_I2C_HS_SPK_LEN_CNT	GENMASK(7, 0)
+#define HISI_I2C_TX_INT_CLR		0x0040
+#define   HISI_I2C_TX_AEMPTY_INT		BIT(0)
 #define HISI_I2C_INT_MSTAT		0x0044
 #define HISI_I2C_INT_CLR		0x0048
 #define HISI_I2C_INT_MASK		0x004C
@@ -107,6 +111,9 @@ struct hisi_i2c_controller {
 	struct i2c_timings t;
 	u32 clk_rate_khz;
 	u32 spk_len;
+
+	/* Bus recovery method */
+	struct i2c_bus_recovery_info rinfo;
 };
 
 static void hisi_i2c_enable_int(struct hisi_i2c_controller *ctlr, u32 mask)
@@ -122,6 +129,11 @@ static void hisi_i2c_disable_int(struct hisi_i2c_controller *ctlr, u32 mask)
 static void hisi_i2c_clear_int(struct hisi_i2c_controller *ctlr, u32 mask)
 {
 	writel_relaxed(mask, ctlr->iobase + HISI_I2C_INT_CLR);
+}
+
+static void hisi_i2c_clear_tx_int(struct hisi_i2c_controller *ctlr, u32 mask)
+{
+	writel_relaxed(mask, ctlr->iobase + HISI_I2C_TX_INT_CLR);
 }
 
 static void hisi_i2c_handle_errors(struct hisi_i2c_controller *ctlr)
@@ -168,6 +180,7 @@ static int hisi_i2c_start_xfer(struct hisi_i2c_controller *ctlr)
 	writel(reg, ctlr->iobase + HISI_I2C_FIFO_CTRL);
 
 	hisi_i2c_clear_int(ctlr, HISI_I2C_INT_ALL);
+	hisi_i2c_clear_tx_int(ctlr, HISI_I2C_TX_AEMPTY_INT);
 	hisi_i2c_enable_int(ctlr, HISI_I2C_INT_ALL);
 
 	return 0;
@@ -266,7 +279,7 @@ static int hisi_i2c_read_rx_fifo(struct hisi_i2c_controller *ctlr)
 
 static void hisi_i2c_xfer_msg(struct hisi_i2c_controller *ctlr)
 {
-	int max_write = HISI_I2C_TX_FIFO_DEPTH;
+	int max_write = HISI_I2C_TX_FIFO_DEPTH - HISI_I2C_TX_F_AE_THRESH;
 	bool need_restart = false, last_msg;
 	struct i2c_msg *cur_msg;
 	u32 cmd, fifo_state;
@@ -323,6 +336,8 @@ static void hisi_i2c_xfer_msg(struct hisi_i2c_controller *ctlr)
 	 */
 	if (ctlr->msg_tx_idx == ctlr->msg_num)
 		hisi_i2c_disable_int(ctlr, HISI_I2C_INT_TX_EMPTY);
+
+	hisi_i2c_clear_tx_int(ctlr, HISI_I2C_TX_AEMPTY_INT);
 }
 
 static irqreturn_t hisi_i2c_irq(int irq, void *context)
@@ -363,6 +378,7 @@ out:
 	if (int_stat & HISI_I2C_INT_TRANS_CPLT) {
 		hisi_i2c_disable_int(ctlr, HISI_I2C_INT_ALL);
 		hisi_i2c_clear_int(ctlr, HISI_I2C_INT_ALL);
+		hisi_i2c_clear_tx_int(ctlr, HISI_I2C_TX_AEMPTY_INT);
 		complete(ctlr->completion);
 	}
 
@@ -444,6 +460,108 @@ static void hisi_i2c_configure_bus(struct hisi_i2c_controller *ctlr)
 	writel(reg, ctlr->iobase + HISI_I2C_FIFO_CTRL);
 }
 
+#ifdef CONFIG_ACPI
+#define HISI_I2C_PIN_MUX_METHOD	"PMUX"
+#define HISI_I2C_SOFT_RESET_METHOD	"SRST"
+
+/**
+ * i2c_hisi_soft_reset - Do I2C master soft reset method through ACPI
+ * @dev: device need to be reset
+ *
+ * The function invokes the specific ACPI method "SRST" for trigger a soft
+ * reset of I2C controller in order to help on I2C controller recover from
+ * the abnormal state after bus recovery process.
+ */
+static void i2c_hisi_soft_reset(struct device *dev)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	acpi_status status;
+	unsigned long long data;
+
+	status = acpi_evaluate_integer(handle, HISI_I2C_SOFT_RESET_METHOD, NULL, &data);
+	dev_info(dev, "I2C controller reset %s", ACPI_FAILURE(status) ? "failed" :
+		 "succeed");
+}
+
+/**
+ * i2c_hisi_pin_mux_change - Change the I2C controller's pin mux through ACPI
+ * @dev: device owns the SCL/SDA pin
+ * @to_gpio: true to switch to GPIO, false to switch to SCL/SDA
+ *
+ * The function invokes the specific ACPI method "PMUX" for changing the
+ * pin mux of I2C controller between SCL/SDA and GPIO in order to help on
+ * the generic GPIO recovery process.
+ */
+static void i2c_hisi_pin_mux_change(struct device *dev, bool to_gpio)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	struct acpi_object_list arg_list;
+	unsigned long long data;
+	union acpi_object arg;
+
+	arg.type = ACPI_TYPE_INTEGER;
+	arg.integer.value = to_gpio;
+	arg_list.count = 1;
+	arg_list.pointer = &arg;
+
+	acpi_evaluate_integer(handle, HISI_I2C_PIN_MUX_METHOD, &arg_list, &data);
+}
+
+static void i2c_hisi_prepare_recovery(struct i2c_adapter *adap)
+{
+	struct hisi_i2c_controller *ctlr = i2c_get_adapdata(adap);
+
+	i2c_hisi_pin_mux_change(ctlr->dev, true);
+}
+
+static void i2c_hisi_unprepare_recovery(struct i2c_adapter *adap)
+{
+	struct hisi_i2c_controller *ctlr = i2c_get_adapdata(adap);
+
+	i2c_hisi_pin_mux_change(ctlr->dev, false);
+	i2c_hisi_soft_reset(ctlr->dev);
+
+	/*
+	 * After a soft reset, the device configuration return to default
+	 * values and require reinitialization.
+	 */
+	hisi_i2c_configure_bus(ctlr);
+}
+
+static void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr)
+{
+	struct i2c_bus_recovery_info *rinfo = &ctlr->rinfo;
+	struct acpi_device *adev = ACPI_COMPANION(ctlr->dev);
+	struct gpio_desc *gpio;
+
+	if (acpi_disabled)
+		return;
+
+	if (!adev || !acpi_has_method(adev->handle, HISI_I2C_PIN_MUX_METHOD) ||
+	    !acpi_has_method(adev->handle, HISI_I2C_SOFT_RESET_METHOD))
+		return;
+
+	gpio = devm_gpiod_get_optional(ctlr->dev, "scl", GPIOD_OUT_HIGH);
+	if (IS_ERR_OR_NULL(gpio))
+		return;
+
+	rinfo->scl_gpiod = gpio;
+
+	gpio = devm_gpiod_get_optional(ctlr->dev, "sda", GPIOD_IN);
+	if (IS_ERR(gpio))
+		return;
+
+	rinfo->sda_gpiod = gpio;
+	rinfo->recover_bus = i2c_generic_scl_recovery;
+	rinfo->prepare_recovery =  i2c_hisi_prepare_recovery;
+	rinfo->unprepare_recovery = i2c_hisi_unprepare_recovery;
+
+	ctlr->adapter.bus_recovery_info = rinfo;
+}
+#else
+static inline void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr) { }
+#endif /* CONFIG_ACPI */
+
 static int hisi_i2c_probe(struct platform_device *pdev)
 {
 	struct hisi_i2c_controller *ctlr;
@@ -494,6 +612,8 @@ static int hisi_i2c_probe(struct platform_device *pdev)
 	adapter->dev.parent = dev;
 	i2c_set_adapdata(adapter, ctlr);
 
+	hisi_i2c_init_recovery_info(ctlr);
+
 	ret = devm_i2c_add_adapter(dev, adapter);
 	if (ret)
 		return ret;
@@ -530,3 +650,4 @@ module_platform_driver(hisi_i2c_driver);
 MODULE_AUTHOR("Yicong Yang <yangyicong@hisilicon.com>");
 MODULE_DESCRIPTION("HiSilicon I2C Controller Driver");
 MODULE_LICENSE("GPL");
+MODULE_SOFTDEP("pre: gpio-hisi");
