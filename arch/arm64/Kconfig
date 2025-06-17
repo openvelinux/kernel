@@ -1239,6 +1239,15 @@ config HISILICON_ERRATUM_162100801
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_1980005
+	bool "Hisilicon erratum IDC support"
+	default n
+	help
+	  The HiSilicon TSV100/200 SoC support idc but report wrong value to
+	  kernel.
+
+	  If unsure, say N.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
