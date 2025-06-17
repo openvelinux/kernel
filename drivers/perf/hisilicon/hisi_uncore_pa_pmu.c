@@ -321,8 +321,22 @@ static const struct attribute_group hisi_pa_pmu_v2_format_group = {
 
 static struct attribute *hisi_pa_pmu_v2_events_attr[] = {
 	HISI_PMU_EVENT_ATTR(pa_rx_req_link0,	0x40),
+	HISI_PMU_EVENT_ATTR(pa_rx_req_link1,	0x41),
+	HISI_PMU_EVENT_ATTR(pa_rx_req_link2,	0x42),
+	HISI_PMU_EVENT_ATTR(pa_rx_req_link3,	0x43),
+	HISI_PMU_EVENT_ATTR(pa_rx_data_link0,	0x44),
+	HISI_PMU_EVENT_ATTR(pa_rx_data_link1,	0x45),
+	HISI_PMU_EVENT_ATTR(pa_rx_data_link2,	0x46),
+	HISI_PMU_EVENT_ATTR(pa_rx_data_link3,	0x47),
 	HISI_PMU_EVENT_ATTR(pa_tx_req_link0,	0x60),
-	HISI_PMU_EVENT_ATTR(cycle,		0x78),
+	HISI_PMU_EVENT_ATTR(pa_tx_req_link1,	0x61),
+	HISI_PMU_EVENT_ATTR(pa_tx_req_link2,	0x62),
+	HISI_PMU_EVENT_ATTR(pa_tx_req_link3,	0x63),
+	HISI_PMU_EVENT_ATTR(pa_tx_data_link0,	0x64),
+	HISI_PMU_EVENT_ATTR(pa_tx_data_link1,	0x65),
+	HISI_PMU_EVENT_ATTR(pa_tx_data_link2,	0x66),
+	HISI_PMU_EVENT_ATTR(pa_tx_data_link3,	0x67),
+	HISI_PMU_EVENT_ATTR(pa_cycles,		0x78),
 	NULL
 };
 
