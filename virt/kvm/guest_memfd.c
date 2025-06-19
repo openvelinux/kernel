@@ -980,20 +980,6 @@ static int kvm_gmem_prepare_folio(struct kvm *kvm, struct kvm_memory_slot *slot,
 {
 	pgoff_t index;
 
-	/*
-	 * Preparing huge folios should always be safe, since it should
-	 * be possible to split them later if needed.
-	 *
-	 * Right now the folio order is always going to be zero, but the
-	 * code is ready for huge folios.  The only assumption is that
-	 * the base pgoff of memslots is naturally aligned with the
-	 * requested page order, ensuring that huge folios can also use
-	 * huge page table entries for GPA->HPA mapping.
-	 *
-	 * The order will be passed when creating the guest_memfd, and
-	 * checked when creating memslots.
-	 */
-	WARN_ON(!IS_ALIGNED(slot->gmem.pgoff, 1 << folio_order(folio)));
 	index = gfn - slot->base_gfn + slot->gmem.pgoff;
 	index = ALIGN_DOWN(index, 1 << folio_order(folio));
 
@@ -2233,8 +2219,6 @@ static struct folio *__kvm_gmem_get_pfn(struct file *file,
 	}
 
 	*pfn = folio_file_pfn(folio, index);
-	if (max_order)
-		*max_order = folio_order(folio);
 
 
 	return folio;
@@ -2271,6 +2255,24 @@ int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 	folio_unlock(folio);
 	if (r < 0)
 		folio_put(folio);
+
+	if (max_order)
+		*max_order = folio_order(folio);
+
+	if (max_order && *max_order) {
+		pgoff_t index_floor;
+
+		index_floor = round_down(index, (1 << folio_order(folio)));
+
+		if (index_floor < slot->gmem.pgoff ||
+		    index_floor + (1 << folio_order(folio)) > slot->gmem.pgoff + slot->npages) {
+			pr_debug("%s: marker 0, clamping folio order for index 0x%lx pfn 0x%llx folio_order %d slot->gmem.pgoff 0x%lx\n",
+				 __func__, index, *pfn, folio_order(folio), slot->gmem.pgoff);
+
+			*max_order = 0;
+		}
+	}
+
 out:
 	filemap_invalidate_unlock_shared(file_inode(file)->i_mapping);
 	fput(file);
@@ -2373,8 +2375,8 @@ long kvm_gmem_populate(struct kvm *kvm, gfn_t start_gfn, void __user *src, long 
 		}
 
 		folio_unlock(folio);
-		WARN_ON(!IS_ALIGNED(gfn, 1 << max_order) ||
-			(npages - i) < (1 << max_order));
+		if (!IS_ALIGNED(gfn, 1 << max_order) || (npages - i) < (1 << max_order))
+			max_order = 0;
 
 		ret = -EINVAL;
 		if (!kvm_memslot_is_gmem_only(slot)) {
