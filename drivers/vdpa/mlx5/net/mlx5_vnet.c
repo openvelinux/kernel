@@ -3536,7 +3536,8 @@ err_alloc:
 	return err;
 }
 
-static void mlx5_vdpa_dev_del(struct vdpa_mgmt_dev *v_mdev, struct vdpa_device *dev)
+static void mlx5_vdpa_dev_del(struct vdpa_mgmt_dev *v_mdev,
+			      struct vdpa_device *dev, int timeout)
 {
 	struct mlx5_vdpa_mgmtdev *mgtdev = container_of(v_mdev, struct mlx5_vdpa_mgmtdev, mgtdev);
 	struct mlx5_vdpa_dev *mvdev = to_mvdev(dev);

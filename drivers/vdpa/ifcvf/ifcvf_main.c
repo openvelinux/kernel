@@ -729,7 +729,8 @@ static int ifcvf_vdpa_dev_add(struct vdpa_mgmt_dev *mdev, const char *name,
 	return 0;
 }
 
-static void ifcvf_vdpa_dev_del(struct vdpa_mgmt_dev *mdev, struct vdpa_device *dev)
+static void ifcvf_vdpa_dev_del(struct vdpa_mgmt_dev *mdev,
+			       struct vdpa_device *dev, int timeout)
 {
 	struct ifcvf_vdpa_mgmt_dev *ifcvf_mgmt_dev;
 
