@@ -387,8 +387,11 @@ static void *guestmem_hugetlb_setup(size_t size, u64 flags)
 	 * Check against h because page_size_log could be 0 to request default
 	 * HugeTLB page size.
 	 */
-	if (!IS_ALIGNED(size, huge_page_size(h)))
-		return ERR_PTR(-EINVAL);
+	if (!IS_ALIGNED(size, huge_page_size(h))) {
+		pr_debug("%s: Rounding up allocation size from 0x%lx to 0x%lx\n",
+			 __func__, size, round_up(size, huge_page_size(h)));
+		size = round_up(size, huge_page_size(h));
+	}
 
 	private = kzalloc(sizeof(*private), GFP_KERNEL);
 	if (!private)
@@ -402,6 +405,7 @@ static void *guestmem_hugetlb_setup(size_t size, u64 flags)
 		goto err_free;
 
 	hpages = size >> huge_page_shift(h);
+	WARN_ON_ONCE(!hpages);
 	spool = hugepage_new_subpool(h, hpages, hpages, false);
 	if (!spool)
 		goto err_uncharge;
