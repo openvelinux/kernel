@@ -396,8 +396,8 @@ static int kvm_gmem_shareability_apply(struct inode *inode,
 			struct folio *folio = filemap_lock_folio(inode->i_mapping, idx);
 
 			if (!IS_ERR(folio)) {
-				kvm_arch_gmem_invalidate(folio_pfn(folio),
-							 folio_pfn(folio) + folio_nr_pages(folio));
+				kvm_arch_gmem_invalidate(folio_pfn(folio) + (idx % folio_nr_pages(folio)),
+							 folio_pfn(folio) + (idx % folio_nr_pages(folio)) + 1);
 				folio_unlock(folio);
 				folio_put(folio);
 			}
