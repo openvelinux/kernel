@@ -337,11 +337,30 @@ static int set_domain_enable(struct powercap_zone *power_zone, bool mode)
 {
 	struct rapl_domain *rd = power_zone_to_rapl_domain(power_zone);
 	struct rapl_defaults *defaults = get_defaults(rd->rp);
+	u64 val;
 	int ret;
 
 	cpus_read_lock();
 	ret = rapl_write_pl_data(rd, POWER_LIMIT1, PL_ENABLE, mode);
-	if (!ret && defaults->set_floor_freq)
+	if (ret) {
+		cpus_read_unlock();
+		return ret;
+	}
+	/* Check if the ENABLE bit was actually changed */
+	ret = rapl_read_data_raw(rd, PL1_ENABLE, true, &val);
+	if (ret) {
+		cpus_read_unlock();
+		return ret;
+	}
+
+	if (mode != val) {
+		pr_debug("%s cannot be %s\n", power_zone->name,
+			 mode ? "enabled" : "disabled");
+		cpus_read_unlock();
+		return 0;
+	}
+
+	if (defaults->set_floor_freq)
 		defaults->set_floor_freq(rd, mode);
 	cpus_read_unlock();
 
