@@ -552,7 +552,7 @@ err:
 }
 
 static void vp_vdpa_dev_del(struct vdpa_mgmt_dev *v_mdev,
-			    struct vdpa_device *dev)
+			    struct vdpa_device *dev, int timeout)
 {
 	struct vp_vdpa_mgmtdev *vp_vdpa_mgtdev =
 		container_of(v_mdev, struct vp_vdpa_mgmtdev, mgtdev);

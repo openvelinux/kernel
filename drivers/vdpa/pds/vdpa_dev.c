@@ -751,7 +751,7 @@ err_unmap:
 }
 
 static void pds_vdpa_dev_del(struct vdpa_mgmt_dev *mdev,
-			     struct vdpa_device *vdpa_dev)
+			     struct vdpa_device *vdpa_dev, int timeout)
 {
 	struct pds_vdpa_device *pdsv = vdpa_to_pdsv(vdpa_dev);
 	struct pds_vdpa_aux *vdpa_aux;
