@@ -2410,6 +2410,8 @@ static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	X86_MATCH(TIGERLAKE,		core_funcs),
 	X86_MATCH(SAPPHIRERAPIDS_X,	core_funcs),
 	X86_MATCH(EMERALDRAPIDS_X,      core_funcs),
+	X86_MATCH(GRANITERAPIDS_D,	core_funcs),
+	X86_MATCH(GRANITERAPIDS_X,	core_funcs),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_pstate_cpu_ids);
