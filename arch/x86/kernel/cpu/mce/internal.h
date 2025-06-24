@@ -259,6 +259,8 @@ enum mca_msr {
 extern bool filter_mce(struct mce *m);
 
 #ifdef CONFIG_X86_MCE_AMD
+void mce_threshold_create_device(unsigned int cpu);
+void mce_threshold_remove_device(unsigned int cpu);
 extern bool amd_filter_mce(struct mce *m);
 
 /*
@@ -286,6 +288,8 @@ static __always_inline void smca_extract_err_addr(struct mce *m)
 }
 
 #else
+static inline void mce_threshold_create_device(unsigned int cpu)	{ }
+static inline void mce_threshold_remove_device(unsigned int cpu)	{ }
 static inline bool amd_filter_mce(struct mce *m) { return false; }
 static inline void smca_extract_err_addr(struct mce *m) { }
 #endif
