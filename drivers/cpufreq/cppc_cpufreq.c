@@ -107,12 +107,23 @@ static void cppc_scale_freq_workfn(struct kthread_work *work)
 	struct cppc_cpudata *cpu_data;
 	unsigned long local_freq_scale;
 	u64 perf;
+	int ret;
 
 	cppc_fi = container_of(work, struct cppc_freq_invariance, work);
 	cpu_data = cppc_fi->cpu_data;
 
-	if (cppc_get_perf_ctrs(cppc_fi->cpu, &fb_ctrs)) {
+	ret = cppc_get_perf_ctrs(cppc_fi->cpu, &fb_ctrs);
+	/*
+	 * Perf counters could be 0 if the cpu is in a low-power idle state.
+	 * Just try it again next time.
+	 */
+	if (ret == -EFAULT)
+		return;
+
+	if (ret) {
 		pr_warn("%s: failed to read perf counters\n", __func__);
+		topology_clear_scale_freq_source(SCALE_FREQ_SOURCE_CPPC,
+						 cpu_data->shared_cpu_map);
 		return;
 	}
 
@@ -170,16 +181,14 @@ static void cppc_cpufreq_cpu_fie_init(struct cpufreq_policy *policy)
 		init_irq_work(&cppc_fi->irq_work, cppc_irq_work);
 
 		ret = cppc_get_perf_ctrs(cpu, &cppc_fi->prev_perf_fb_ctrs);
-		if (ret) {
-			pr_warn("%s: failed to read perf counters for cpu:%d: %d\n",
-				__func__, cpu, ret);
-
+		if (ret && cpu_online(cpu)) {
 			/*
 			 * Don't abort if the CPU was offline while the driver
 			 * was getting registered.
 			 */
-			if (cpu_online(cpu))
-				return;
+			pr_debug("%s: failed to read perf counters for cpu:%d: %d\n",
+				__func__, cpu, ret);
+			return;
 		}
 	}
 

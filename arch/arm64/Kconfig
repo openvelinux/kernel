@@ -1239,6 +1239,38 @@ config HISILICON_ERRATUM_162100801
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_1980005
+	bool "Hisilicon erratum IDC support"
+	default n
+	help
+	  The HiSilicon TSV100/200 SoC support idc but report wrong value to
+	  kernel.
+
+	  If unsure, say N.
+
+config HISILICON_ERRATUM_162100602
+	bool "Hisilicon erratum 162100602"
+	depends on ARM_SMMU_V3 && ARCH_HISI
+	default y
+	help
+	  SMMU pagetable prefetch features may prefetch and use a invalid PTE even
+	  the PTE is valid at that time. This will cause the device trigger fake
+	  pagefaults. If the SMMU works in terminate mode, transactions which occur
+	  fake pagefaults will be aborted, and could result in unexpected errors.
+
+	  If unsure, say Y.
+
+config HISILICON_ERRATUM_162100125
+	bool "Hisilicon erratum 162100125"
+	default y
+	help
+	  On Hisilicon LINXICORE9100 cores, sharing tlb entries on two cores when
+	  TTBRx.CNP=1 differs from the standard ARM core. This causes issues when
+	  tlb entries sharing between CPU cores. Avoid these issues by disabling
+	  CNP support for Hisilicon LINXICORE9100 cores.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
