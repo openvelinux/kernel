@@ -2521,8 +2521,7 @@ static void nvme_dev_add(struct nvme_dev *dev)
 		}
 		dev->ctrl.tagset = &dev->tagset;
 	} else {
-		if (nvme_qmap_reset(&dev->ctrl, dev->online_queues - 1))
-			blk_mq_update_nr_hw_queues(&dev->tagset, dev->online_queues - 1);
+		blk_mq_update_nr_hw_queues(&dev->tagset, dev->online_queues - 1);
 
 		/* Free previously allocated queues that are no longer usable */
 		nvme_free_queues(dev, dev->online_queues);
@@ -2878,6 +2877,8 @@ static void nvme_reset_work(struct work_struct *work)
 	if (result)
 		goto out;
 
+	nvme_qmap_restore(&dev->ctrl);
+
 	/*
 	 * Keep the controller around but remove all namespaces if we don't have
 	 * any working I/O queue.
@@ -2894,6 +2895,7 @@ static void nvme_reset_work(struct work_struct *work)
 		nvme_unfreeze(&dev->ctrl);
 	}
 
+	nvme_qmap_reset(&dev->ctrl);
 	nvme_qmap_enable_at_startup(&dev->ctrl, dev->queues, sizeof(struct nvme_queue),
 				    dev->nr_allocated_queues);
 
