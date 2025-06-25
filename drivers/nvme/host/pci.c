@@ -27,7 +27,6 @@
 #include <linux/io-64-nonatomic-hi-lo.h>
 #include <linux/sed-opal.h>
 #include <linux/pci-p2pdma.h>
-#include <linux/nvme-qmap.h>
 
 #include "trace.h"
 #include "nvme.h"
@@ -999,14 +998,6 @@ static inline struct blk_mq_tags *nvme_queue_tagset(struct nvme_queue *nvmeq)
 {
 	if (!nvmeq->qid)
 		return nvmeq->dev->admin_tagset.tags[0];
-
-	if (!nvme_qmap_mgr_exceed_max(nvmeq->dev->ctrl.instance) &&
-	    nvme_qmap_mgr_enabled(nvmeq->dev->ctrl.instance)) {
-		int mqid = nvme_qmap_nqid_to_mqid
-			(nvmeq->dev->ctrl.instance, nvmeq->qid);
-		return nvmeq->dev->tagset.tags[mqid];
-	}
-
 	return nvmeq->dev->tagset.tags[nvmeq->qid - 1];
 }
 
@@ -2145,39 +2136,6 @@ static ssize_t hmb_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RW(hmb);
 
-static ssize_t qmap_enable_store(struct device *dev, struct device_attribute *attr,
-				 const char *buf, size_t count)
-{
-	struct nvme_dev *ndev = to_nvme_dev(dev_get_drvdata(dev));
-	int ret, n = 0;
-
-	ret = kstrtoint(buf, 10, &n);
-	if (ret || !n)
-		return -EINVAL;
-
-	mutex_lock(&ndev->shutdown_lock);
-	ret = nvme_qmap_enable_dynamically(&ndev->ctrl, ndev->queues,
-					   sizeof(struct nvme_queue),
-					   ndev->nr_allocated_queues);
-	mutex_unlock(&ndev->shutdown_lock);
-
-	if (ret)
-		return ret;
-
-	return count;
-}
-
-static ssize_t qmap_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
-
-	if (nvme_qmap_mgr_enabled(ctrl->instance))
-		return sysfs_emit(buf, "enabled\n");
-	else
-		return sysfs_emit(buf, "disabled\n");
-}
-static DEVICE_ATTR_RW(qmap_enable);
-
 static umode_t nvme_pci_attrs_are_visible(struct kobject *kobj,
 		struct attribute *a, int n)
 {
@@ -2202,7 +2160,6 @@ static struct attribute *nvme_pci_attrs[] = {
 	&dev_attr_cmbloc.attr,
 	&dev_attr_cmbsz.attr,
 	&dev_attr_hmb.attr,
-	&dev_attr_qmap_enable.attr,
 	NULL,
 };
 
@@ -2877,8 +2834,6 @@ static void nvme_reset_work(struct work_struct *work)
 	if (result)
 		goto out;
 
-	nvme_qmap_restore(&dev->ctrl);
-
 	/*
 	 * Keep the controller around but remove all namespaces if we don't have
 	 * any working I/O queue.
@@ -2894,10 +2849,6 @@ static void nvme_reset_work(struct work_struct *work)
 		nvme_dev_add(dev);
 		nvme_unfreeze(&dev->ctrl);
 	}
-
-	nvme_qmap_reset(&dev->ctrl);
-	nvme_qmap_enable_at_startup(&dev->ctrl, dev->queues, sizeof(struct nvme_queue),
-				    dev->nr_allocated_queues);
 
 	/*
 	 * If only admin queue live, keep it to do further investigation or
