@@ -11,6 +11,7 @@
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu_smt.h>
+#include <linux/cpu_smt.h>
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/slab.h>
@@ -21,6 +22,7 @@
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/units.h>
+#include <linux/xarray.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/thermal_pressure.h>
