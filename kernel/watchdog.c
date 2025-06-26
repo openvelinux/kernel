@@ -1030,7 +1030,7 @@ void __init lockup_detector_init(void)
 		     housekeeping_cpumask(HK_TYPE_TIMER));
 
 	if ((!disable_sdei_nmi_watchdog && !sdei_watchdog_hardlockup_probe()) ||
-	    !watchdog_hardlockup_probe())
+	    (disable_sdei_nmi_watchdog && !watchdog_hardlockup_probe()))
 		watchdog_hardlockup_available = true;
 	else
 		allow_lockup_detector_init_retry = true;
