@@ -133,7 +133,7 @@ static inline void vcpu_set_wfx_traps(struct kvm_vcpu *vcpu)
 #ifdef CONFIG_ARM64_TWED
 static inline void vcpu_set_twed(struct kvm_vcpu *vcpu)
 {
-	if (!cpus_have_final_cap(ARM64_HAS_TWED))
+	if (!cpus_have_cap(ARM64_HAS_TWED))
 		return;
 
 	if (twed_enable) {

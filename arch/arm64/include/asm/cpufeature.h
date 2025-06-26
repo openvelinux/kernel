@@ -807,7 +807,7 @@ static __always_inline bool system_uses_irq_prio_masking(void)
 static __always_inline bool system_uses_nmi(void)
 {
 	return IS_ENABLED(CONFIG_ARM64_NMI) &&
-		cpus_have_final_cap(ARM64_USES_NMI) &&
+		cpus_have_cap(ARM64_USES_NMI) &&
 		!system_uses_irq_prio_masking();
 }
 
@@ -846,7 +846,7 @@ static inline bool system_supports_lpa2(void)
 static inline bool system_supports_haft(void)
 {
 	return IS_ENABLED(CONFIG_ARM64_HAFT) &&
-		cpus_have_final_cap(ARM64_HAFT);
+		cpus_have_cap(ARM64_HAFT);
 }
 
 int do_emulate_mrs(struct pt_regs *regs, u32 sys_reg, u32 rt);
