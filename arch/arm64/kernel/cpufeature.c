@@ -2885,7 +2885,7 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 #ifdef CONFIG_ARM64_NMI
 		.cpu_enable = nmi_enable,
 #endif
-	};
+	},
 #ifdef CONFIG_ARM64_TWED
 	{
 		.desc = "Delayed Trapping of WFE",
