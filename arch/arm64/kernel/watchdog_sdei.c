@@ -25,7 +25,7 @@ bool disable_sdei_nmi_watchdog;
 static bool sdei_watchdog_registered;
 static DEFINE_PER_CPU(ktime_t, last_check_time);
 
-void watchdog_hardlockup_enable(unsigned int cpu)
+void sdei_watchdog_hardlockup_enable(unsigned int cpu)
 {
 	int ret;
 
@@ -46,7 +46,7 @@ void watchdog_hardlockup_enable(unsigned int cpu)
 	}
 }
 
-void watchdog_hardlockup_disable(unsigned int cpu)
+void sdei_watchdog_hardlockup_disable(unsigned int cpu)
 {
 	int ret;
 
@@ -107,7 +107,7 @@ void sdei_watchdog_clear_eoi(void)
 		sdei_api_clear_eoi(SDEI_NMI_WATCHDOG_HWIRQ);
 }
 
-int __init watchdog_hardlockup_probe(void)
+int __init sdei_watchdog_hardlockup_probe(void)
 {
 	int ret;
 
