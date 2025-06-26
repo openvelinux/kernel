@@ -236,10 +236,16 @@ static inline void nmi_backtrace_stall_check(const struct cpumask *btp) {}
 #endif
 
 #ifdef CONFIG_SDEI_WATCHDOG
+void sdei_watchdog_hardlockup_enable(unsigned int cpu);
+void sdei_watchdog_hardlockup_disable(unsigned int cpu);
 void sdei_watchdog_clear_eoi(void);
+int sdei_watchdog_hardlockup_probe(void);
 extern bool disable_sdei_nmi_watchdog;
 #else
+static inline void sdei_watchdog_hardlockup_enable(unsigned int cpu) { }
+static inline void sdei_watchdog_hardlockup_disable(unsigned int cpu) { }
 static inline void sdei_watchdog_clear_eoi(void) { }
+static inline int sdei_watchdog_hardlockup_probe(void) { return -ENODEV; }
 #define disable_sdei_nmi_watchdog 1
 #endif
 
