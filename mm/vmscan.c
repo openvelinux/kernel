@@ -2414,11 +2414,10 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 
 again:
 	/*
-	 * Flush the memory cgroup stats in rate-limited way as we don't need
-	 * most accurate stats here. We may switch to regular stats flushing
-	 * in the future once it is cheap enough.
+	 * Flush the memory cgroup stats, so that we read accurate per-memcg
+	 * lruvec stats for heuristics.
 	 */
-	mem_cgroup_flush_stats_delayed();
+	mem_cgroup_flush_stats();
 
 	memset(&sc->nr, 0, sizeof(sc->nr));
 
