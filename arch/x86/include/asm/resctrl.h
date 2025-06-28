@@ -4,10 +4,8 @@
 
 #ifdef CONFIG_X86_CPU_RESCTRL
 
-#include <linux/jump_label.h>
-#include <linux/percpu.h>
 #include <linux/sched.h>
-#include <linux/resctrl_types.h>
+#include <linux/jump_label.h>
 
 /*
  * This value can never be a valid CLOSID, and is used when mapping a
@@ -15,8 +13,6 @@
  * needed. The index is a software defined value.
  */
 #define X86_RESCTRL_EMPTY_CLOSID         ((u32)~0)
-
-void resctrl_arch_reset_resources(void);
 
 /**
  * struct resctrl_pqr_state - State cache for the PQR MSR
@@ -44,7 +40,6 @@ DECLARE_PER_CPU(struct resctrl_pqr_state, pqr_state);
 
 extern bool rdt_alloc_capable;
 extern bool rdt_mon_capable;
-extern unsigned int rdt_mon_features;
 
 DECLARE_STATIC_KEY_FALSE(rdt_enable_key);
 DECLARE_STATIC_KEY_FALSE(rdt_alloc_enable_key);
@@ -84,25 +79,6 @@ static inline void resctrl_arch_disable_mon(void)
 	static_branch_dec_cpuslocked(&rdt_enable_key);
 }
 
-static inline bool resctrl_arch_is_llc_occupancy_enabled(void)
-{
-	return (rdt_mon_features & (1 << QOS_L3_OCCUP_EVENT_ID));
-}
-
-static inline bool resctrl_arch_is_mbm_total_enabled(void)
-{
-	return (rdt_mon_features & (1 << QOS_L3_MBM_TOTAL_EVENT_ID));
-}
-
-static inline bool resctrl_arch_would_mbm_overflow(void) { return true; }
-
-static inline bool resctrl_arch_is_mbm_local_enabled(void)
-{
-	return (rdt_mon_features & (1 << QOS_L3_MBM_LOCAL_EVENT_ID));
-}
-
-static inline bool resctrl_arch_is_mbm_core_enabled(void) { return false; }
-
 /*
  * __resctrl_sched_in() - Writes the task's CLOSid/RMID to IA32_PQR_MSR
  *
@@ -120,8 +96,8 @@ static inline bool resctrl_arch_is_mbm_core_enabled(void) { return false; }
 static inline void __resctrl_sched_in(struct task_struct *tsk)
 {
 	struct resctrl_pqr_state *state = this_cpu_ptr(&pqr_state);
-	u32 closid = READ_ONCE(state->default_closid);
-	u32 rmid = READ_ONCE(state->default_rmid);
+	u32 closid = state->default_closid;
+	u32 rmid = state->default_rmid;
 	u32 tmp;
 
 	/*
@@ -156,13 +132,6 @@ static inline unsigned int resctrl_arch_round_mon_val(unsigned int val)
 	return val * scale;
 }
 
-static inline void resctrl_arch_set_cpu_default_closid_rmid(int cpu, u32 closid,
-							    u32 rmid)
-{
-	WRITE_ONCE(per_cpu(pqr_state.default_closid, cpu), closid);
-	WRITE_ONCE(per_cpu(pqr_state.default_rmid, cpu), rmid);
-}
-
 static inline void resctrl_arch_set_closid_rmid(struct task_struct *tsk,
 						u32 closid, u32 rmid)
 {
@@ -187,12 +156,6 @@ static inline void resctrl_sched_in(struct task_struct *tsk)
 		__resctrl_sched_in(tsk);
 }
 
-static inline u32 resctrl_arch_system_num_rmid_idx(void)
-{
-	/* RMID are independent numbers for x86. num_rmid_idx == num_rmid */
-	return boot_cpu_data.x86_cache_max_rmid + 1;
-}
-
 static inline void resctrl_arch_rmid_idx_decode(u32 idx, u32 *closid, u32 *rmid)
 {
 	*rmid = idx;
@@ -215,19 +178,7 @@ static inline void *resctrl_arch_mon_ctx_alloc(struct rdt_resource *r, int evtid
 static inline void resctrl_arch_mon_ctx_free(struct rdt_resource *r, int evtid,
 					     void *ctx) { };
 
-u64 resctrl_arch_get_prefetch_disable_bits(void);
-int resctrl_arch_pseudo_lock_fn(void *_plr);
-int resctrl_arch_measure_cycles_lat_fn(void *_plr);
-int resctrl_arch_measure_l2_residency(void *_plr);
-int resctrl_arch_measure_l3_residency(void *_plr);
 void resctrl_cpu_detect(struct cpuinfo_x86 *c);
-
-bool resctrl_arch_get_cdp_enabled(enum resctrl_res_level l);
-int resctrl_arch_set_cdp_enabled(enum resctrl_res_level l, bool enable);
-static inline bool resctrl_arch_hide_cdp(enum resctrl_res_level rid)
-{
-	return false;
-};
 
 #else
 
