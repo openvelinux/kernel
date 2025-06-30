@@ -2742,6 +2742,66 @@ out:
 	css_put(&memcg->css);
 }
 
+static inline struct mem_cgroup *get_over_limit_memcg(struct mem_cgroup *memcg)
+{
+	struct mem_cgroup *mem_over_limit = NULL;
+
+	/* Skip NULL parameter if memory cgroup is disabled. */
+	if (!memcg)
+		return NULL;
+
+	do {
+		if (page_counter_read(&memcg->memory) <=
+		    READ_ONCE(memcg->memory.max))
+			continue;
+		mem_over_limit = memcg;
+		break;
+	} while ((memcg = parent_mem_cgroup(memcg)));
+	return mem_over_limit;
+}
+
+void mem_cgroup_handle_over_max(void)
+{
+	unsigned long nr_reclaimed = 0;
+	unsigned int nr_pages = current->memcg_nr_pages_over_max;
+	int nr_retries = MAX_RECLAIM_RETRIES;
+	int oom_retries = MAX_RECLAIM_RETRIES / 2;
+	struct mem_cgroup *memcg, *mem_over_limit;
+
+	if (likely(!nr_pages))
+		return;
+
+	memcg = get_mem_cgroup_from_mm(current->mm);
+	current->memcg_nr_pages_over_max = 0;
+retry:
+	mem_over_limit = get_over_limit_memcg(memcg);
+	if (!mem_over_limit)
+		goto out;
+
+	while (nr_reclaimed < nr_pages) {
+		unsigned long reclaimed;
+
+		reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit,
+					nr_pages, GFP_KERNEL,
+					MEMCG_RECLAIM_MAY_SWAP,
+					NULL);
+		if (!reclaimed && !nr_retries--)
+			break;
+		nr_reclaimed += reclaimed;
+	}
+	if ((nr_reclaimed < nr_pages) &&
+	    (page_counter_read(&mem_over_limit->memory) >
+	    READ_ONCE(mem_over_limit->memory.max)) &&
+	    oom_retries-- &&
+	    !mem_cgroup_oom(mem_over_limit, GFP_KERNEL,
+			  get_order((nr_pages - nr_reclaimed)  * PAGE_SIZE))) {
+		nr_retries = MAX_RECLAIM_RETRIES;
+		goto retry;
+	}
+out:
+	css_put(&memcg->css);
+}
+
 static int try_charge_memcg(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			unsigned int nr_pages)
 {
@@ -2794,6 +2854,16 @@ retry:
 	 */
 	if (unlikely(current->flags & PF_MEMALLOC))
 		goto force;
+
+	/*
+	 * Avoid blocking on heavyweight resources (e.g., jbd2 handle)
+	 * which may otherwise lead to system-wide stalls.
+	 */
+	if (current->flags & PF_MEMALLOC_ACCOUNTFORCE) {
+		current->memcg_nr_pages_over_max += nr_pages;
+		set_notify_resume(current);
+		goto force;
+	}
 
 	if (unlikely(task_in_memcg_oom(current)))
 		goto nomem;
