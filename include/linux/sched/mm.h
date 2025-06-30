@@ -306,6 +306,40 @@ static inline void memalloc_pin_restore(unsigned int flags)
 	memalloc_flags_restore(flags);
 }
 
+/**
+ * memalloc_account_force_save - Marks implicit PF_MEMALLOC_ACCOUNTFORCE
+ * allocation scope.
+ *
+ * The PF_MEMALLOC_ACCOUNTFORCE ensures that memory allocations are forced
+ * to be accounted to the memory cgroup, even if they exceed the cgroup's
+ * maximum limit. In such cases, the reclaim process is postponed until
+ * the task returns to userland. This is beneficial for users who perform
+ * over-max reclaim while holding multiple locks or other resources
+ * (especially resources related to file system writeback). If a task
+ * needs any of these resources, it would otherwise have to wait until
+ * the other task completes reclaim and releases the resources. Postponing
+ * reclaim to the return-to-userland path helps avoid this issue.
+ *
+ * Context: This function is safe to be used from any context.
+ * Return: The saved flags to be passed to memalloc_account_force_restore.
+ */
+static inline unsigned int memalloc_account_force_save(void)
+{
+	return memalloc_flags_save(PF_MEMALLOC_ACCOUNTFORCE);
+}
+/**
+ * memalloc_account_force_restore - Ends the implicit PF_MEMALLOC_ACCOUNTFORCE.
+ * @flags: Flags to restore.
+ *
+ * Ends the implicit PF_MEMALLOC_ACCOUNTFORCE scope started by memalloc_account_force_save
+ * function. Always make sure that the given flags is the return value from the pairing
+ * memalloc_account_force_save call.
+ */
+static inline void memalloc_account_force_restore(unsigned int flags)
+{
+	memalloc_flags_restore(flags);
+}
+
 #ifdef CONFIG_MEMCG
 DECLARE_PER_CPU(struct mem_cgroup *, int_active_memcg);
 /**
