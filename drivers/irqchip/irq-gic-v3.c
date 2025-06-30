@@ -154,7 +154,7 @@ static inline bool has_v3_3_nmi(void)
 
 static bool system_is_nmi_capable(void)
 {
-	return gic_data.has_nmi && cpus_have_final_cap(ARM64_HAS_NMI);
+	return gic_data.has_nmi && cpus_have_cap(ARM64_HAS_NMI);
 }
 #else
 static inline bool has_v3_3_nmi(void)
