@@ -976,6 +976,7 @@ unsigned long mem_cgroup_get_zone_lru_size(struct lruvec *lruvec,
 }
 
 void mem_cgroup_handle_over_high(void);
+void mem_cgroup_handle_over_max(void);
 
 unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg);
 
@@ -1470,6 +1471,10 @@ static inline void unlock_page_memcg(struct page *page)
 }
 
 static inline void mem_cgroup_handle_over_high(void)
+{
+}
+
+static inline void mem_cgroup_handle_over_max(void)
 {
 }
 
