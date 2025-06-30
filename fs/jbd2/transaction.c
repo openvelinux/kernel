@@ -468,6 +468,13 @@ repeat:
 	 * going to recurse back to the fs layer.
 	 */
 	handle->saved_alloc_context = memalloc_nofs_save();
+
+	/*
+	 * Avoid blocking on jbd2 handler in memcg direct reclaim
+	 * which may otherwise lead to system-wide stalls.
+	 */
+	handle->saved_alloc_context |= memalloc_account_force_save();
+
 	return 0;
 }
 
@@ -753,10 +760,10 @@ static void stop_this_handle(handle_t *handle)
 
 	rwsem_release(&journal->j_trans_commit_map, _THIS_IP_);
 	/*
-	 * Scope of the GFP_NOFS context is over here and so we can restore the
-	 * original alloc context.
+	 * Scope of the GFP_NOFS PF_MEMALLOC_ACCOUNTFORCE context is over here
+	 * and so we can restore the original alloc context.
 	 */
-	memalloc_nofs_restore(handle->saved_alloc_context);
+	memalloc_flags_restore(handle->saved_alloc_context);
 }
 
 /**
@@ -1847,7 +1854,7 @@ int jbd2_journal_stop(handle_t *handle)
 		 * Handle is already detached from the transaction so there is
 		 * nothing to do other than free the handle.
 		 */
-		memalloc_nofs_restore(handle->saved_alloc_context);
+		memalloc_flags_restore(handle->saved_alloc_context);
 		goto free_and_exit;
 	}
 	journal = transaction->t_journal;
