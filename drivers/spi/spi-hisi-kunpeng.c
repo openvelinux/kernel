@@ -481,6 +481,12 @@ static int hisi_spi_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	if (master->max_speed_hz == 0) {
+		dev_err(dev, "invalid max SPI clocking speed, max-freq=%u\n",
+				master->max_speed_hz);
+		return -EINVAL;
+	}
+
 	ret = device_property_read_u16(dev, "num-cs",
 					&master->num_chipselect);
 	if (ret)
@@ -495,7 +501,7 @@ static int hisi_spi_probe(struct platform_device *pdev)
 	master->transfer_one = hisi_spi_transfer_one;
 	master->handle_err = hisi_spi_handle_err;
 	master->dev.fwnode = dev->fwnode;
-	master->min_speed_hz = DIV_ROUND_UP(host->max_speed_hz, CLK_DIV_MAX);
+	master->min_speed_hz = DIV_ROUND_UP(master->max_speed_hz, CLK_DIV_MAX);
 
 	hisi_spi_hw_init(hs);
 
