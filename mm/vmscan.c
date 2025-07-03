@@ -278,11 +278,15 @@ static int sc_swappiness(struct scan_control *sc, struct mem_cgroup *memcg)
 
 /* The swap is available in the reclaim path:
  * 1) proactive_swappiness_enabled disabled.
- * 2) or the reclaim triggered from memory.reclaim
+ * 2) the reclaim triggered from memory.reclaim
+ * 3) The current task is holding a global resource, jbd2 handle.
  */
 static bool can_use_swap(struct scan_control *sc)
 {
 	if (!proactive_swappiness_enabled)
+		return true;
+
+	if (current->flags & PF_MEMALLOC_ACCOUNTFORCE)
 		return true;
 
 	return sc && sc->proactive;
