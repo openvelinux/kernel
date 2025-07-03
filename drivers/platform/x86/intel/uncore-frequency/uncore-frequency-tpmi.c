@@ -22,9 +22,10 @@
 #include <linux/auxiliary_bus.h>
 #include <linux/bitfield.h>
 #include <linux/bits.h>
+#include <linux/intel_tpmi.h>
+#include <linux/intel_vsec.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/intel_tpmi.h>
 
 #include "../tpmi_power_domains.h"
 #include "uncore-frequency-common.h"
@@ -380,7 +381,7 @@ static u8 io_die_index_next;
 static DEFINE_MUTEX(domain_lock);
 
 static void set_domain_id(int id,  int num_resources,
-			  struct intel_tpmi_plat_info *plat_info,
+			  struct oobmsm_plat_info *plat_info,
 			  struct tpmi_uncore_cluster_info *cluster_info)
 {
 	u8 part_io_index, cdie_range, pkg_io_index, max_dies;
@@ -519,7 +520,7 @@ static void remove_cluster_entries(struct tpmi_uncore_struct *tpmi_uncore)
 }
 
 static void set_cdie_id(int domain_id, struct tpmi_uncore_cluster_info *cluster_info,
-		       struct intel_tpmi_plat_info *plat_info)
+			struct oobmsm_plat_info *plat_info)
 {
 
 	cluster_info->cdie_id = domain_id;
@@ -536,7 +537,7 @@ static void set_cdie_id(int domain_id, struct tpmi_uncore_cluster_info *cluster_
 static int uncore_probe(struct auxiliary_device *auxdev, const struct auxiliary_device_id *id)
 {
 	bool read_blocked = 0, write_blocked = 0;
-	struct intel_tpmi_plat_info *plat_info;
+	struct oobmsm_plat_info *plat_info;
 	struct tpmi_uncore_struct *tpmi_uncore;
 	bool uncore_sysfs_added = false;
 	int ret, i, pkg = 0;
