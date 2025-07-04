@@ -623,6 +623,23 @@
 #define SYS_CNTV_CTL_EL02		sys_reg(3, 5, 14, 3, 1)
 #define SYS_CNTV_CVAL_EL02		sys_reg(3, 5, 14, 3, 2)
 
+#define REG_ID_AA64MMFR3_EL1			S3_0_C0_C7_3
+#define SYS_ID_AA64MMFR3_EL1			sys_reg(3, 0, 0, 7, 3)
+#define ID_AA64MMFR3_EL1_TCRX_SHIFT		0
+#define ID_AA64MMFR3_EL1_S1PIE_SHIFT	8
+
+#define REG_TCR2_EL1				S3_0_C2_C0_3
+#define SYS_TCR2_EL1				sys_reg(3, 0, 2, 0, 3)
+#define SYS_TCR2_EL1				sys_reg(3, 0, 2, 0, 3)
+#define SYS_TCR2_EL1_Op0			3
+#define SYS_TCR2_EL1_Op1			0
+#define SYS_TCR2_EL1_CRn			2
+#define SYS_TCR2_EL1_CRm			0
+#define SYS_TCR2_EL1_Op2			3
+
+#define TCR2_EL1x_HAFT				GENMASK(11, 11)
+#define TCR2_EL1x_PIE				GENMASK(1, 1)
+
 /* Common SCTLR_ELx flags. */
 #define SCTLR_ELx_DSSBS	(BIT(44))
 #define SCTLR_ELx_ATA	(BIT(43))
