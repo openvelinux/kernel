@@ -2392,6 +2392,16 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.min_field_value = 1,
 	},
 	{
+		.desc = "Fine Grained Traps",
+		.capability = ARM64_HAS_FGT,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.sys_reg = SYS_ID_AA64MMFR0_EL1,
+		.sign = FTR_UNSIGNED,
+		.field_pos = ID_AA64MMFR0_EL1_FGT_SHIFT,
+		.matches = has_cpuid_feature,
+		.min_field_value = 1,
+	},
+	{
 		.desc = "Trap EL0 IMPLEMENTATION DEFINED functionality",
 		.capability = ARM64_HAS_TIDCP1,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
