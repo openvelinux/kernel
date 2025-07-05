@@ -586,6 +586,24 @@ static struct acpi_device *handle_to_device(acpi_handle handle,
 	return adev;
 }
 
+/**
+ * acpi_fetch_acpi_dev - Retrieve ACPI device object.
+ * @handle: ACPI handle associated with the requested ACPI device object.
+ *
+ * Return a pointer to the ACPI device object associated with @handle, if
+ * present, or NULL otherwise.
+ */
+struct acpi_device *acpi_fetch_acpi_dev(acpi_handle handle)
+{
+	return handle_to_device(handle, NULL);
+}
+EXPORT_SYMBOL_GPL(acpi_fetch_acpi_dev);
+
+static void get_acpi_device(void *dev)
+{
+	acpi_dev_get(dev);
+}
+
 int acpi_bus_get_device(acpi_handle handle, struct acpi_device **device)
 {
 	if (!device)
@@ -598,11 +616,6 @@ int acpi_bus_get_device(acpi_handle handle, struct acpi_device **device)
 	return 0;
 }
 EXPORT_SYMBOL(acpi_bus_get_device);
-
-static void get_acpi_device(void *dev)
-{
-	acpi_dev_get(dev);
-}
 
 struct acpi_device *acpi_bus_get_acpi_device(acpi_handle handle)
 {
