@@ -1,0 +1,75 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (C) 2021 Arm Ltd. */
+
+#include <asm/mpam.h>
+
+#include <linux/arm_mpam.h>
+#include <linux/cpu_pm.h>
+#include <linux/jump_label.h>
+#include <linux/percpu.h>
+#include <linux/crash_dump.h>
+#include <linux/resctrl.h>
+
+DEFINE_STATIC_KEY_FALSE(arm64_mpam_has_hcr);
+DEFINE_STATIC_KEY_FALSE(mpam_enabled);
+DEFINE_PER_CPU(u64, arm64_mpam_default);
+DEFINE_PER_CPU(u64, arm64_mpam_current);
+
+static int mpam_pm_notifier(struct notifier_block *self,
+			    unsigned long cmd, void *v)
+{
+	u64 regval;
+	struct rdt_resource *r;
+	int i, cpu = smp_processor_id();
+
+	switch (cmd) {
+	case CPU_PM_ENTER:
+		if (!resctrl_mounted)
+			return NOTIFY_OK;
+
+		for (i = 0; i < RDT_NUM_RESOURCES; i++) {
+			r = resctrl_arch_get_resource(i);
+			if (!r->invisible && r->is_volatile)
+				return NOTIFY_BAD;
+		}
+
+		return NOTIFY_OK;
+	case CPU_PM_EXIT:
+		/*
+		 * Don't use mpam_thread_switch() as the system register
+		 * value has changed under our feet.
+		 */
+		regval = READ_ONCE(per_cpu(arm64_mpam_current, cpu));
+		write_sysreg_s(0, SYS_MPAM1_EL1);
+		write_sysreg_s(regval, SYS_MPAM0_EL1);
+
+		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
+static struct notifier_block mpam_pm_nb = {
+	.notifier_call = mpam_pm_notifier,
+};
+
+static int __init arm64_mpam_register_cpus(void)
+{
+	u16 partid_max;
+	u64 mpamidr;
+	u8 pmg_max;
+
+	if (is_kdump_kernel())
+		return 0;
+
+	if (!mpam_cpus_have_feature())
+		return 0;
+
+	mpamidr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
+	partid_max = FIELD_GET(MPAMIDR_PARTID_MAX, mpamidr);
+	pmg_max = FIELD_GET(MPAMIDR_PMG_MAX, mpamidr);
+
+	cpu_pm_register_notifier(&mpam_pm_nb);
+	return mpam_register_requestor(partid_max, pmg_max);
+}
+arch_initcall(arm64_mpam_register_cpus);
