@@ -1705,12 +1705,12 @@ unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg)
 			/* Calculate swap excess capacity from memsw limit */
 			unsigned long swap = READ_ONCE(memcg->memsw.max) - max;
 
-			max += min(swap, (unsigned long)total_swap_pages);
+			max += min_t(unsigned long, swap, get_total_swap_pages());
 		}
 	} else {
 		if (mem_cgroup_swappiness(memcg))
 			max += min(READ_ONCE(memcg->swap.max),
-				   (unsigned long)total_swap_pages);
+				   (unsigned long)get_total_swap_pages());
 	}
 	return max;
 }

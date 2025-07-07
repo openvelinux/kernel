@@ -1464,7 +1464,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	if (WARN_ON_ONCE((info->flags & VM_LOCKED) || sbinfo->noswap))
 		goto redirty;
 
-	if (!total_swap_pages)
+	if (!get_total_swap_pages())
 		goto redirty;
 
 	/*
