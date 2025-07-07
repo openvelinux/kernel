@@ -474,6 +474,7 @@ static inline long get_nr_swap_pages(void)
 	return atomic_long_read(&nr_swap_pages);
 }
 
+extern long get_total_swap_pages(void);
 extern void si_swapinfo(struct sysinfo *);
 swp_entry_t folio_alloc_swap(struct folio *folio);
 bool folio_free_swap(struct folio *folio);
@@ -526,6 +527,7 @@ static inline void put_swap_device(struct swap_info_struct *si)
 #define total_swap_pages			0L
 #define total_swapcache_pages()			0UL
 #define vm_swap_full()				0
+#define get_total_swap_pages()		0L
 
 #define si_swapinfo(val) \
 	do { (val)->freeswap = (val)->totalswap = 0; } while (0)
