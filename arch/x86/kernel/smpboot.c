@@ -116,7 +116,7 @@ static DEFINE_PER_CPU_ALIGNED(struct mwait_cpu_dead, mwait_cpu_dead);
 /* Logical package management. We might want to allocate that dynamically */
 unsigned int __max_logical_packages __read_mostly;
 EXPORT_SYMBOL(__max_logical_packages);
-static unsigned int logical_packages __read_mostly;
+unsigned int logical_packages __read_mostly;
 static unsigned int logical_die __read_mostly;
 
 /* Maximum number of SMT threads on any online core */
