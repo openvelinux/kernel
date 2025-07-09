@@ -323,8 +323,10 @@ static int hsmp_acpi_probe(struct platform_device *pdev)
 
 	if (!hsmp_pdev->is_probed) {
 		hsmp_pdev->num_sockets = amd_num_nodes();
-		if (hsmp_pdev->num_sockets == 0 || hsmp_pdev->num_sockets > MAX_AMD_NUM_NODES)
+		if (hsmp_pdev->num_sockets == 0 || hsmp_pdev->num_sockets > MAX_AMD_NUM_NODES) {
+			dev_err(&pdev->dev, "Wrong number of sockets\n");
 			return -ENODEV;
+		}
 
 		hsmp_pdev->sock = devm_kcalloc(&pdev->dev, hsmp_pdev->num_sockets,
 					       sizeof(*hsmp_pdev->sock),
@@ -341,9 +343,12 @@ static int hsmp_acpi_probe(struct platform_device *pdev)
 
 	if (!hsmp_pdev->is_probed) {
 		ret = hsmp_misc_register(&pdev->dev);
-		if (ret)
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to register misc device\n");
 			return ret;
+		}
 		hsmp_pdev->is_probed = true;
+		dev_dbg(&pdev->dev, "AMD HSMP ACPI is probed successfully\n");
 	}
 
 	return 0;
