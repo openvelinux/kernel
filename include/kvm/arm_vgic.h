@@ -35,6 +35,35 @@
 #define irq_is_spi(irq) ((irq) >= VGIC_NR_PRIVATE_IRQS && \
 			 (irq) <= VGIC_MAX_SPI)
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+struct shadow_dev {
+	struct kvm              *kvm;
+	struct list_head        entry;
+
+	u32                     devid;  /* guest visible device id */
+	u32                     nvecs;
+	unsigned long           *enable;
+	int                     *host_irq;
+	struct kvm_msi          *msi;
+
+	struct platform_device  *pdev;
+
+	struct work_struct      destroy;
+};
+#endif
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+/* Information about HiSilicon implementation of vtimer (GICv4.1-based) */
+struct vtimer_info {
+	u32 intid;
+
+	bool (*get_active_stat)(struct kvm_vcpu *vcpu, int vintid);
+	void (*set_active_stat)(struct kvm_vcpu *vcpu, int vintid, bool active);
+};
+
+u16 kvm_vgic_get_vcpu_vpeid(struct kvm_vcpu *vcpu);
+#endif
+
 enum vgic_type {
 	VGIC_V2,		/* Good ol' GICv2 */
 	VGIC_V3,		/* New fancy GICv3 */
@@ -74,8 +103,19 @@ struct vgic_global {
 	bool			has_gicv4;
 	bool			has_gicv4_1;
 
+	/* NMI */
+	bool			has_nmi;
+
 	/* Pseudo GICv3 from outer space */
 	bool			no_hw_deactivation;
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/*
+	 * Hardware (HiSilicon implementation) has vtimer interrupt
+	 * direct injection support?
+	 */
+	bool                    has_direct_vtimer;
+#endif
 
 	/* GIC system register CPU interface */
 	struct static_key_false gicv3_cpuif;
@@ -138,6 +178,7 @@ struct vgic_irq {
 	bool active;			/* not used for LPIs */
 	bool enabled;
 	bool hw;			/* Tied to HW IRQ */
+	bool nmi;			/* Configured as NMI */
 	struct kref refcount;		/* Used for LPIs */
 	u32 hwintid;			/* HW INTID number */
 	unsigned int host_irq;		/* linux irq corresponding to hwintid */
@@ -155,6 +196,10 @@ struct vgic_irq {
 
 	void *owner;			/* Opaque pointer to reserve an interrupt
 					   for in-kernel devices. */
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	struct vtimer_info *vtimer_info;        /* vtimer interrupt only */
+#endif
 };
 
 static inline bool vgic_irq_needs_resampling(struct vgic_irq *irq)
@@ -233,7 +278,8 @@ struct vgic_dist {
 	u32			implementation_rev;
 #define KVM_VGIC_IMP_REV_2	2 /* GICv2 restorable groups */
 #define KVM_VGIC_IMP_REV_3	3 /* GICv3 GICR_CTLR.{IW,CES,RWP} */
-#define KVM_VGIC_IMP_REV_LATEST	KVM_VGIC_IMP_REV_3
+#define KVM_VGIC_IMP_REV_4	4 /* GICv3 NMI */
+#define KVM_VGIC_IMP_REV_LATEST	KVM_VGIC_IMP_REV_4
 
 	/* Userspace can write to GICv2 IGROUPR */
 	bool			v2_groups_user_writable;
@@ -257,11 +303,16 @@ struct vgic_dist {
 
 	/* Wants SGIs without active state */
 	bool			nassgireq;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/* Indicate whether the vtimer irqbypass mode is used */
+	bool			vtimer_irqbypass;
+#endif
 
 	struct vgic_irq		*spis;
 
 	struct vgic_io_device	dist_iodev;
 
+	bool                    has_nmi;
 	bool			has_its;
 	bool			table_write_in_progress;
 
@@ -292,6 +343,10 @@ struct vgic_dist {
 	 * else.
 	 */
 	struct its_vm		its_vm;
+#ifdef CONFIG_VIRT_PLAT_DEV
+	raw_spinlock_t		sdev_list_lock;
+	struct list_head	sdev_list_head;
+#endif
 };
 
 struct vgic_v2_cpu_if {
@@ -308,7 +363,7 @@ struct vgic_v3_cpu_if {
 	u32		vgic_vmcr;
 	u32		vgic_sre;	/* Restored only, change ignored */
 	u32		vgic_ap0r[4];
-	u32		vgic_ap1r[4];
+	u64		vgic_ap1r[4];
 	u64		vgic_lr[VGIC_V3_MAX_LRS];
 
 	/*
@@ -330,6 +385,12 @@ struct vgic_cpu {
 	};
 
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/* Indicate whether the vtimer irqbypass mode is used */
+	bool vtimer_irqbypass;
+	struct vtimer_info vtimer;
+#endif
 
 	raw_spinlock_t ap_list_lock;	/* Protects the ap_list */
 
@@ -402,6 +463,16 @@ void kvm_vgic_reset_mapped_irq(struct kvm_vcpu *vcpu, u32 vintid);
 
 void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg, bool allow_group1);
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+/**
+ * kvm_vgic_vtimer_irqbypass_support - Get the vtimer irqbypass HW capability
+ */
+static inline bool kvm_vgic_vtimer_irqbypass_support(void)
+{
+	return kvm_vgic_global_state.has_direct_vtimer;
+}
+#endif
+
 /**
  * kvm_vgic_get_max_vcpus - Get the maximum number of VCPUs allowed by HW
  *
@@ -432,9 +503,27 @@ int kvm_vgic_v4_unset_forwarding(struct kvm *kvm, int irq,
 int vgic_v4_load(struct kvm_vcpu *vcpu);
 void vgic_v4_commit(struct kvm_vcpu *vcpu);
 int vgic_v4_put(struct kvm_vcpu *vcpu);
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+int kvm_vgic_config_vtimer_irqbypass(struct kvm_vcpu *vcpu, u32 vintid,
+		bool (*get_as)(struct kvm_vcpu *, int),
+		void (*set_as)(struct kvm_vcpu *, int, bool));
+#endif
 
 /* CPU HP callbacks */
 void kvm_vgic_cpu_up(void);
 void kvm_vgic_cpu_down(void);
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+extern bool sdev_enable;
+
+void kvm_shadow_dev_init(void);
+int kvm_shadow_dev_create(struct kvm *kvm, struct kvm_master_dev_info *mdi);
+void kvm_shadow_dev_delete(struct kvm *kvm, u32 devid);
+void kvm_shadow_dev_delete_all(struct kvm *kvm);
+struct shadow_dev *kvm_shadow_dev_get(struct kvm *kvm, struct kvm_msi *msi);
+
+int shadow_dev_virq_bypass_inject(struct kvm *kvm,
+				  struct kvm_kernel_irq_routing_entry *e);
+#endif
 
 #endif /* __KVM_ARM_VGIC_H */

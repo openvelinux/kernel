@@ -10,6 +10,20 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+static struct irq_domain *vp_irq_domain;
+extern bool rsv_devid_pool_cap;
+
+struct irq_domain *vp_get_irq_domain(void)
+{
+	if (!vp_irq_domain)
+		pr_err("virtual platform irqdomain hasn't be initialized!\n");
+
+	return vp_irq_domain;
+}
+EXPORT_SYMBOL_GPL(vp_get_irq_domain);
+#endif
+
 static struct irq_chip its_pmsi_irq_chip = {
 	.name			= "ITS-pMSI",
 };
@@ -52,6 +66,19 @@ static int its_pmsi_prepare(struct irq_domain *domain, struct device *dev,
 
 	msi_info = msi_get_domain_info(domain->parent);
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+	if (rsv_devid_pool_cap && !dev->of_node && !dev->fwnode) {
+		WARN_ON_ONCE(domain != vp_irq_domain);
+		/*
+		 * virtual platform device doesn't have a DeviceID which
+		 * will be allocated with core ITS's help.
+		 */
+		info->scratchpad[0].ul = -1;
+
+		goto vdev_pmsi_prepare;
+	}
+#endif
+
 	if (dev->of_node)
 		ret = of_pmsi_get_dev_id(domain, dev, &dev_id);
 	else
@@ -62,6 +89,9 @@ static int its_pmsi_prepare(struct irq_domain *domain, struct device *dev,
 	/* ITS specific DeviceID, as the core ITS ignores dev. */
 	info->scratchpad[0].ul = dev_id;
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+vdev_pmsi_prepare:
+#endif
 	/* Allocate at least 32 MSIs, and always as a power of 2 */
 	nvec = max_t(int, 32, roundup_pow_of_two(nvec));
 	return msi_info->ops->msi_prepare(domain->parent,
@@ -86,7 +116,7 @@ static const struct of_device_id its_device_id[] = {
 static int __init its_pmsi_init_one(struct fwnode_handle *fwnode,
 				const char *name)
 {
-	struct irq_domain *parent;
+	struct irq_domain *pmsi_irqdomain, *parent;
 
 	parent = irq_find_matching_fwnode(fwnode, DOMAIN_BUS_NEXUS);
 	if (!parent || !msi_get_domain_info(parent)) {
@@ -94,13 +124,22 @@ static int __init its_pmsi_init_one(struct fwnode_handle *fwnode,
 		return -ENXIO;
 	}
 
-	if (!platform_msi_create_irq_domain(fwnode, &its_pmsi_domain_info,
-					    parent)) {
+	pmsi_irqdomain = platform_msi_create_irq_domain(fwnode,
+							&its_pmsi_domain_info,
+							parent);
+	if (!pmsi_irqdomain) {
 		pr_err("%s: unable to create platform domain\n", name);
 		return -ENXIO;
 	}
 
 	pr_info("Platform MSI: %s domain created\n", name);
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+	/* Should we take other irqdomains into account? */
+	if (!vp_irq_domain)
+		vp_irq_domain = pmsi_irqdomain;
+#endif
+
 	return 0;
 }
 

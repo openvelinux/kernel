@@ -188,6 +188,28 @@ int sdei_api_event_context(u32 query, u64 *result)
 }
 NOKPROBE_SYMBOL(sdei_api_event_context);
 
+int sdei_api_event_interrupt_bind(int hwirq)
+{
+	u64 event_number;
+
+	invoke_sdei_fn(SDEI_1_0_FN_SDEI_INTERRUPT_BIND, hwirq, 0, 0, 0, 0,
+			&event_number);
+
+	return (int)event_number;
+}
+
+int sdei_api_clear_eoi(int hwirq)
+{
+	return invoke_sdei_fn(SDEI_1_0_FN_SDEI_CLEAR_EOI, hwirq, 0, 0, 0, 0,
+			NULL);
+}
+
+int sdei_api_set_secure_timer_period(int sec)
+{
+	return invoke_sdei_fn(SDEI_1_0_FN_SET_SECURE_TIMER_PERIOD, sec, 0, 0, 0,
+			0, NULL);
+}
+
 static int sdei_api_event_get_info(u32 event, u32 info, u64 *result)
 {
 	return invoke_sdei_fn(SDEI_1_0_FN_SDEI_EVENT_GET_INFO, event, info, 0,
@@ -379,7 +401,7 @@ static int sdei_platform_reset(void)
 	return err;
 }
 
-static int sdei_api_event_enable(u32 event_num)
+int sdei_api_event_enable(u32 event_num)
 {
 	return invoke_sdei_fn(SDEI_1_0_FN_SDEI_EVENT_ENABLE, event_num, 0, 0, 0,
 			      0, NULL);
@@ -426,7 +448,7 @@ int sdei_event_enable(u32 event_num)
 	return err;
 }
 
-static int sdei_api_event_disable(u32 event_num)
+int sdei_api_event_disable(u32 event_num)
 {
 	return invoke_sdei_fn(SDEI_1_0_FN_SDEI_EVENT_DISABLE, event_num, 0, 0,
 			      0, 0, NULL);

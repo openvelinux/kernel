@@ -218,7 +218,7 @@ static inline void __clean_dcache_guest_page(void *va, size_t size)
 	 * faulting in pages. Furthermore, FWB implies IDC, so cleaning to
 	 * PoU is not required either in this case.
 	 */
-	if (cpus_have_final_cap(ARM64_HAS_STAGE2_FWB))
+	if (kvm_ncsnp_support || cpus_have_cap(ARM64_HAS_STAGE2_FWB))
 		return;
 
 	kvm_flush_dcache_to_poc(va, size);
@@ -309,6 +309,20 @@ static __always_inline void __load_stage2(struct kvm_s2_mmu *mmu,
 	 */
 	asm(ALTERNATIVE("nop", "isb", ARM64_WORKAROUND_SPECULATIVE_AT));
 }
+
+#ifdef CONFIG_ARM64_HDBSS
+static __always_inline void __load_hdbss(struct kvm_vcpu *vcpu)
+{
+	if (!vcpu->kvm->enable_hdbss)
+		return;
+
+	write_sysreg_s(vcpu->arch.hdbss.br_el2, SYS_HDBSSBR_EL2);
+	write_sysreg_s(vcpu->arch.hdbss.prod_el2, SYS_HDBSSPROD_EL2);
+
+	dsb(sy);
+	isb();
+}
+#endif
 
 static inline struct kvm *kvm_s2_mmu_to_kvm(struct kvm_s2_mmu *mmu)
 {

@@ -10,6 +10,7 @@
 #include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/kexec.h>
+#include <linux/nmi.h>
 #include <linux/page-flags.h>
 #include <linux/reboot.h>
 #include <linux/set_memory.h>
@@ -261,6 +262,16 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 	/* shutdown non-crashing cpus */
 	crash_smp_send_stop();
+
+	/*
+	 * when we panic in hardlockup detected by sdei_watchdog, the secure
+	 * timer interrupt remains activate here because firmware clear eoi
+	 * after dispatch is completed. This will cause arm_arch_timer
+	 * interrupt failed to trigger in the second kernel. So we clear eoi
+	 * of the secure timer before booting the second kernel.
+	 */
+	if (in_nmi())
+		sdei_watchdog_clear_eoi();
 
 	/* for crashing cpu */
 	crash_save_cpu(regs, smp_processor_id());

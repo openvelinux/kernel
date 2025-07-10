@@ -61,6 +61,7 @@ struct gic_chip_data {
 	u32			nr_redist_regions;
 	u64			flags;
 	bool			has_rss;
+	bool			has_nmi;
 	unsigned int		ppi_nr;
 	struct partition_desc	**ppi_descs;
 };
@@ -104,6 +105,9 @@ static DEFINE_STATIC_KEY_FALSE(supports_pseudo_nmis);
 DEFINE_STATIC_KEY_FALSE(gic_nonsecure_priorities);
 EXPORT_SYMBOL(gic_nonsecure_priorities);
 
+DEFINE_STATIC_KEY_FALSE(ipiv_enable);
+EXPORT_SYMBOL(ipiv_enable);
+
 /*
  * When the Non-secure world has access to group 0 interrupts (as a
  * consequence of SCR_EL3.FIQ == 0), reading the ICC_RPR_EL1 register will
@@ -139,35 +143,37 @@ static DEFINE_PER_CPU(bool, has_rss);
 /* Our default, arbitrary priority value. Linux only uses one anyway. */
 #define DEFAULT_PMR_VALUE	0xf0
 
-enum gic_intid_range {
-	SGI_RANGE,
-	PPI_RANGE,
-	SPI_RANGE,
-	EPPI_RANGE,
-	ESPI_RANGE,
-	LPI_RANGE,
-	__INVALID_RANGE__
-};
+#ifdef CONFIG_ARM64
+#include <asm/nmi.h>
+#include <asm/cpufeature.h>
 
-static enum gic_intid_range __get_intid_range(irq_hw_number_t hwirq)
+static inline bool has_v3_3_nmi(void)
 {
-	switch (hwirq) {
-	case 0 ... 15:
-		return SGI_RANGE;
-	case 16 ... 31:
-		return PPI_RANGE;
-	case 32 ... 1019:
-		return SPI_RANGE;
-	case EPPI_BASE_INTID ... (EPPI_BASE_INTID + 63):
-		return EPPI_RANGE;
-	case ESPI_BASE_INTID ... (ESPI_BASE_INTID + 1023):
-		return ESPI_RANGE;
-	case 8192 ... GENMASK(23, 0):
-		return LPI_RANGE;
-	default:
-		return __INVALID_RANGE__;
-	}
+	return gic_data.has_nmi && system_uses_nmi();
 }
+
+static bool system_is_nmi_capable(void)
+{
+	return gic_data.has_nmi && cpus_have_cap(ARM64_HAS_NMI);
+}
+#else
+static inline bool has_v3_3_nmi(void)
+{
+	return false;
+}
+
+static bool system_is_nmi_capable(void)
+{
+	return false;
+}
+#endif
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+phys_addr_t get_gicr_paddr(int cpu)
+{
+	return (per_cpu_ptr(gic_data.rdists.rdist, cpu))->phys_base;
+}
+#endif
 
 static enum gic_intid_range get_intid_range(struct irq_data *d)
 {
@@ -376,6 +382,42 @@ static int gic_peek_irq(struct irq_data *d, u32 offset)
 	return !!(readl_relaxed(base + offset + (index / 32) * 4) & mask);
 }
 
+static DEFINE_RAW_SPINLOCK(irq_controller_lock);
+
+static void gic_irq_configure_nmi(struct irq_data *d, bool enable)
+{
+	void __iomem *base, *addr;
+	u32 offset, index, mask, val;
+
+	offset = convert_offset_index(d, GICD_INMIR, &index);
+	mask = 1 << (index % 32);
+
+	if (gic_irq_in_rdist(d))
+		base = gic_data_rdist_sgi_base();
+	else
+		base = gic_data.dist_base;
+
+	addr = base + offset + (index / 32) * 4;
+
+	raw_spin_lock(&irq_controller_lock);
+
+	val = readl_relaxed(addr);
+	val = enable ? (val | mask) : (val & ~mask);
+	writel_relaxed(val, addr);
+
+	raw_spin_unlock(&irq_controller_lock);
+}
+
+static void gic_irq_enable_nmi(struct irq_data *d)
+{
+	gic_irq_configure_nmi(d, true);
+}
+
+static void gic_irq_disable_nmi(struct irq_data *d)
+{
+	gic_irq_configure_nmi(d, false);
+}
+
 static void gic_poke_irq(struct irq_data *d, u32 offset)
 {
 	void __iomem *base;
@@ -421,7 +463,7 @@ static void gic_unmask_irq(struct irq_data *d)
 	gic_poke_irq(d, GICD_ISENABLER);
 }
 
-static inline bool gic_supports_nmi(void)
+static inline bool gic_supports_pseudo_nmis(void)
 {
 	return IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) &&
 	       static_branch_likely(&supports_pseudo_nmis);
@@ -524,7 +566,7 @@ static int gic_irq_nmi_setup(struct irq_data *d)
 {
 	struct irq_desc *desc = irq_to_desc(d->irq);
 
-	if (!gic_supports_nmi())
+	if (!gic_supports_pseudo_nmis() && !has_v3_3_nmi())
 		return -EINVAL;
 
 	if (gic_peek_irq(d, GICD_ISENABLER)) {
@@ -552,7 +594,10 @@ static int gic_irq_nmi_setup(struct irq_data *d)
 		desc->handle_irq = handle_fasteoi_nmi;
 	}
 
-	gic_irq_set_prio(d, GICD_INT_NMI_PRI);
+	if (has_v3_3_nmi())
+		gic_irq_enable_nmi(d);
+	else
+		gic_irq_set_prio(d, GICD_INT_NMI_PRI);
 
 	return 0;
 }
@@ -561,7 +606,7 @@ static void gic_irq_nmi_teardown(struct irq_data *d)
 {
 	struct irq_desc *desc = irq_to_desc(d->irq);
 
-	if (WARN_ON(!gic_supports_nmi()))
+	if (WARN_ON(!gic_supports_pseudo_nmis() && !has_v3_3_nmi()))
 		return;
 
 	if (gic_peek_irq(d, GICD_ISENABLER)) {
@@ -587,7 +632,10 @@ static void gic_irq_nmi_teardown(struct irq_data *d)
 		desc->handle_irq = handle_fasteoi_irq;
 	}
 
-	gic_irq_set_prio(d, GICD_INT_DEF_PRI);
+	if (has_v3_3_nmi())
+		gic_irq_disable_nmi(d);
+	else
+		gic_irq_set_prio(d, GICD_INT_DEF_PRI);
 }
 
 static bool gic_arm64_erratum_2941627_needed(struct irq_data *d)
@@ -746,7 +794,7 @@ static inline void gic_complete_ack(u32 irqnr)
 
 static bool gic_rpr_is_nmi_prio(void)
 {
-	if (!gic_supports_nmi())
+	if (!gic_supports_pseudo_nmis())
 		return false;
 
 	return unlikely(gic_read_rpr() == GICD_INT_RPR_PRI(GICD_INT_NMI_PRI));
@@ -778,7 +826,8 @@ static void __gic_handle_nmi(u32 irqnr, struct pt_regs *regs)
 	gic_complete_ack(irqnr);
 
 	if (generic_handle_domain_nmi(gic_data.domain, irqnr)) {
-		WARN_ONCE(true, "Unexpected pseudo-NMI (irqnr %u)\n", irqnr);
+		WARN_ONCE(true, "Unexpected %sNMI (irqnr %u)\n",
+			  gic_supports_pseudo_nmis() ? "pseudo-" : "", irqnr);
 		gic_deactivate_unhandled(irqnr);
 	}
 }
@@ -799,6 +848,28 @@ static void __gic_handle_irq_from_irqson(struct pt_regs *regs)
 	bool is_nmi;
 	u32 irqnr;
 
+	/*
+	 * We should enter here with interrupts disabled, otherwise we may met
+	 * a race here with FEAT_NMI/FEAT_GICv3_NMI:
+	 *
+	 * [interrupt disabled]
+	 *                   <- normal interrupt pending, for example timer interrupt
+	 *                   <- NMI occurs, ISR_EL1.nmi = 1
+	 * do_el1_interrupt()
+	 *                   <- NMI withdraw, ISR_EL1.nmi = 0
+	 *   ISR_EL1.nmi = 0, not an NMI interrupt
+	 *   gic_handle_irq()
+	 *     __gic_handle_irq_from_irqson()
+	 *       irqnr = gic_read_iar() <- Oops, ack and handle an normal interrupt
+	 *                                 in interrupt disabled context!
+	 *
+	 * So if we met this case here, just return from the interrupt context.
+	 * Since the interrupt is still pending, we can handle it once the
+	 * interrupt re-enabled and it'll not be missing.
+	 */
+	if (!interrupts_enabled(regs))
+		return;
+
 	irqnr = gic_read_iar();
 
 	is_nmi = gic_rpr_is_nmi_prio();
@@ -812,6 +883,10 @@ static void __gic_handle_irq_from_irqson(struct pt_regs *regs)
 	if (gic_prio_masking_enabled()) {
 		gic_pmr_mask_irqs();
 		gic_arch_enable_irqs();
+	} else if (has_v3_3_nmi()) {
+#ifdef CONFIG_ARM64_NMI
+		_allint_clear();
+#endif
 	}
 
 	if (!is_nmi)
@@ -854,9 +929,37 @@ static void __gic_handle_irq_from_irqsoff(struct pt_regs *regs)
 	__gic_handle_nmi(irqnr, regs);
 }
 
+#ifdef CONFIG_ARM64
+static inline u64 gic_read_nmiar(void)
+{
+	u64 irqstat;
+
+	irqstat = read_sysreg_s(SYS_ICC_NMIAR1_EL1);
+
+	dsb(sy);
+
+	return irqstat;
+}
+
+static asmlinkage void __exception_irq_entry gic_handle_nmi_irq(struct pt_regs *regs)
+{
+	u32 irqnr = gic_read_nmiar();
+
+	__gic_handle_nmi(irqnr, regs);
+}
+
+static inline void gic_setup_nmi_handler(void)
+{
+	if (has_v3_3_nmi())
+		set_handle_nmi_irq(gic_handle_nmi_irq);
+}
+#else
+static inline void gic_setup_nmi_handler(void) { }
+#endif
+
 static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 {
-	if (unlikely(gic_supports_nmi() && !interrupts_enabled(regs)))
+	if (unlikely(gic_supports_pseudo_nmis() && !interrupts_enabled(regs)))
 		__gic_handle_irq_from_irqsoff(regs);
 	else
 		__gic_handle_irq_from_irqson(regs);
@@ -1092,6 +1195,11 @@ static int __gic_update_rdist_properties(struct redist_region *region,
 		gic_data.rdists.has_rvpeid = false;
 	}
 
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	/* HiSilicon implement: if GICv4.1 is supported, vtimer irqbypass is supported */
+	gic_data.rdists.has_vtimer = gic_data.rdists.has_rvpeid;
+#endif
+
 	gic_data.ppi_nr = min(GICR_TYPER_NR_PPIS(typer), gic_data.ppi_nr);
 
 	return 1;
@@ -1146,7 +1254,7 @@ static void gic_cpu_sys_reg_init(void)
 	/* Set priority mask register */
 	if (!gic_prio_masking_enabled()) {
 		write_gicreg(DEFAULT_PMR_VALUE, ICC_PMR_EL1);
-	} else if (gic_supports_nmi()) {
+	} else if (gic_supports_pseudo_nmis()) {
 		/*
 		 * Mismatch configuration with boot CPU, the system is likely
 		 * to die as interrupt masking will not work properly on all
@@ -1255,6 +1363,36 @@ static int gic_dist_supports_lpis(void)
 		!!(readl_relaxed(gic_data.dist_base + GICD_TYPER) & GICD_TYPER_LPIS) &&
 		!gicv3_nolpi);
 }
+
+bool is_gicv4p1(void)
+{
+	if (!gic_data.rdists.has_rvpeid)
+		return false;
+
+	return true;
+}
+EXPORT_SYMBOL(is_gicv4p1);
+
+void gic_dist_enable_ipiv(void)
+{
+	u32 val;
+
+	val = readl_relaxed(gic_data.dist_base + GICD_MISC_CTRL);
+	val |= GICD_MISC_CTRL_CFG_IPIV_EN;
+	writel_relaxed(val, gic_data.dist_base + GICD_MISC_CTRL);
+	static_branch_enable(&ipiv_enable);
+
+	val = (0 << GICD_IPIV_CTRL_AFF_DIRECT_VPEID_SHIFT) |
+		(0 << GICD_IPIV_CTRL_AFF1_LEFT_SHIFT_SHIFT) |
+		(4 << GICD_IPIV_CTRL_AFF2_LEFT_SHIFT_SHIFT) |
+		(7 << GICD_IPIV_CTRL_VM_TABLE_INNERCACHE_SHIFT) |
+		(2 << GICD_IPIV_CTRL_VM_TABLE_SHAREABILITY_SHIFT);
+	writel_relaxed(val, gic_data.dist_base + GICD_IPIV_CTRL);
+
+	/* Set target ITS address of IPIV feature */
+	writel_relaxed(0x4880, gic_data.dist_base + GICD_IPIV_ITS_TA_BASE);
+}
+EXPORT_SYMBOL(gic_dist_enable_ipiv);
 
 static void gic_cpu_init(void)
 {
@@ -1936,25 +2074,8 @@ static const struct gic_quirk gic_quirks[] = {
 	}
 };
 
-static void gic_enable_nmi_support(void)
+static void gic_enable_pseudo_nmis(void)
 {
-	int i;
-
-	if (!gic_prio_masking_enabled())
-		return;
-
-	if (gic_data.flags & FLAGS_WORKAROUND_MTK_GICR_SAVE) {
-		pr_warn("Skipping NMI enable due to firmware issues\n");
-		return;
-	}
-
-	ppi_nmi_refs = kcalloc(gic_data.ppi_nr, sizeof(*ppi_nmi_refs), GFP_KERNEL);
-	if (!ppi_nmi_refs)
-		return;
-
-	for (i = 0; i < gic_data.ppi_nr; i++)
-		refcount_set(&ppi_nmi_refs[i], 0);
-
 	pr_info("Pseudo-NMIs enabled using %s ICC_PMR_EL1 synchronisation\n",
 		gic_has_relaxed_pmr_sync() ? "relaxed" : "forced");
 
@@ -1989,6 +2110,33 @@ static void gic_enable_nmi_support(void)
 		static_branch_enable(&gic_nonsecure_priorities);
 
 	static_branch_enable(&supports_pseudo_nmis);
+}
+
+static void gic_enable_nmi_support(void)
+{
+	int i;
+
+	if (!gic_prio_masking_enabled() && !has_v3_3_nmi())
+		return;
+
+	if (gic_data.flags & FLAGS_WORKAROUND_MTK_GICR_SAVE) {
+		pr_warn("Skipping NMI enable due to firmware issues\n");
+		return;
+	}
+
+	ppi_nmi_refs = kcalloc(gic_data.ppi_nr, sizeof(*ppi_nmi_refs), GFP_KERNEL);
+	if (!ppi_nmi_refs)
+		return;
+
+	for (i = 0; i < gic_data.ppi_nr; i++)
+		refcount_set(&ppi_nmi_refs[i], 0);
+
+	/*
+	 * Initialize pseudo-NMIs only if GIC driver cannot take advantage
+	 * of core (FEAT_NMI) and GIC (FEAT_GICv3_NMI) in HW
+	 */
+	if (!has_v3_3_nmi())
+		gic_enable_pseudo_nmis();
 
 	if (static_branch_likely(&supports_deactivate_key))
 		gic_eoimode1_chip.flags |= IRQCHIP_SUPPORTS_NMI;
@@ -2047,6 +2195,9 @@ static int __init gic_init_bases(phys_addr_t dist_phys_base,
 		gic_data.rdists.has_vlpis = true;
 		gic_data.rdists.has_direct_lpi = true;
 		gic_data.rdists.has_vpend_valid_dirty = true;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		gic_data.rdists.has_vtimer = false;
+#endif
 	}
 
 	if (WARN_ON(!gic_data.domain) || WARN_ON(!gic_data.rdists.rdist)) {
@@ -2057,6 +2208,7 @@ static int __init gic_init_bases(phys_addr_t dist_phys_base,
 	irq_domain_update_bus_token(gic_data.domain, DOMAIN_BUS_WIRED);
 
 	gic_data.has_rss = !!(typer & GICD_TYPER_RSS);
+	gic_data.has_nmi = !!(typer & GICD_TYPER_NMI);
 
 	if (typer & GICD_TYPER_MBIS) {
 		err = mbi_init(handle, gic_data.domain);
@@ -2065,6 +2217,8 @@ static int __init gic_init_bases(phys_addr_t dist_phys_base,
 	}
 
 	set_handle_irq(gic_handle_irq);
+
+	gic_setup_nmi_handler();
 
 	gic_update_rdist_properties();
 
@@ -2224,6 +2378,10 @@ static void __init gic_of_setup_kvm_info(struct device_node *node)
 
 	gic_v3_kvm_info.has_v4 = gic_data.rdists.has_vlpis;
 	gic_v3_kvm_info.has_v4_1 = gic_data.rdists.has_rvpeid;
+	gic_v3_kvm_info.has_nmi = system_is_nmi_capable();
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	gic_v3_kvm_info.has_vtimer = gic_data.rdists.has_vtimer;
+#endif
 	vgic_set_kvm_info(&gic_v3_kvm_info);
 }
 
@@ -2566,6 +2724,10 @@ static void __init gic_acpi_setup_kvm_info(void)
 
 	gic_v3_kvm_info.has_v4 = gic_data.rdists.has_vlpis;
 	gic_v3_kvm_info.has_v4_1 = gic_data.rdists.has_rvpeid;
+	gic_v3_kvm_info.has_nmi = system_is_nmi_capable();
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	gic_v3_kvm_info.has_vtimer = gic_data.rdists.has_vtimer;
+#endif
 	vgic_set_kvm_info(&gic_v3_kvm_info);
 }
 

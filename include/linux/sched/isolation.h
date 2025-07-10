@@ -19,6 +19,7 @@ enum hk_type {
 };
 
 #ifdef CONFIG_CPU_ISOLATION
+extern bool enhanced_isolcpus;
 DECLARE_STATIC_KEY_FALSE(housekeeping_overridden);
 extern int housekeeping_any_cpu(enum hk_type type);
 extern const struct cpumask *housekeeping_cpumask(enum hk_type type);
@@ -28,6 +29,8 @@ extern bool housekeeping_test_cpu(int cpu, enum hk_type type);
 extern void __init housekeeping_init(void);
 
 #else
+
+#define enhanced_isolcpus 0
 
 static inline int housekeeping_any_cpu(enum hk_type type)
 {

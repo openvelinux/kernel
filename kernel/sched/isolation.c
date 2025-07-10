@@ -244,3 +244,11 @@ static int __init housekeeping_isolcpus_setup(char *str)
 	return housekeeping_setup(str, flags);
 }
 __setup("isolcpus=", housekeeping_isolcpus_setup);
+
+bool enhanced_isolcpus;
+static int __init enhanced_isolcpus_setup(char *str)
+{
+	enhanced_isolcpus = true;
+	return 0;
+}
+__setup("enhanced_isolcpus", enhanced_isolcpus_setup);

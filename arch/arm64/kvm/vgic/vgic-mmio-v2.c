@@ -95,6 +95,7 @@ static int vgic_mmio_uaccess_write_v2_misc(struct kvm_vcpu *vcpu,
 		switch (reg) {
 		case KVM_VGIC_IMP_REV_2:
 		case KVM_VGIC_IMP_REV_3:
+		case KVM_VGIC_IMP_REV_4:
 			vcpu->kvm->arch.vgic.v2_groups_user_writable = true;
 			dist->implementation_rev = reg;
 			return 0;

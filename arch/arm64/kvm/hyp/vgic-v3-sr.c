@@ -130,7 +130,11 @@ static void __vgic_v3_write_ap0rn(u32 val, int n)
 	}
 }
 
-static void __vgic_v3_write_ap1rn(u32 val, int n)
+/*
+ * Contrary to ICH_AP0Rn_EL2, ICH_AP1R0_EL2 is 64bit, thanks to the
+ * NMI bit stuck at [63]. Isn't that fun?
+ */
+static void __vgic_v3_write_ap1rn(u64 val, int n)
 {
 	switch (n) {
 	case 0:
@@ -172,9 +176,10 @@ static u32 __vgic_v3_read_ap0rn(int n)
 	return val;
 }
 
-static u32 __vgic_v3_read_ap1rn(int n)
+/* Same remark about the 64bit-ness of AP1R0 */
+static u64 __vgic_v3_read_ap1rn(int n)
 {
-	u32 val;
+	u64 val;
 
 	switch (n) {
 	case 0:
@@ -1043,6 +1048,9 @@ int __vgic_v3_perform_cpuif_access(struct kvm_vcpu *vcpu)
 			return 0;
 		fn = __vgic_v3_read_iar;
 		break;
+	case SYS_ICC_NMIAR1_EL1:
+		/* Here's an UNDEF for you */
+		return 0;
 	case SYS_ICC_EOIR0_EL1:
 	case SYS_ICC_EOIR1_EL1:
 		if (unlikely(is_read))

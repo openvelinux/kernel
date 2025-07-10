@@ -36,7 +36,10 @@ e.g. hisi_sccl1_hha0/rx_operations is RX_OPERATIONS event of HHA index #0 in
 SCCL ID #1.
 
 The driver also provides a "cpumask" sysfs attribute, which shows the CPU core
-ID used to count the uncore PMU event.
+ID used to count the uncore PMU event. An "associated_cpus" sysfs attribute is
+also provided to show the CPUs associated with this PMU. The "cpumask" indicates
+the CPUs to open the events, usually as a hint for userspaces tools like perf.
+It only contains one associated CPU from the "associated_cpus".
 
 Example usage of perf::
 
@@ -109,6 +112,17 @@ uring channel. It is 2 bits. Some important codes are as follows:
 - 2'b10: count the events which sent to the uring (non-MATA) channel;
 - 2'b00: default value, count the events which sent to the both uring and
   uring_ext channel;
+
+6. ch: NoC PMU supports filtering the event counts of certain transaction
+channel with this option. The current supported channels are as follows:
+
+- 3'b010: Request channel
+- 3'b100: Snoop channel
+- 3'b110: Response channel
+- 3'b111: Data channel
+
+7. tt_en: NoC PMU supports counting only transactions that have tracetag set
+if this option is set. See the 2nd list for more information about tracetag.
 
 Users could configure IDs to count data come from specific CCL/ICL, by setting
 srcid_cmd & srcid_msk, and data desitined for specific CCL/ICL by setting

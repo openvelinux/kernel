@@ -14,6 +14,7 @@
 
 /* Hyp Configuration Register (HCR) bits */
 
+#define HCR_TWEDEN	(UL(1) << 59)
 #define HCR_TID5	(UL(1) << 58)
 #define HCR_DCT		(UL(1) << 57)
 #define HCR_ATA_SHIFT	56
@@ -74,6 +75,12 @@
 #define HCR_VM		(UL(1) << 0)
 #define HCR_RES0	((UL(1) << 48) | (UL(1) << 39))
 
+#ifdef CONFIG_ARM64_TWED
+#define HCR_TWEDEL_SHIFT	60
+#define HCR_TWEDEL_MAX		(UL(0xf))
+#define HCR_TWEDEL_MASK		(HCR_TWEDEL_MAX << HCR_TWEDEL_SHIFT)
+#endif
+
 /*
  * The bits we set in HCR:
  * TLOR:	Trap LORegion register accesses
@@ -104,6 +111,7 @@
 
 #define HCRX_GUEST_FLAGS (HCRX_EL2_SMPME | HCRX_EL2_TCR2En)
 #define HCRX_HOST_FLAGS (HCRX_EL2_MSCEn | HCRX_EL2_TCR2En)
+#define MPAMHCR_HOST_FLAGS	0
 
 /* TCR_EL2 Registers bits */
 #define TCR_EL2_DS		(1UL << 32)
@@ -122,6 +130,7 @@
 
 /* VTCR_EL2 Registers bits */
 #define VTCR_EL2_DS		TCR_EL2_DS
+#define VTCR_EL2_HDBSS		(1UL << 45)
 #define VTCR_EL2_RES1		(1U << 31)
 #define VTCR_EL2_HD		(1 << 22)
 #define VTCR_EL2_HA		(1 << 21)

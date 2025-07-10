@@ -479,8 +479,9 @@ config GOLDFISH
 config X86_CPU_RESCTRL
 	bool "x86 CPU resource control support"
 	depends on X86 && (CPU_SUP_INTEL || CPU_SUP_AMD)
+	depends on MISC_FILESYSTEMS
 	select KERNFS
-	select PROC_CPU_RESCTRL		if PROC_FS
+	select ARCH_HAS_CPU_RESCTRL
 	help
 	  Enable x86 CPU resource control support.
 
@@ -1568,6 +1569,26 @@ config NUMA
 	  kernel on a 64-bit NUMA platform.
 
 	  Otherwise, you should say N.
+
+config NUMA_AWARE_SPINLOCKS
+	bool "Numa-aware spinlocks"
+	depends on NUMA
+	depends on QUEUED_SPINLOCKS
+	depends on 64BIT
+	# For now, we depend on PARAVIRT_SPINLOCKS to make the patching work.
+	# This is awkward, but hopefully would be resolved once static_call()
+	# is available.
+	depends on PARAVIRT_SPINLOCKS
+	default y
+	help
+	  Introduce NUMA (Non Uniform Memory Access) awareness into
+	  the slow path of spinlocks.
+
+	  In this variant of qspinlock, the kernel will try to keep the lock
+	  on the same node, thus reducing the number of remote cache misses,
+	  while trading some of the short term fairness for better performance.
+
+	  Say N if you want absolute first come first serve fairness.
 
 config AMD_NUMA
 	def_bool y

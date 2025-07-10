@@ -25,7 +25,17 @@ struct its_vm {
 	irq_hw_number_t		db_lpi_base;
 	unsigned long		*db_bitmap;
 	int			nr_db_lpis;
+	/*
+	 * Ensures mutual exclusion between updates to vlpi_count[]
+	 * and map/unmap when using the ITSList mechanism.
+	 *
+	 * The lock order for any sequence involving the ITSList is
+	 * vmapp_lock -> vpe_lock ->vmovp_lock.
+	 */
+	raw_spinlock_t		vmapp_lock;
 	u32			vlpi_count[GICv4_ITS_LIST_MAX];
+	struct page         *vpeid_page;
+	bool                  nassgireq;
 };
 
 /* Embedded in kvm_vcpu.arch */
@@ -57,7 +67,13 @@ struct its_vpe {
 				u8	priority;
 				bool	enabled;
 				bool	group;
-			}			sgi_config[16];
+				bool    nmi;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+			}			sgi_config[32];
+			int nr_irqs;
+#else
+			}                       sgi_config[16];
+#endif
 		};
 	};
 
@@ -126,6 +142,7 @@ struct its_cmd_info {
 		struct {
 			u8		priority;
 			bool		group;
+			bool		nmi;
 		};
 	};
 };
@@ -140,12 +157,16 @@ int its_map_vlpi(int irq, struct its_vlpi_map *map);
 int its_get_vlpi(int irq, struct its_vlpi_map *map);
 int its_unmap_vlpi(int irq);
 int its_prop_update_vlpi(int irq, u8 config, bool inv);
-int its_prop_update_vsgi(int irq, u8 priority, bool group);
+int its_prop_update_vsgi(int irq, u8 priority, bool group, bool nmi);
 
 struct irq_domain_ops;
 int its_init_v4(struct irq_domain *domain,
 		const struct irq_domain_ops *vpe_ops,
 		const struct irq_domain_ops *sgi_ops);
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+int vtimer_irqbypass_init(struct irq_domain *domain,
+		bool has_vtimer_irqbypass);
+#endif
 
 bool gic_cpuif_has_vsgi(void);
 

@@ -252,6 +252,7 @@ static struct kvm_vcpu *vgic_target_oracle(struct vgic_irq *irq)
  *
  * Otherwise things should be sorted by the priority field and the GIC
  * hardware support will take care of preemption of priority groups etc.
+ * NMI acts as a super-priority.
  *
  * Return negative if "a" sorts before "b", 0 to preserve order, and positive
  * to sort "b" before "a".
@@ -287,7 +288,12 @@ static int vgic_irq_cmp(void *priv, const struct list_head *a,
 		goto out;
 	}
 
-	/* Both pending and enabled, sort by priority */
+	/* Both pending and enabled, sort by NMI and then priority */
+	if (irqa->nmi != irqb->nmi) {
+		ret = (int)irqb->nmi - (int)irqa->nmi;
+		goto out;
+	}
+
 	ret = irqa->priority - irqb->priority;
 out:
 	raw_spin_unlock(&irqb->irq_lock);
@@ -589,6 +595,32 @@ int kvm_vgic_get_map(struct kvm_vcpu *vcpu, unsigned int vintid)
 	vgic_put_irq(vcpu->kvm, irq);
 	return ret;
 }
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+int kvm_vgic_config_vtimer_irqbypass(struct kvm_vcpu *vcpu, u32 vintid,
+				bool (*get_as)(struct kvm_vcpu *, int),
+				void (*set_as)(struct kvm_vcpu *, int, bool))
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vtimer_info *vtimer = &vgic_cpu->vtimer;
+	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, vintid);
+	unsigned long flags;
+
+	if (WARN_ON_ONCE(!irq || !kvm_vgic_vtimer_irqbypass_support()))
+		return -EINVAL;
+
+	vtimer->intid = vintid;
+	vtimer->get_active_stat = get_as;
+	vtimer->set_active_stat = set_as;
+
+	raw_spin_lock_irqsave(&irq->irq_lock, flags);
+	irq->vtimer_info = vtimer;
+	raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+	vgic_put_irq(vcpu->kvm, irq);
+
+	return 0;
+}
+#endif
 
 /**
  * kvm_vgic_set_owner - Set the owner of an interrupt for a VM

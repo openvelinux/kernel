@@ -3,6 +3,7 @@
  * Copyright (C) 2015, 2016 ARM Ltd.
  */
 
+#include <linux/acpi.h>
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <linux/cpu.h>
@@ -56,6 +57,10 @@ void kvm_vgic_early_init(struct kvm *kvm)
 	INIT_LIST_HEAD(&dist->lpi_list_head);
 	INIT_LIST_HEAD(&dist->lpi_translation_cache);
 	raw_spin_lock_init(&dist->lpi_list_lock);
+#ifdef CONFIG_VIRT_PLAT_DEV
+	INIT_LIST_HEAD(&dist->sdev_list_head);
+	raw_spin_lock_init(&dist->sdev_list_lock);
+#endif
 }
 
 /* CREATION */
@@ -225,6 +230,11 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 			/* PPIs */
 			irq->config = VGIC_CONFIG_LEVEL;
 		}
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+		/* Needed? */
+		irq->vtimer_info = NULL;
+#endif
 	}
 
 	if (!irqchip_in_kernel(vcpu->kvm))
@@ -332,8 +342,16 @@ int vgic_init(struct kvm *kvm)
 	 * If userspace didn't set the GIC implementation revision,
 	 * default to the latest and greatest. You know want it.
 	 */
-	if (!dist->implementation_rev)
+	if (!dist->implementation_rev) {
 		dist->implementation_rev = KVM_VGIC_IMP_REV_LATEST;
+		/*
+		 * Advertise NMI if available. Userspace that explicitly
+		 * doesn't want NMI will have written to GICD_{IIDR,TYPER}
+		 * to set the implementation and the NMI support status.
+		 */
+		dist->has_nmi = kvm_vgic_global_state.has_nmi;
+	}
+
 	dist->initialized = true;
 
 out:
@@ -502,18 +520,39 @@ out_slots:
 	return ret;
 }
 
+#ifdef CONFIG_ACPI
+extern struct static_key_false ipiv_enable;
+static int ipiv_irq;
+#endif
+
 /* GENERIC PROBE */
 
 void kvm_vgic_cpu_up(void)
 {
 	enable_percpu_irq(kvm_vgic_global_state.maint_irq, 0);
+#ifdef CONFIG_ACPI
+	if (static_branch_unlikely(&ipiv_enable))
+		enable_percpu_irq(ipiv_irq, 0);
+#endif
 }
 
 
 void kvm_vgic_cpu_down(void)
 {
 	disable_percpu_irq(kvm_vgic_global_state.maint_irq);
+#ifdef CONFIG_ACPI
+	if (static_branch_unlikely(&ipiv_enable))
+		disable_percpu_irq(ipiv_irq);
+#endif
 }
+
+#ifdef CONFIG_ACPI
+static irqreturn_t vgic_ipiv_irq_handler(int irq, void *data)
+{
+	kvm_info("IPIV irq handler!\n");
+	return IRQ_HANDLED;
+}
+#endif
 
 static irqreturn_t vgic_maintenance_handler(int irq, void *data)
 {
@@ -622,5 +661,29 @@ int kvm_vgic_hyp_init(void)
 	}
 
 	kvm_info("vgic interrupt IRQ%d\n", kvm_vgic_global_state.maint_irq);
+
+#ifdef CONFIG_ACPI
+	if (static_branch_unlikely(&ipiv_enable)) {
+		ipiv_irq = acpi_register_gsi(NULL, 18, ACPI_EDGE_SENSITIVE,
+			ACPI_ACTIVE_HIGH);
+		if (ipiv_irq < 0) {
+			kvm_err("No ipiv exception irq\n");
+			free_percpu_irq(kvm_vgic_global_state.maint_irq,
+					kvm_get_running_vcpus());
+			return -ENXIO;
+		}
+
+		ret = request_percpu_irq(ipiv_irq, vgic_ipiv_irq_handler,
+				 "ipiv exception", kvm_get_running_vcpus());
+		if (ret) {
+			kvm_err("Cannot register interrupt %d\n", ipiv_irq);
+			free_percpu_irq(kvm_vgic_global_state.maint_irq,
+					kvm_get_running_vcpus());
+			acpi_unregister_gsi(18);
+			return ret;
+		}
+	}
+#endif
+
 	return 0;
 }

@@ -30,6 +30,7 @@
 #define GICD_ICFGR			0x0C00
 #define GICD_IGRPMODR			0x0D00
 #define GICD_NSACR			0x0E00
+#define GICD_INMIR			0x0F80
 #define GICD_IGROUPRnE			0x1000
 #define GICD_ISENABLERnE		0x1200
 #define GICD_ICENABLERnE		0x1400
@@ -39,6 +40,7 @@
 #define GICD_ICACTIVERnE		0x1C00
 #define GICD_IPRIORITYRnE		0x2000
 #define GICD_ICFGRnE			0x3000
+#define GICD_INMIRnE			0x3B00
 #define GICD_IROUTER			0x6000
 #define GICD_IROUTERnE			0x8000
 #define GICD_IDREGS			0xFFD0
@@ -83,6 +85,7 @@
 #define GICD_TYPER_LPIS			(1U << 17)
 #define GICD_TYPER_MBIS			(1U << 16)
 #define GICD_TYPER_ESPI			(1U << 8)
+#define GICD_TYPER_NMI			(1U << 9)
 
 #define GICD_TYPER_ID_BITS(typer)	((((typer) >> 19) & 0x1f) + 1)
 #define GICD_TYPER_NUM_LPIS(typer)	((((typer) >> 11) & 0x1f) + 1)
@@ -107,6 +110,18 @@
 #define GIC_PAGE_SIZE_16K		1ULL
 #define GIC_PAGE_SIZE_64K		2ULL
 #define GIC_PAGE_SIZE_MASK		3ULL
+
+#define GICD_MISC_CTRL			0x2084
+#define GICD_MISC_CTRL_CFG_IPIV_EN	(1U << 19)
+
+/* IPIV private register */
+#define GICD_IPIV_CTRL			0xc05c
+#define GICD_IPIV_CTRL_AFF_DIRECT_VPEID_SHIFT 4
+#define GICD_IPIV_CTRL_AFF1_LEFT_SHIFT_SHIFT 8
+#define GICD_IPIV_CTRL_AFF2_LEFT_SHIFT_SHIFT 12
+#define GICD_IPIV_CTRL_VM_TABLE_INNERCACHE_SHIFT 16
+#define GICD_IPIV_CTRL_VM_TABLE_SHAREABILITY_SHIFT 19
+#define GICD_IPIV_ITS_TA_BASE	0xc010
 
 /*
  * Re-Distributor registers, offsets from RD_base
@@ -238,6 +253,7 @@
 #define GICR_ICFGR0			GICD_ICFGR
 #define GICR_IGRPMODR0			GICD_IGRPMODR
 #define GICR_NSACR			GICD_NSACR
+#define GICR_INMIR0			GICD_INMIR
 
 #define GICR_TYPER_PLPIS		(1U << 0)
 #define GICR_TYPER_VLPIS		(1U << 1)
@@ -356,6 +372,21 @@
 #define GICR_VSGIPENDR_BUSY		(1U << 31)
 #define GICR_VSGIPENDR_PENDING		GENMASK(15, 0)
 
+/* IPIV VM table address */
+#define GICR_VM_TABLE_BAR_L		0x140
+#define GICR_VM_TABLE_BAR_H		0x144
+
+#define GICR_IPIV_CTRL		0x148
+#define GICR_IPIV_CTRL_VCPU_ENTRY_NUM_MAX_SHIFT 8
+/*
+ * Select ITS to determine the ITS through which the IPI is sent.
+ */
+#define GICR_IPIV_CTRL_IPIV_ITS_TA_SEL_SHIFT 4
+
+#define GICR_IPIV_ST		0x14c
+#define GICR_IPIV_ST_IPIV_BUSY_SHIFT 0
+#define GICR_IPIV_ST_IPIV_BUSY (1 << GICR_IPIV_ST_IPIV_BUSY_SHIFT)
+
 /*
  * ITS registers, offsets from ITS_base
  */
@@ -380,9 +411,18 @@
 #define GITS_TRANSLATER			0x10040
 
 #define GITS_SGIR			0x20020
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+/* HiSilicon IMP DEF register to set vPPI pending. */
+#define GITS_PPIR			0x200A8
+#endif
 
 #define GITS_SGIR_VPEID			GENMASK_ULL(47, 32)
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+/* Hackish... Extend it to [4:0] to support vPPI. */
+#define GITS_SGIR_VINTID		GENMASK_ULL(4, 0)
+#else
 #define GITS_SGIR_VINTID		GENMASK_ULL(3, 0)
+#endif
 
 #define GITS_CTLR_ENABLE		(1U << 0)
 #define GITS_CTLR_ImDe			(1U << 1)
@@ -403,6 +443,19 @@
 #define GITS_TYPER_VMOVP		(1ULL << 37)
 #define GITS_TYPER_VMAPP		(1ULL << 40)
 #define GITS_TYPER_SVPET		GENMASK_ULL(42, 41)
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+/* HiSilicon IMP DEF register */
+#define GITS_VERSION			0xC000
+
+/**
+ * HiSilicon IMP DEF field which indicates if the vPPI direct injection
+ * is supported.
+ * - 0: not supported
+ * - 1: supported
+ */
+#define GITS_VERSION_VTIMER		(1ULL << 12)
+#endif
 
 #define GITS_IIDR_REV_SHIFT		12
 #define GITS_IIDR_REV_MASK		(0xf << GITS_IIDR_REV_SHIFT)
@@ -631,6 +684,9 @@ struct rdists {
 	bool			has_rvpeid;
 	bool			has_direct_lpi;
 	bool			has_vpend_valid_dirty;
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	bool			has_vtimer;
+#endif
 };
 
 struct irq_domain;
@@ -640,6 +696,10 @@ int its_cpu_init(void);
 int its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	     struct irq_domain *domain);
 int mbi_init(struct fwnode_handle *fwnode, struct irq_domain *parent);
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+phys_addr_t get_gicr_paddr(int cpu);
+#endif
 
 static inline bool gic_enable_sre(void)
 {
@@ -654,6 +714,36 @@ static inline bool gic_enable_sre(void)
 	val = gic_read_sre();
 
 	return !!(val & ICC_SRE_EL1_SRE);
+}
+
+enum gic_intid_range {
+	SGI_RANGE,
+	PPI_RANGE,
+	SPI_RANGE,
+	EPPI_RANGE,
+	ESPI_RANGE,
+	LPI_RANGE,
+	__INVALID_RANGE__
+};
+
+static inline enum gic_intid_range __get_intid_range(irq_hw_number_t hwirq)
+{
+	switch (hwirq) {
+	case 0 ... 15:
+		return SGI_RANGE;
+	case 16 ... 31:
+		return PPI_RANGE;
+	case 32 ... 1019:
+		return SPI_RANGE;
+	case EPPI_BASE_INTID ... (EPPI_BASE_INTID + 63):
+		return EPPI_RANGE;
+	case ESPI_BASE_INTID ... (ESPI_BASE_INTID + 1023):
+		return ESPI_RANGE;
+	case 8192 ... GENMASK(23, 0):
+		return LPI_RANGE;
+	default:
+		return __INVALID_RANGE__;
+	}
 }
 
 #endif

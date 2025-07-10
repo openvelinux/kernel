@@ -16,6 +16,7 @@
 #include <linux/cpu.h>
 #include <linux/nmi.h>
 #include <linux/init.h>
+#include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/sysctl.h>
 #include <linux/tick.h>
@@ -127,6 +128,7 @@ static bool is_hardlockup(unsigned int cpu)
 
 	return false;
 }
+NOKPROBE_SYMBOL(is_hardlockup);
 
 static void watchdog_hardlockup_kick(void)
 {
@@ -184,6 +186,7 @@ void watchdog_hardlockup_check(unsigned int cpu, struct pt_regs *regs)
 		per_cpu(watchdog_hardlockup_warned, cpu) = false;
 	}
 }
+NOKPROBE_SYMBOL(watchdog_hardlockup_check);
 
 #else /* CONFIG_HARDLOCKUP_DETECTOR_COUNTS_HRTIMER */
 
@@ -559,8 +562,12 @@ static void watchdog_enable(unsigned int cpu)
 	/* Initialize timestamp */
 	update_touch_ts();
 	/* Enable the hardlockup detector */
-	if (watchdog_enabled & WATCHDOG_HARDLOCKUP_ENABLED)
-		watchdog_hardlockup_enable(cpu);
+	if (watchdog_enabled & WATCHDOG_HARDLOCKUP_ENABLED) {
+		if (disable_sdei_nmi_watchdog)
+			watchdog_hardlockup_enable(cpu);
+		else
+			sdei_watchdog_hardlockup_enable(cpu);
+	}
 }
 
 static void watchdog_disable(unsigned int cpu)
@@ -574,7 +581,10 @@ static void watchdog_disable(unsigned int cpu)
 	 * delay between disabling the timer and disabling the hardlockup
 	 * detector causes a false positive.
 	 */
-	watchdog_hardlockup_disable(cpu);
+	if (disable_sdei_nmi_watchdog)
+		watchdog_hardlockup_disable(cpu);
+	else
+		sdei_watchdog_hardlockup_disable(cpu);
 	hrtimer_cancel(hrtimer);
 	wait_for_completion(this_cpu_ptr(&softlockup_completion));
 }
@@ -1019,7 +1029,8 @@ void __init lockup_detector_init(void)
 	cpumask_copy(&watchdog_cpumask,
 		     housekeeping_cpumask(HK_TYPE_TIMER));
 
-	if (!watchdog_hardlockup_probe())
+	if ((!disable_sdei_nmi_watchdog && !sdei_watchdog_hardlockup_probe()) ||
+	    (disable_sdei_nmi_watchdog && !watchdog_hardlockup_probe()))
 		watchdog_hardlockup_available = true;
 	else
 		allow_lockup_detector_init_retry = true;

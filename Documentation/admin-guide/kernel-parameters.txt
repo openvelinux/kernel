@@ -2647,6 +2647,13 @@
 			[KVM,ARM] Allow use of GICv4 for direct injection of
 			LPIs.
 
+	kvm-arm.ipiv_enabled=
+			[KVM,ARM] Allow use of HiSilicon ipiv on GICv4.1
+
+	kvm-arm.dvmbm_enabled=
+			[KVM,ARM] Allow use of HiSilicon DVMBM capability.
+			Default: 0
+
 	kvm_cma_resv_ratio=n [PPC]
 			Reserves given percentage from system memory area for
 			contiguous memory allocation for KVM hash pagetable
@@ -4025,6 +4032,16 @@
 			NUMA balancing.
 			Allowed values are enable and disable
 
+	numa_spinlock=	[NUMA, PV_OPS] Select the NUMA-aware variant
+			of spinlock. The options are:
+			auto - Enable this variant if running on a multi-node
+			machine in native environment.
+			on  - Unconditionally enable this variant.
+			off - Unconditionally disable this variant.
+
+			Not specifying this option is equivalent to
+			numa_spinlock=auto.
+
 	numa_zonelist_order= [KNL, BOOT] Select zonelist order for NUMA.
 			'node', 'default' can be specified
 			This can be set from sysctl after boot.
@@ -4744,6 +4761,14 @@
 	pty.legacy_count=
 			[KNL] Number of legacy pty's. Overwrites compiled-in
 			default number.
+
+	qspinlock.numa_spinlock_threshold_ns=	[NUMA, PV_OPS]
+			Set the time threshold in nanoseconds for the
+			number of intra-node lock hand-offs before the
+			NUMA-aware spinlock is forced to be passed to
+			a thread on another NUMA node. Smaller values
+			result in a more fair, but less performant spinlock,
+			and vice versa. The default value is 1000000 (=1ms).
 
 	quiet		[KNL] Disable most log messages
 

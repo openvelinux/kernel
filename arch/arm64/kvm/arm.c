@@ -47,6 +47,8 @@
 
 static enum kvm_mode kvm_mode = KVM_MODE_DEFAULT;
 
+#include "hisilicon/hisi_virt.h"
+
 DECLARE_KVM_HYP_PER_CPU(unsigned long, kvm_hyp_vector);
 
 DEFINE_PER_CPU(unsigned long, kvm_arm_hyp_stack_page);
@@ -56,6 +58,15 @@ DECLARE_KVM_NVHE_PER_CPU(struct kvm_cpu_context, kvm_hyp_ctxt);
 
 static bool vgic_present, kvm_arm_initialised;
 
+/* Capability of non-cacheable snooping */
+bool kvm_ncsnp_support;
+
+/* Capability of DVMBM */
+bool kvm_dvmbm_support;
+
+/* Capability of IPIV */
+bool kvm_ipiv_support;
+
 static DEFINE_PER_CPU(unsigned char, kvm_hyp_initialized);
 DEFINE_STATIC_KEY_FALSE(userspace_irqchip_in_use);
 
@@ -64,10 +75,125 @@ bool is_kvm_arm_initialised(void)
 	return kvm_arm_initialised;
 }
 
+static int vcpu_req_reload_wfi_traps(const char *val, const struct kernel_param *kp);
+
+static const struct kernel_param_ops force_wfi_trap_ops = {
+	.set = vcpu_req_reload_wfi_traps,
+	.get = param_get_bool,
+};
+
+bool force_wfi_trap;
+module_param_cb(force_wfi_trap, &force_wfi_trap_ops, &force_wfi_trap, 0644);
+
+static int vcpu_req_reload_wfi_traps(const char *val, const struct kernel_param *kp)
+{
+	struct kvm *kvm;
+	bool oldvalue;
+	int err;
+
+	oldvalue = force_wfi_trap;
+	err = param_set_bool(val, kp);
+	if (err)
+		return err;
+
+	if (oldvalue == force_wfi_trap)
+		return err;
+
+	/*
+	 * If set the force_wfi_trap from 1 to 0, no need to kick vcpus here.
+	 * The HCR_TWI flag will be cleared in kvm_arch_vcpu_load().
+	 */
+	if (force_wfi_trap == 0)
+		return 0;
+
+	/*
+	 * We need to kick vcpus out of guest mode here to reload
+	 * wfx trapping config when re-enter guest mode.
+	 */
+	mutex_lock(&kvm_lock);
+	list_for_each_entry(kvm, &vm_list, vm_list)
+		kvm_make_all_cpus_request(kvm, KVM_REQ_RELOAD_WFI_TRAPS);
+	mutex_unlock(&kvm_lock);
+	return err;
+}
+#ifdef CONFIG_ARM64_TWED
+bool twed_enable;
+module_param(twed_enable, bool, 0644);
+
+unsigned int twedel;
+module_param(twedel, uint, 0644);
+#endif
+
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 {
 	return kvm_vcpu_exiting_guest_mode(vcpu) == IN_GUEST_MODE;
 }
+
+#ifdef CONFIG_ARM64_HDBSS
+static int kvm_cap_arm_enable_hdbss(struct kvm *kvm,
+				    struct kvm_enable_cap *cap)
+{
+	unsigned long i;
+	struct kvm_vcpu *vcpu;
+	struct page *hdbss_pg;
+	int size = cap->args[0];
+
+	if (!system_supports_hdbss()) {
+		kvm_err("This system does not support HDBSS!\n");
+		return -EINVAL;
+	}
+
+	if (size < 0 || size > HDBSS_MAX_SIZE) {
+		kvm_err("Invalid HDBSS buffer size: %d!\n", size);
+		return -EINVAL;
+	}
+
+	/* Enable the HDBSS feature if size > 0, otherwise disable it. */
+	if (size) {
+		kvm->enable_hdbss = true;
+		kvm->arch.vtcr |= VTCR_EL2_HD | VTCR_EL2_HDBSS;
+
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			hdbss_pg = alloc_pages(GFP_KERNEL, size);
+			if (!hdbss_pg) {
+				kvm_err("Alloc HDBSS buffer failed!\n");
+				return -EINVAL;
+			}
+
+			vcpu->arch.hdbss.br_el2 = HDBSSBR_EL2(page_to_phys(hdbss_pg), size);
+			vcpu->arch.hdbss.prod_el2 = 0;
+
+			/*
+			 * We should kick vcpus out of guest mode here to
+			 * load new vtcr value to vtcr_el2 register when
+			 * re-enter guest mode.
+			 */
+			kvm_vcpu_kick(vcpu);
+		}
+
+		kvm_info("Enable HDBSS success, HDBSS buffer size: %d\n", size);
+	} else if (kvm->enable_hdbss) {
+		kvm->arch.vtcr &= ~(VTCR_EL2_HD | VTCR_EL2_HDBSS);
+
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			/* Kick vcpus to flush hdbss buffer. */
+			kvm_vcpu_kick(vcpu);
+
+			hdbss_pg = phys_to_page(HDBSSBR_BADDR(vcpu->arch.hdbss.br_el2));
+			if (hdbss_pg)
+				__free_pages(hdbss_pg, HDBSSBR_SZ(vcpu->arch.hdbss.br_el2));
+
+			vcpu->arch.hdbss.br_el2 = 0;
+			vcpu->arch.hdbss.prod_el2 = 0;
+		}
+
+		kvm->enable_hdbss = false;
+		kvm_info("Disable HDBSS success\n");
+	}
+
+	return 0;
+}
+#endif
 
 int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 			    struct kvm_enable_cap *cap)
@@ -116,6 +242,11 @@ int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 		}
 		mutex_unlock(&kvm->slots_lock);
 		break;
+#ifdef CONFIG_ARM64_HDBSS
+	case KVM_CAP_ARM_HW_DIRTY_STATE_TRACK:
+		r = kvm_cap_arm_enable_hdbss(kvm, cap);
+		break;
+#endif
 	default:
 		r = -EINVAL;
 		break;
@@ -136,6 +267,10 @@ static int kvm_arm_default_max_vcpus(void)
 int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
 	int ret;
+
+	ret = kvm_sched_affinity_vm_init(kvm);
+	if (ret)
+		return ret;
 
 	mutex_init(&kvm->arch.config_lock);
 
@@ -172,6 +307,9 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	/* The maximum number of VCPUs is limited by the host's GIC model */
 	kvm->max_vcpus = kvm_arm_default_max_vcpus();
 
+	if (cpus_have_final_cap(ARM64_HAS_NMI) && !static_branch_unlikely(&vgic_v3_cpuif_trap))
+		kvm->arch.pfr1_nmi = ID_AA64PFR1_EL1_NMI_IMP;
+
 	kvm_arm_init_hypercalls(kvm);
 
 	bitmap_zero(kvm->arch.vcpu_features, KVM_VCPU_MAX_FEATURES);
@@ -197,6 +335,8 @@ vm_fault_t kvm_arch_vcpu_fault(struct kvm_vcpu *vcpu, struct vm_fault *vmf)
  */
 void kvm_arch_destroy_vm(struct kvm *kvm)
 {
+	kvm_sched_affinity_vm_destroy(kvm);
+
 	bitmap_free(kvm->arch.pmu_filter);
 	free_cpumask_var(kvm->arch.supported_cpus);
 
@@ -211,6 +351,8 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
 
 	kvm_arm_teardown_hypercalls(kvm);
 }
+
+extern struct static_key_false ipiv_enable;
 
 int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 {
@@ -317,6 +459,22 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_ARM_SUPPORTED_BLOCK_SIZES:
 		r = kvm_supported_block_sizes();
 		break;
+#ifdef CONFIG_VIRT_PLAT_DEV
+	case KVM_CAP_ARM_VIRT_MSI_BYPASS:
+		r = sdev_enable;
+		break;
+#endif
+#ifdef CONFIG_ARM64_HDBSS
+	case KVM_CAP_ARM_HW_DIRTY_STATE_TRACK:
+		r = system_supports_hdbss();
+		break;
+#endif
+	case KVM_CAP_ARM_IPIV_MODE:
+		if (static_branch_unlikely(&ipiv_enable))
+			r = 1;
+		else
+			r = 0;
+		break;
 	default:
 		r = 0;
 	}
@@ -371,12 +529,6 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.mmu_page_cache.gfp_zero = __GFP_ZERO;
 
-	/*
-	 * Default value for the FP state, will be overloaded at load
-	 * time if we support FP (pretty likely)
-	 */
-	vcpu->arch.fp_state = FP_STATE_FREE;
-
 	/* Set up the timer */
 	kvm_timer_vcpu_init(vcpu);
 
@@ -389,6 +541,16 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 	vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 
 	err = kvm_vgic_vcpu_init(vcpu);
+	if (err)
+		return err;
+
+	err = kvm_share_hyp(vcpu, vcpu + 1);
+	if (err) {
+		kvm_vgic_vcpu_destroy(vcpu);
+		return err;
+        }
+	
+        err = kvm_sched_affinity_vcpu_init(vcpu);
 	if (err)
 		return err;
 
@@ -409,6 +571,8 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 	kvm_pmu_vcpu_destroy(vcpu);
 	kvm_vgic_vcpu_destroy(vcpu);
 	kvm_arm_vcpu_destroy(vcpu);
+
+	kvm_sched_affinity_vcpu_destroy(vcpu);
 }
 
 void kvm_arch_vcpu_blocking(struct kvm_vcpu *vcpu)
@@ -465,6 +629,8 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 	if (!cpumask_test_cpu(cpu, vcpu->kvm->arch.supported_cpus))
 		vcpu_set_on_unsupported_cpu(vcpu);
+
+	kvm_tlbi_dvmbm_vcpu_load(vcpu);
 }
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
@@ -480,6 +646,8 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 
 	vcpu_clear_on_unsupported_cpu(vcpu);
 	vcpu->cpu = -1;
+
+	kvm_tlbi_dvmbm_vcpu_put(vcpu);
 }
 
 static void __kvm_arm_vcpu_power_off(struct kvm_vcpu *vcpu)
@@ -602,6 +770,12 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 		return 0;
 
 	kvm_arm_vcpu_init_debug(vcpu);
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	ret = kvm_vtimer_config(kvm);
+	if (ret)
+		return ret;
+#endif
 
 	if (likely(irqchip_in_kernel(kvm))) {
 		/*
@@ -804,8 +978,7 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 		}
 
 		if (kvm_check_request(KVM_REQ_RELOAD_PMU, vcpu))
-			kvm_pmu_handle_pmcr(vcpu,
-					    __vcpu_sys_reg(vcpu, PMCR_EL0));
+			kvm_pmu_handle_pmcr(vcpu, kvm_vcpu_read_pmcr(vcpu));
 
 		if (kvm_check_request(KVM_REQ_RESYNC_PMU_EL0, vcpu))
 			kvm_vcpu_pmu_restore_guest(vcpu);
@@ -815,6 +988,15 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 
 		if (kvm_dirty_ring_check_request(vcpu))
 			return 0;
+
+		if (kvm_check_request(KVM_REQ_RELOAD_WFI_TRAPS, vcpu)) {
+			if (single_task_running())
+				vcpu_clear_wfx_traps(vcpu);
+			else
+				vcpu_set_wfx_traps(vcpu);
+		}
+		if (kvm_check_request(KVM_REQ_RELOAD_TLBI_DVMBM, vcpu))
+			kvm_hisi_reload_lsudvmbm(vcpu->kvm);
 	}
 
 	return 1;
@@ -985,6 +1167,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		kvm_arm_setup_debug(vcpu);
 		kvm_arch_vcpu_ctxflush_fp(vcpu);
+
+		vcpu_set_twed(vcpu);
 
 		/**************************************************************
 		 * Enter the guest
@@ -1537,7 +1721,19 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 
 void kvm_arch_sync_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot)
 {
+#ifdef CONFIG_ARM64_HDBSS
+	/*
+	 * Flush all CPUs' dirty log buffers to the dirty_bitmap.  Called
+	 * before reporting dirty_bitmap to userspace.  KVM flushes the buffers
+	 * on all VM-Exits, thus we only need to kick running vCPUs to force a
+	 * VM-Exit.
+	 */
+	struct kvm_vcpu *vcpu;
+	unsigned long i;
 
+	kvm_for_each_vcpu(i, vcpu, kvm)
+		kvm_vcpu_kick(vcpu);
+#endif
 }
 
 static int kvm_vm_ioctl_set_device_addr(struct kvm *kvm,
@@ -1632,6 +1828,36 @@ int kvm_arch_vm_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 
 		return kvm_vm_set_attr(kvm, &attr);
 	}
+#ifdef CONFIG_VIRT_PLAT_DEV
+	case KVM_CREATE_SHADOW_DEV: {
+		struct kvm_master_dev_info *mdi;
+		u32 nvectors;
+		int ret;
+
+		if (get_user(nvectors, (const u32 __user *)argp))
+			return -EFAULT;
+		if (!nvectors)
+			return -EINVAL;
+
+		mdi = memdup_user(argp, sizeof(*mdi) + nvectors * sizeof(mdi->msi[0]));
+		if (IS_ERR(mdi))
+			return PTR_ERR(mdi);
+
+		ret = kvm_shadow_dev_create(kvm, mdi);
+		kfree(mdi);
+
+		return ret;
+	}
+	case KVM_DEL_SHADOW_DEV: {
+		u32 devid;
+
+		if (get_user(devid, (const u32 __user *)argp))
+			return -EFAULT;
+
+		kvm_shadow_dev_delete(kvm, devid);
+		return 0;
+	}
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -1846,7 +2072,7 @@ static void cpu_set_hyp_vector(void)
 
 static void cpu_hyp_init_context(void)
 {
-	kvm_init_host_cpu_context(&this_cpu_ptr_hyp_sym(kvm_host_data)->host_ctxt);
+	kvm_init_host_cpu_context(host_data_ptr(host_ctxt));
 
 	if (!is_kernel_in_hyp_mode())
 		cpu_init_hyp_mode();
@@ -2401,6 +2627,13 @@ void kvm_arch_irq_bypass_start(struct irq_bypass_consumer *cons)
 	kvm_arm_resume_guest(irqfd->kvm);
 }
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+void kvm_arch_pre_destroy_vm(struct kvm *kvm)
+{
+	kvm_shadow_dev_delete_all(kvm);
+}
+#endif
+
 /* Initialize Hyp-mode and memory mappings on all CPUs */
 static __init int kvm_arm_init(void)
 {
@@ -2422,6 +2655,20 @@ static __init int kvm_arm_init(void)
 		kvm_info("Error initializing system register tables");
 		return err;
 	}
+
+	probe_hisi_cpu_type();
+	kvm_ncsnp_support = hisi_ncsnp_supported();
+	kvm_dvmbm_support = hisi_dvmbm_supported();
+	kvm_ipiv_support = hisi_ipiv_supported();
+	kvm_info("KVM ncsnp %s\n", kvm_ncsnp_support ? "enabled" : "disabled");
+	kvm_info("KVM dvmbm %s\n", kvm_dvmbm_support ? "enabled" : "disabled");
+	kvm_info("KVM ipiv %s\n", kvm_ipiv_support ? "enabled" : "disabled");
+
+	if (kvm_ipiv_support)
+			ipiv_gicd_init();
+
+	if (kvm_dvmbm_support)
+		kvm_get_pg_cfg();
 
 	in_hyp_mode = is_kernel_in_hyp_mode();
 
@@ -2477,6 +2724,10 @@ static __init int kvm_arm_init(void)
 		goto out_subs;
 
 	kvm_arm_initialised = true;
+
+#ifdef CONFIG_VIRT_PLAT_DEV
+	kvm_shadow_dev_init();
+#endif
 
 	return 0;
 

@@ -14,7 +14,6 @@
 #include <linux/acpi.h>
 #include <linux/arch_topology.h>
 #include <linux/cacheinfo.h>
-#include <linux/cpufreq.h>
 #include <linux/init.h>
 #include <linux/percpu.h>
 
@@ -37,16 +36,27 @@ static bool __init acpi_cpu_is_threaded(int cpu)
 	return !!is_threaded;
 }
 
+struct cpu_smt_info {
+	unsigned int thread_num;
+	int core_id;
+};
+
 /*
  * Propagate the topology information of the processor_topology_node tree to the
  * cpu_topology array.
  */
 int __init parse_acpi_topology(void)
 {
+	unsigned int max_smt_thread_num = 1;
+	struct cpu_smt_info *entry;
+	struct xarray hetero_cpu;
+	unsigned long hetero_id;
 	int cpu, topology_id;
 
 	if (acpi_disabled)
 		return 0;
+
+	xa_init(&hetero_cpu);
 
 	for_each_possible_cpu(cpu) {
 		topology_id = find_acpi_cpu_topology(cpu, 0);
@@ -57,6 +67,34 @@ int __init parse_acpi_topology(void)
 			cpu_topology[cpu].thread_id = topology_id;
 			topology_id = find_acpi_cpu_topology(cpu, 1);
 			cpu_topology[cpu].core_id   = topology_id;
+
+			/*
+			 * In the PPTT, CPUs below a node with the 'identical
+			 * implementation' flag have the same number of threads.
+			 * Count the number of threads for only one CPU (i.e.
+			 * one core_id) among those with the same hetero_id.
+			 * See the comment of find_acpi_cpu_topology_hetero_id()
+			 * for more details.
+			 *
+			 * One entry is created for each node having:
+			 * - the 'identical implementation' flag
+			 * - its parent not having the flag
+			 */
+			hetero_id = find_acpi_cpu_topology_hetero_id(cpu);
+			entry = xa_load(&hetero_cpu, hetero_id);
+			if (!entry) {
+				entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+				WARN_ON_ONCE(!entry);
+
+				if (entry) {
+					entry->core_id = topology_id;
+					entry->thread_num = 1;
+					xa_store(&hetero_cpu, hetero_id,
+						 entry, GFP_KERNEL);
+				}
+			} else if (entry->core_id == topology_id) {
+				entry->thread_num++;
+			}
 		} else {
 			cpu_topology[cpu].thread_id  = -1;
 			cpu_topology[cpu].core_id    = topology_id;
@@ -67,6 +105,19 @@ int __init parse_acpi_topology(void)
 		cpu_topology[cpu].package_id = topology_id;
 	}
 
+	/*
+	 * This is a short loop since the number of XArray elements is the
+	 * number of heterogeneous CPU clusters. On a homogeneous system
+	 * there's only one entry in the XArray.
+	 */
+	xa_for_each(&hetero_cpu, hetero_id, entry) {
+		max_smt_thread_num = max(max_smt_thread_num, entry->thread_num);
+		xa_erase(&hetero_cpu, hetero_id);
+		kfree(entry);
+	}
+
+	cpu_smt_set_num_threads(max_smt_thread_num, max_smt_thread_num);
+	xa_destroy(&hetero_cpu);
 	return 0;
 }
 #endif
@@ -82,7 +133,12 @@ int __init parse_acpi_topology(void)
 #undef pr_fmt
 #define pr_fmt(fmt) "AMU: " fmt
 
-static DEFINE_PER_CPU_READ_MOSTLY(unsigned long, arch_max_freq_scale);
+/*
+ * Ensure that amu_scale_freq_tick() will return SCHED_CAPACITY_SCALE until
+ * the CPU capacity and its associated frequency have been correctly
+ * initialized.
+ */
+static DEFINE_PER_CPU_READ_MOSTLY(unsigned long, arch_max_freq_scale) =  1UL << (2 * SCHED_CAPACITY_SHIFT);
 static DEFINE_PER_CPU(u64, arch_const_cycles_prev);
 static DEFINE_PER_CPU(u64, arch_core_cycles_prev);
 static cpumask_var_t amu_fie_cpus;
@@ -112,14 +168,14 @@ static inline bool freq_counters_valid(int cpu)
 	return true;
 }
 
-static int freq_inv_set_max_ratio(int cpu, u64 max_rate, u64 ref_rate)
+void freq_inv_set_max_ratio(int cpu, u64 max_rate)
 {
-	u64 ratio;
+	u64 ratio, ref_rate = arch_timer_get_rate();
 
 	if (unlikely(!max_rate || !ref_rate)) {
-		pr_debug("CPU%d: invalid maximum or reference frequency.\n",
+		WARN_ONCE(1, "CPU%d: invalid maximum or reference frequency.\n",
 			 cpu);
-		return -EINVAL;
+		return;
 	}
 
 	/*
@@ -139,12 +195,10 @@ static int freq_inv_set_max_ratio(int cpu, u64 max_rate, u64 ref_rate)
 	ratio = div64_u64(ratio, max_rate);
 	if (!ratio) {
 		WARN_ONCE(1, "Reference frequency too low.\n");
-		return -EINVAL;
+		return;
 	}
 
-	per_cpu(arch_max_freq_scale, cpu) = (unsigned long)ratio;
-
-	return 0;
+	WRITE_ONCE(per_cpu(arch_max_freq_scale, cpu), (unsigned long)ratio);
 }
 
 static void amu_scale_freq_tick(void)
@@ -186,54 +240,27 @@ static struct scale_freq_data amu_sfd = {
 	.set_freq_scale = amu_scale_freq_tick,
 };
 
-static void amu_fie_setup(const struct cpumask *cpus)
+static void amu_fie_setup(unsigned int cpu)
 {
-	int cpu;
-
-	/* We are already set since the last insmod of cpufreq driver */
-	if (unlikely(cpumask_subset(cpus, amu_fie_cpus)))
+	if (cpumask_test_cpu(cpu, amu_fie_cpus))
 		return;
 
-	for_each_cpu(cpu, cpus) {
-		if (!freq_counters_valid(cpu) ||
-		    freq_inv_set_max_ratio(cpu,
-					   cpufreq_get_hw_max_freq(cpu) * 1000ULL,
-					   arch_timer_get_rate()))
-			return;
-	}
+	if (!freq_counters_valid(cpu))
+		return;
 
-	cpumask_or(amu_fie_cpus, amu_fie_cpus, cpus);
+	cpumask_set_cpu(cpu, amu_fie_cpus);
 
 	topology_set_scale_freq_source(&amu_sfd, amu_fie_cpus);
 
-	pr_debug("CPUs[%*pbl]: counters will be used for FIE.",
-		 cpumask_pr_args(cpus));
+	pr_debug("CPUs[%u]: counters will be used for FIE.", cpu);
 }
 
-static int init_amu_fie_callback(struct notifier_block *nb, unsigned long val,
-				 void *data)
+static int cpuhp_topology_online(unsigned int cpu)
 {
-	struct cpufreq_policy *policy = data;
-
-	if (val == CPUFREQ_CREATE_POLICY)
-		amu_fie_setup(policy->related_cpus);
-
-	/*
-	 * We don't need to handle CPUFREQ_REMOVE_POLICY event as the AMU
-	 * counters don't have any dependency on cpufreq driver once we have
-	 * initialized AMU support and enabled invariance. The AMU counters will
-	 * keep on working just fine in the absence of the cpufreq driver, and
-	 * for the CPUs for which there are no counters available, the last set
-	 * value of arch_freq_scale will remain valid as that is the frequency
-	 * those CPUs are running at.
-	 */
+	amu_fie_setup(cpu);
 
 	return 0;
 }
-
-static struct notifier_block init_amu_fie_notifier = {
-	.notifier_call = init_amu_fie_callback,
-};
 
 static int __init init_amu_fie(void)
 {
@@ -242,12 +269,16 @@ static int __init init_amu_fie(void)
 	if (!zalloc_cpumask_var(&amu_fie_cpus, GFP_KERNEL))
 		return -ENOMEM;
 
-	ret = cpufreq_register_notifier(&init_amu_fie_notifier,
-					CPUFREQ_POLICY_NOTIFIER);
-	if (ret)
+	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+				"arm64/topology:online",
+				cpuhp_topology_online,
+				NULL);
+	if (ret < 0) {
 		free_cpumask_var(amu_fie_cpus);
+		return ret;
+	}
 
-	return ret;
+	return 0;
 }
 core_initcall(init_amu_fie);
 

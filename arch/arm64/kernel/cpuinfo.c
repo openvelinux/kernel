@@ -460,6 +460,12 @@ static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
 	if (id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0))
 		__cpuinfo_store_cpu_32bit(&info->aarch32);
 
+	if (IS_ENABLED(CONFIG_ARM64_MPAM) &&
+	    mpam_detect_is_enabled() &&
+	   (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
+	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1)))
+		info->reg_mpamidr = read_cpuid(MPAMIDR_EL1);
+
 	cpuinfo_detect_icache_policy(info);
 }
 

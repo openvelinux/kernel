@@ -112,9 +112,15 @@ static inline void vcpu_clear_wfx_traps(struct kvm_vcpu *vcpu)
 {
 	vcpu->arch.hcr_el2 &= ~HCR_TWE;
 	if (atomic_read(&vcpu->arch.vgic_cpu.vgic_v3.its_vpe.vlpi_count) ||
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+	    vcpu->kvm->arch.vgic.vtimer_irqbypass ||
+#endif
 	    vcpu->kvm->arch.vgic.nassgireq)
 		vcpu->arch.hcr_el2 &= ~HCR_TWI;
 	else
+		vcpu->arch.hcr_el2 |= HCR_TWI;
+
+	if (force_wfi_trap)
 		vcpu->arch.hcr_el2 |= HCR_TWI;
 }
 
@@ -123,6 +129,27 @@ static inline void vcpu_set_wfx_traps(struct kvm_vcpu *vcpu)
 	vcpu->arch.hcr_el2 |= HCR_TWE;
 	vcpu->arch.hcr_el2 |= HCR_TWI;
 }
+
+#ifdef CONFIG_ARM64_TWED
+static inline void vcpu_set_twed(struct kvm_vcpu *vcpu)
+{
+	if (!cpus_have_final_cap(ARM64_HAS_TWED))
+		return;
+
+	if (twed_enable) {
+		u64 delay = (u64)twedel;
+
+		delay = (delay > HCR_TWEDEL_MAX) ? HCR_TWEDEL_MAX : delay;
+		vcpu->arch.hcr_el2 |= HCR_TWEDEN;
+		vcpu->arch.hcr_el2 &= ~HCR_TWEDEL_MASK;
+		vcpu->arch.hcr_el2 |= (delay << HCR_TWEDEL_SHIFT);
+	} else {
+		vcpu->arch.hcr_el2 &= ~HCR_TWEDEN;
+	}
+}
+#else
+static inline void vcpu_set_twed(struct kvm_vcpu *vcpu) {}
+#endif
 
 static inline void vcpu_ptrauth_enable(struct kvm_vcpu *vcpu)
 {
@@ -602,7 +629,7 @@ static __always_inline u64 kvm_get_reset_cptr_el2(struct kvm_vcpu *vcpu)
 		val = (CPACR_EL1_FPEN_EL0EN | CPACR_EL1_FPEN_EL1EN);
 
 		if (!vcpu_has_sve(vcpu) ||
-		    (vcpu->arch.fp_state != FP_STATE_GUEST_OWNED))
+		    (*host_data_ptr(fp_owner) != FP_STATE_GUEST_OWNED))
 			val |= CPACR_EL1_ZEN_EL1EN | CPACR_EL1_ZEN_EL0EN;
 		if (cpus_have_final_cap(ARM64_SME))
 			val |= CPACR_EL1_SMEN_EL1EN | CPACR_EL1_SMEN_EL0EN;
@@ -610,7 +637,7 @@ static __always_inline u64 kvm_get_reset_cptr_el2(struct kvm_vcpu *vcpu)
 		val = CPTR_NVHE_EL2_RES1;
 
 		if (vcpu_has_sve(vcpu) &&
-		    (vcpu->arch.fp_state == FP_STATE_GUEST_OWNED))
+		    (*host_data_ptr(fp_owner) == FP_STATE_GUEST_OWNED))
 			val |= CPTR_EL2_TZ;
 		if (cpus_have_final_cap(ARM64_SME))
 			val &= ~CPTR_EL2_TSM;

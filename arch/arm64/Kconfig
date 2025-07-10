@@ -34,6 +34,7 @@ config ARM64
 	select ARCH_HAS_MEMBARRIER_SYNC_CORE
 	select ARCH_HAS_NMI_SAFE_THIS_CPU_OPS
 	select ARCH_HAS_NON_OVERLAPPING_ADDRESS_SPACE
+	select ARCH_HAS_NONLEAF_PMD_YOUNG if ARM64_HAFT
 	select ARCH_HAS_PTE_DEVMAP
 	select ARCH_HAS_PTE_SPECIAL
 	select ARCH_HAS_SETUP_DMA_OPS
@@ -219,7 +220,7 @@ config ARM64
 	select HAVE_MOD_ARCH_SPECIFIC
 	select HAVE_NMI
 	select HAVE_PERF_EVENTS
-	select HAVE_PERF_EVENTS_NMI if ARM64_PSEUDO_NMI
+	select HAVE_PERF_EVENTS_NMI if ARM64_PSEUDO_NMI || ARM64_NMI
 	select HAVE_PERF_REGS
 	select HAVE_PERF_USER_STACK_DUMP
 	select HAVE_PREEMPT_DYNAMIC_KEY
@@ -234,6 +235,7 @@ config ARM64
 	select HAVE_KRETPROBES
 	select HAVE_GENERIC_VDSO
 	select HOTPLUG_CORE_SYNC_DEAD if HOTPLUG_CPU
+	select HOTPLUG_SMT if HOTPLUG_CPU
 	select IRQ_DOMAIN
 	select IRQ_FORCED_THREADING
 	select KASAN_VMALLOC if KASAN
@@ -1215,6 +1217,60 @@ config HISILICON_ERRATUM_161600802
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_162102203
+	bool "Hisilicon erratum 162102203"
+	default n
+	help
+	  On HIP09, SMS_ATN bit may be cleared by hardware before it is driven
+	  to process. This will causes bridge commands timeout. Avoid these issues
+	  by modifying the IPMI driver to use variables to store SMS_ATNs that may
+	  be lost.
+
+	  If unsure, say N.
+
+config HISILICON_ERRATUM_162100801
+	bool "Hip09 162100801 erratum support"
+	default y
+	help
+	  When enabling GICv4.1 in hip09, VMAPP will fail to clear some caches
+	  during unmapping operation, which will cause some vSGIs lost.
+	  To fix the issue, invalidate related vPE cache through GICR_INVALLR
+	  after VMOVP.
+
+	  If unsure, say Y.
+
+config HISILICON_ERRATUM_1980005
+	bool "Hisilicon erratum IDC support"
+	default n
+	help
+	  The HiSilicon TSV100/200 SoC support idc but report wrong value to
+	  kernel.
+
+	  If unsure, say N.
+
+config HISILICON_ERRATUM_162100602
+	bool "Hisilicon erratum 162100602"
+	depends on ARM_SMMU_V3 && ARCH_HISI
+	default y
+	help
+	  SMMU pagetable prefetch features may prefetch and use a invalid PTE even
+	  the PTE is valid at that time. This will cause the device trigger fake
+	  pagefaults. If the SMMU works in terminate mode, transactions which occur
+	  fake pagefaults will be aborted, and could result in unexpected errors.
+
+	  If unsure, say Y.
+
+config HISILICON_ERRATUM_162100125
+	bool "Hisilicon erratum 162100125"
+	default y
+	help
+	  On Hisilicon LINXICORE9100 cores, sharing tlb entries on two cores when
+	  TTBRx.CNP=1 differs from the standard ARM core. This causes issues when
+	  tlb entries sharing between CPU cores. Avoid these issues by disabling
+	  CNP support for Hisilicon LINXICORE9100 cores.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
@@ -1498,6 +1554,21 @@ config NODES_SHIFT
 	help
 	  Specify the maximum number of NUMA Nodes available on the target
 	  system.  Increases memory reserved to accommodate various tables.
+
+config NUMA_AWARE_SPINLOCKS
+	bool "Numa-aware spinlocks"
+	depends on NUMA
+	depends on QUEUED_SPINLOCKS
+	default n
+	help
+	  Introduce NUMA (Non Uniform Memory Access) awareness into
+	  the slow path of spinlocks.
+
+	  In this variant of qspinlock, the kernel will try to keep the lock
+	  on the same node, thus reducing the number of remote cache misses,
+	  while trading some of the short term fairness for better performance.
+
+	  Say N if you want absolute first come first serve fairness.
 
 source "kernel/Kconfig.hz"
 
@@ -2013,7 +2084,27 @@ config ARM64_TLB_RANGE
 	  The feature introduces new assembly instructions, and they were
 	  support when binutils >= 2.30.
 
-endmenu # "ARMv8.4 architectural features"
+config ARM64_MPAM
+	bool "Enable support for MPAM"
+	select ACPI_MPAM if ACPI
+	select ARCH_HAS_CPU_RESCTRL
+	select RESCTRL_FS
+	help
+	  Memory Partitioning and Monitoring is an optional extension
+	  that allows the CPUs to mark load and store transactions with
+	  labels for partition-id and performance-monitoring-group.
+	  System components, such as the caches, can use the partition-id
+	  to apply a performance policy. MPAM monitors can use the
+	  partition-id and performance-monitoring-group to measure the
+	  cache occupancy or data throughput.
+
+	  Use of this extension requires CPU support, support in the
+	  memory system components (MSC), and a description from firmware
+	  of where the MSC are in the address space.
+
+	  MPAM is exposed to user-space via the resctrl pseudo filesystem.
+
+endmenu
 
 menu "ARMv8.5 architectural features"
 
@@ -2118,6 +2209,16 @@ config ARM64_MTE
 
 endmenu # "ARMv8.5 architectural features"
 
+menu "ARMv8.6 architectural features"
+
+config ARM64_TWED
+	bool "Enable support for delayed trapping of WFE"
+	default y
+	help
+	  Delayed Trapping of WFE (part of the ARMv8.6 Extensions)
+
+endmenu
+
 menu "ARMv8.7 architectural features"
 
 config ARM64_EPAN
@@ -2131,6 +2232,50 @@ config ARM64_EPAN
 	  The feature is detected at runtime, and will remain disabled
 	  if the cpu does not implement the feature.
 endmenu # "ARMv8.7 architectural features"
+
+menu "ARMv8.8 architectural features"
+
+config ARM64_NMI
+	bool "Enable support for Non-maskable Interrupts (NMI)"
+	default y
+	help
+	  Non-maskable interrupts are an architecture and GIC feature
+	  which allow the system to configure some interrupts to be
+	  configured to have superpriority, allowing them to be handled
+	  before other interrupts and masked for shorter periods of time.
+
+	  The feature is detected at runtime, and will remain disabled
+	  if the cpu does not implement the feature. It will also be
+	  disabled if pseudo NMIs are enabled at runtime.
+
+config ARM64_HAFT
+	bool "Support for Hardware managed Access Flag for Table Descriptors"
+	depends on ARM64_HW_AFDBM
+	default y
+	help
+	  The ARMv8.9/ARMv9.5 introduces the feature Hardware managed Access
+	  Flag for Table descriptors. When enabled an architectural executed
+	  memory access will update the Access Flag in each Table descriptor
+	  which is accessed during the translation table walk and for which
+	  the Access Flag is 0. The Access Flag of the Table descriptor use
+	  the same bit of PTE_AF.
+
+	  The feature will only be enabled if all the CPUs in the system
+	  support this feature. If unsure, say Y.
+
+endmenu # "ARMv8.8 architectural features"
+menu "ARMv9.5 architectural features"
+
+config ARM64_HDBSS
+	bool "Enable support for Hardware Dirty state tracking Structure (HDBSS)"
+	default y
+	help
+	  Hardware Dirty state tracking Structure(HDBSS) enhances tracking
+	  translation table descriptors’ dirty state to reduce the cost of
+	  surveying for dirtied granules.
+
+endmenu # "ARMv9.5 architectural features"
+
 
 config ARM64_SVE
 	bool "ARM Scalable Vector Extension support"

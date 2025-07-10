@@ -9,6 +9,29 @@
 #include <kvm/arm_vgic.h>
 #include "vgic.h"
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+static void kvm_populate_msi(struct kvm_kernel_irq_routing_entry *e,
+			    struct kvm_msi *msi);
+
+void kire_arch_cached_data_update(struct kvm *kvm,
+			struct kvm_kernel_irq_routing_entry *e)
+{
+	struct vgic_dist *dist = &kvm->arch.vgic;
+	struct kire_data *cache = &e->cache;
+	struct shadow_dev *sdev;
+	struct kvm_msi msi;
+
+	kvm_populate_msi(e, &msi);
+
+	raw_spin_lock(&dist->sdev_list_lock);
+	sdev = kvm_shadow_dev_get(kvm, &msi);
+	raw_spin_unlock(&dist->sdev_list_lock);
+
+	cache->valid = !!sdev;
+	cache->data = sdev;
+}
+#endif
+
 /**
  * vgic_irqfd_set_irq: inject the IRQ corresponding to the
  * irqchip routing entry
@@ -98,6 +121,23 @@ int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 	return vgic_its_inject_msi(kvm, &msi);
 }
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+static int kvm_arch_set_irq_bypass(struct kvm_kernel_irq_routing_entry *e,
+				  struct kvm *kvm)
+{
+	struct kire_data *cache = &e->cache;
+
+	/*
+	 * FIXME: is there any race against the irqfd_update(),
+	 * where the cache data will be updated?
+	 */
+	if (!cache->valid)
+		return -EWOULDBLOCK;
+
+	return shadow_dev_virq_bypass_inject(kvm, e);
+}
+#endif
+
 /**
  * kvm_arch_set_irq_inatomic: fast-path for irqfd injection
  */
@@ -115,6 +155,10 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		if (!vgic_has_its(kvm))
 			break;
 
+#ifdef CONFIG_VIRT_PLAT_DEV
+		if (!kvm_arch_set_irq_bypass(e, kvm))
+			return 0;
+#endif
 		kvm_populate_msi(e, &msi);
 		return vgic_its_inject_cached_translation(kvm, &msi);
 	}

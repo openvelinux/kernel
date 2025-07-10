@@ -2005,6 +2005,14 @@ static void arm_smmu_tlb_inv_page_nosync(struct iommu_iotlb_gather *gather,
 static void arm_smmu_tlb_inv_walk(unsigned long iova, size_t size,
 				  size_t granule, void *cookie)
 {
+#ifdef CONFIG_HISILICON_ERRATUM_162100602
+	struct arm_smmu_domain *smmu_domain = cookie;
+
+	if (!size && smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_BATCH) {
+		arm_smmu_tlb_inv_range_domain(iova, granule, granule, true, cookie);
+		return;
+	}
+#endif
 	arm_smmu_tlb_inv_range_domain(iova, size, granule, false, cookie);
 }
 
@@ -2525,6 +2533,26 @@ static void arm_smmu_iotlb_sync(struct iommu_domain *domain,
 				      gather->pgsize, true, smmu_domain);
 }
 
+#ifdef CONFIG_HISILICON_ERRATUM_162100602
+static void arm_smmu_iotlb_sync_map(struct iommu_domain *domain,
+				unsigned long iova, size_t size)
+{
+	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+	size_t granule_size;
+
+	if (!(smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_MAP))
+		return;
+
+	if (smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_BATCH)
+		return;
+
+	granule_size = 1 <<  __ffs(smmu_domain->domain.pgsize_bitmap);
+
+	/* Add a SYNC command to sync io-pgtale to avoid errors in pgtable prefetch*/
+	arm_smmu_tlb_inv_range_domain(iova, granule_size, granule_size, true, smmu_domain);
+}
+#endif
+
 static phys_addr_t
 arm_smmu_iova_to_phys(struct iommu_domain *domain, dma_addr_t iova)
 {
@@ -2880,6 +2908,9 @@ static struct iommu_ops arm_smmu_ops = {
 		.unmap_pages		= arm_smmu_unmap_pages,
 		.flush_iotlb_all	= arm_smmu_flush_iotlb_all,
 		.iotlb_sync		= arm_smmu_iotlb_sync,
+#ifdef CONFIG_HISILICON_ERRATUM_162100602
+		.iotlb_sync_map         = arm_smmu_iotlb_sync_map,
+#endif
 		.iova_to_phys		= arm_smmu_iova_to_phys,
 		.enable_nesting		= arm_smmu_enable_nesting,
 		.free			= arm_smmu_domain_free,
@@ -3467,6 +3498,46 @@ static void arm_smmu_device_iidr_probe(struct arm_smmu_device *smmu)
 	}
 }
 
+#ifdef CONFIG_HISILICON_ERRATUM_162100602
+static void hisi_smmu_check_errata(struct arm_smmu_device *smmu)
+{
+	u32 reg, i;
+
+	/* IIDR */
+	reg = readl_relaxed(smmu->base + ARM_SMMU_IIDR);
+	if (!(FIELD_GET(IIDR_VARIANT, reg) == 0x3) ||
+	    !(FIELD_GET(IIDR_REVISION, reg) == 0x2))
+		return;
+
+	smmu->options |= ARM_SMMU_OPT_SYNC_MAP;
+
+	reg = readl_relaxed(smmu->base + ARM_SMMU_USER_CFG1);
+	reg = reg & GENMASK(15, 0);
+	for (i = 0; i < 8; i++) {
+		unsigned long val;
+
+		val = (reg >> 2 * i) & GENMASK(1, 0);
+		switch (PAGE_SIZE) {
+		case SZ_4K:
+			if (!val)
+				return;
+			break;
+		case SZ_16K:
+			if (!val || val == 0x1)
+				return;
+			break;
+		case SZ_64K:
+			if (!val || val == 0x1 || val == 0x3)
+				return;
+			break;
+		default:
+			return;
+		}
+	}
+	smmu->options |= ARM_SMMU_OPT_SYNC_BATCH;
+}
+#endif
+
 static int arm_smmu_device_hw_probe(struct arm_smmu_device *smmu)
 {
 	u32 reg;
@@ -3660,6 +3731,10 @@ static int arm_smmu_device_hw_probe(struct arm_smmu_device *smmu)
 	case IDR5_OAS_48_BIT:
 		smmu->oas = 48;
 	}
+
+#ifdef CONFIG_HISILICON_ERRATUM_162100602
+	hisi_smmu_check_errata(smmu);
+#endif
 
 	if (arm_smmu_ops.pgsize_bitmap == -1UL)
 		arm_smmu_ops.pgsize_bitmap = smmu->pgsize_bitmap;

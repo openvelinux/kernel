@@ -67,6 +67,12 @@ struct arch_timer_kvm_info {
 	struct timecounter timecounter;
 	int virtual_irq;
 	int physical_irq;
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+/* vtimer expand device probed flag */
+#define VT_EXPANDDEV_PROBED		(1 << 0)
+	unsigned long irqbypass_flag;
+#endif
 };
 
 struct arch_timer_mem_frame {
@@ -107,6 +113,19 @@ static inline bool arch_timer_evtstrm_available(void)
 	return false;
 }
 
+#endif
+
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+static inline bool vtimer_irqbypass_hw_support(struct arch_timer_kvm_info *info)
+{
+	return info->irqbypass_flag & VT_EXPANDDEV_PROBED;
+}
+
+void vtimer_mbigen_set_vector(int cpu_id, u16 vpeid);
+bool vtimer_mbigen_get_active(int cpu_id);
+void vtimer_mbigen_set_auto_clr(int cpu_id, bool set);
+void vtimer_gic_set_auto_clr(int cpu_id, bool set);
+void vtimer_mbigen_set_active(int cpu_id, bool set);
 #endif
 
 #endif

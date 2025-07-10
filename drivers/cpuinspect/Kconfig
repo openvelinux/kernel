@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+menu "CPU Inspect"
+
+config CPU_INSPECT
+	tristate "CPU inspect support"
+	depends on SYSFS && 64BIT
+	default n
+	help
+	  CPU-inspect is designed to provide a framework for early detection
+	  of SDC by proactively executing CPU inspection test cases. It
+	  includes modular inspector that can be swapped during runtime.
+
+if CPU_INSPECT
+
+config CPU_INSPECTOR_ATF
+    tristate "ATF CPU inspector"
+        depends on ARM64
+        default n
+        help
+          This inspector implements the execution of inspection instructions
+          in BIOS.
+
+endif
+endmenu

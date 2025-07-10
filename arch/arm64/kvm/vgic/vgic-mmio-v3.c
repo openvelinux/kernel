@@ -78,6 +78,8 @@ static unsigned long vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
 	case GICD_TYPER:
 		value = vgic->nr_spis + VGIC_NR_PRIVATE_IRQS;
 		value = (value >> 5) - 1;
+		if (vgic->has_nmi)
+			value |= GICD_TYPER_NMI;
 		if (vgic_has_its(vcpu->kvm)) {
 			value |= (INTERRUPT_ID_BITS_ITS - 1) << 19;
 			value |= GICD_TYPER_LPIS;
@@ -130,6 +132,7 @@ static void vgic_mmio_write_v3_misc(struct kvm_vcpu *vcpu,
 
 		/* Switching HW SGIs? */
 		dist->nassgireq = val & GICD_CTLR_nASSGIreq;
+		dist->its_vm.nassgireq = dist->nassgireq;
 		if (is_hwsgi != dist->nassgireq)
 			vgic_v4_configure_vsgis(vcpu->kvm);
 
@@ -158,6 +161,13 @@ static int vgic_mmio_uaccess_write_v3_misc(struct kvm_vcpu *vcpu,
 	u32 reg;
 
 	switch (addr & 0x0c) {
+	case GICD_TYPER:
+		if (dist->implementation_rev >= KVM_VGIC_IMP_REV_4 &&
+		    kvm_vgic_global_state.has_nmi)
+			dist->has_nmi = val & GICD_TYPER_NMI;
+		else if (val & GICD_TYPER_NMI)
+			return -EINVAL;
+		return 0;
 	case GICD_TYPER2:
 		if (val != vgic_mmio_read_v3_misc(vcpu, addr, len))
 			return -EINVAL;
@@ -171,6 +181,10 @@ static int vgic_mmio_uaccess_write_v3_misc(struct kvm_vcpu *vcpu,
 		switch (reg) {
 		case KVM_VGIC_IMP_REV_2:
 		case KVM_VGIC_IMP_REV_3:
+			/* Disable NMI on selecting an older revision */
+			dist->has_nmi = false;
+			fallthrough;
+		case KVM_VGIC_IMP_REV_4:
 			dist->implementation_rev = reg;
 			return 0;
 		default:
@@ -186,7 +200,7 @@ static int vgic_mmio_uaccess_write_v3_misc(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
-	vgic_mmio_write_v3_misc(vcpu, addr, len, val);
+	/* Not reachable... */
 	return 0;
 }
 
@@ -382,9 +396,24 @@ static int vgic_v3_uaccess_write_pending(struct kvm_vcpu *vcpu,
 
 		if (irq->pending_latch)
 			vgic_queue_irq_unlock(vcpu->kvm, irq, flags);
-		else
+		else{
+#ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
+			/**
+			 * workaround: On reset, userspace clears pending status
+			 * for all PPIs and SGIs by writing all 0's to
+			 * GICR_ISPENDR0. The pending state of vtimer interrupt
+			 * is somehow staying in redistributor and we have to
+			 * explicitly clear it...
+			 *
+			 * P.S., irq->vtimer_info is NULL on restore.
+			 */
+			if (irq->vtimer_info)
+				WARN_ON_ONCE(irq_set_irqchip_state(irq->host_irq,
+							IRQCHIP_STATE_PENDING,
+							false));
+#endif
 			raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
-
+		}
 		vgic_put_irq(vcpu->kvm, irq);
 	}
 
@@ -590,6 +619,55 @@ static void vgic_mmio_write_invall(struct kvm_vcpu *vcpu,
 	vgic_set_rdist_busy(vcpu, false);
 }
 
+static unsigned long vgic_mmio_read_nmi(struct kvm_vcpu *vcpu,
+					gpa_t addr, unsigned int len)
+{
+	u32 intid = VGIC_ADDR_TO_INTID(addr, 1);
+	u32 value = 0;
+	int i;
+
+	/* Loop over all IRQs affected by this read */
+	for (i = 0; i < len * 8; i++) {
+		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
+
+		if (irq->nmi)
+			value |= (1U << i);
+
+		vgic_put_irq(vcpu->kvm, irq);
+	}
+
+	return value;
+}
+
+static void vgic_mmio_write_nmi(struct kvm_vcpu *vcpu, gpa_t addr,
+				unsigned int len, unsigned long val)
+{
+	u32 intid = VGIC_ADDR_TO_INTID(addr, 1);
+	unsigned long flags;
+	int i;
+
+	if (!vcpu->kvm->arch.vgic.has_nmi)
+		return;
+
+	for (i = 0; i < len * 8; i++) {
+		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
+		bool was_nmi;
+
+		raw_spin_lock_irqsave(&irq->irq_lock, flags);
+
+		was_nmi = irq->nmi;
+		irq->nmi = (val & BIT(i));
+
+		if (irq->hw && vgic_irq_is_sgi(irq->intid) &&
+		    was_nmi != irq->nmi)
+			vgic_update_vsgi(irq);
+
+		raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+
+		vgic_put_irq(vcpu->kvm, irq);
+	}
+}
+
 /*
  * The GICv3 per-IRQ registers are split to control PPIs and SGIs in the
  * redistributors, while SPIs are covered by registers in the distributor
@@ -662,6 +740,9 @@ static const struct vgic_register_region vgic_v3_dist_registers[] = {
 		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_IGRPMODR,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, NULL, NULL, 1,
+		VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_INMIR,
+		vgic_mmio_read_nmi, vgic_mmio_write_nmi, NULL, NULL, 1,
 		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_IROUTER,
 		vgic_mmio_read_irouter, vgic_mmio_write_irouter, NULL, NULL, 64,
@@ -746,6 +827,9 @@ static const struct vgic_register_region vgic_v3_rd_registers[] = {
 		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_NSACR,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, 4,
+		VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_INMIR0,
+		vgic_mmio_read_nmi, vgic_mmio_write_nmi, 4,
 		VGIC_ACCESS_32bit),
 };
 

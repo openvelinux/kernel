@@ -24,6 +24,7 @@
 #include <linux/sched/sysctl.h>
 #include <linux/sched/topology.h>
 #include <linux/sched/signal.h>
+#include <linux/sched/isolation.h>
 #include <linux/delay.h>
 #include <linux/crash_dump.h>
 #include <linux/prefetch.h>
@@ -2245,9 +2246,17 @@ select_cpu:
  */
 void blk_mq_delay_run_hw_queue(struct blk_mq_hw_ctx *hctx, unsigned long msecs)
 {
+	int work_cpu;
+
 	if (unlikely(blk_mq_hctx_stopped(hctx)))
 		return;
-	kblockd_mod_delayed_work_on(blk_mq_hctx_next_cpu(hctx), &hctx->run_work,
+
+	if (enhanced_isolcpus && tick_nohz_full_enabled() &&
+	    housekeeping_cpu(raw_smp_processor_id(), HK_TYPE_WQ))
+		work_cpu = raw_smp_processor_id();
+	else
+		work_cpu = blk_mq_hctx_next_cpu(hctx);
+	kblockd_mod_delayed_work_on(work_cpu, &hctx->run_work,
 				    msecs_to_jiffies(msecs));
 }
 EXPORT_SYMBOL(blk_mq_delay_run_hw_queue);
