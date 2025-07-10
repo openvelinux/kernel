@@ -4814,12 +4814,6 @@ static int next_shared_offset(struct kvm *kvm, kvm_pfn_t pfn_start, long npages_
 		}
 
 		pfn += PHYS_PFN(page_level_size(level));
-
-		/*
-		 * Only possible if RMP entry size is larger than the folio,
-		 * which kvm_gmem_prepare() should never allow for.
-		 */
-		WARN_ON_ONCE(pfn > pfn_start + npages_max);
 	}
 
 	if (!*npages_shared)
