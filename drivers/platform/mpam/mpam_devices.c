@@ -926,6 +926,14 @@ bool resctrl_arch_would_mbm_overflow(void)
 	return read_cpuid_implementor() != ARM_CPU_IMP_HISI;
 }
 
+static bool mpam_ris_has_nrdy_bit(struct mpam_msc_ris *ris)
+{
+	if (ris->comp->class->type == MPAM_CLASS_MEMORY)
+		return read_cpuid_implementor() != ARM_CPU_IMP_HISI;
+
+	return true;
+}
+
 static void __ris_msmon_read(void *arg)
 {
 	bool nrdy = false;
@@ -999,6 +1007,9 @@ static void __ris_msmon_read(void *arg)
 			nrdy = now & MSMON___NRDY;
 			now = FIELD_GET(MSMON___VALUE, now);
 		}
+
+		if (config_mismatch && !mpam_ris_has_nrdy_bit(ris))
+			nrdy = true;
 
 		if (nrdy)
 			break;
