@@ -473,7 +473,6 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 	bool leaf = true;
 	bool has_cores = false;
 	struct device_node *c;
-	static int package_id __initdata;
 	int core_id = 0;
 	int i, ret;
 
@@ -512,7 +511,7 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 			}
 
 			if (leaf) {
-				ret = parse_core(c, package_id, core_id++);
+				ret = parse_core(c, 0, core_id++);
 			} else {
 				pr_err("%pOF: Non-leaf cluster with core %s\n",
 				       cluster, name);
@@ -528,9 +527,6 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 
 	if (leaf && !has_cores)
 		pr_warn("%pOF: empty cluster\n", cluster);
-
-	if (leaf)
-		package_id++;
 
 	return 0;
 }
