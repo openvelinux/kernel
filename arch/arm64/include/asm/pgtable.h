@@ -852,7 +852,7 @@ static inline int ptep_clear_flush_young(struct vm_area_struct *vma,
 	return young;
 }
 
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG)
 #define __HAVE_ARCH_PMDP_TEST_AND_CLEAR_YOUNG
 static inline int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 					    unsigned long address,
@@ -860,7 +860,7 @@ static inline int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 {
 	return ptep_test_and_clear_young(vma, address, (pte_t *)pmdp);
 }
-#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
+#endif /* CONFIG_TRANSPARENT_HUGEPAGE || CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG */
 
 #define __HAVE_ARCH_PTEP_GET_AND_CLEAR
 static inline pte_t ptep_get_and_clear(struct mm_struct *mm,
@@ -1012,6 +1012,10 @@ static inline bool arch_faults_on_old_pte(void)
 	return !cpu_has_hw_af();
 }
 #define arch_faults_on_old_pte		arch_faults_on_old_pte
+
+#ifdef CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG
+#define arch_has_hw_nonleaf_pmd_young	system_supports_haft
+#endif
 
 /*
  * Experimentally, it's cheap to set the access flag in hardware and we
