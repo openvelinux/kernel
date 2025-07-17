@@ -63,6 +63,8 @@
 #define HCR_VM		(UL(1) << 0)
 #define HCR_RES0	((UL(1) << 48) | (UL(1) << 39))
 
+#define HCRX_EL2_TCR2En	(UL(1) << 14)
+
 /*
  * The bits we set in HCR:
  * TLOR:	Trap LORegion register accesses
@@ -89,6 +91,7 @@
 #define HCR_HOST_NVHE_FLAGS (HCR_RW | HCR_API | HCR_APK | HCR_ATA)
 #define HCR_HOST_NVHE_PROTECTED_FLAGS (HCR_HOST_NVHE_FLAGS | HCR_TSC)
 #define HCR_HOST_VHE_FLAGS (HCR_RW | HCR_TGE | HCR_E2H)
+#define HCRX_HOST_FLAGS (HCRX_EL2_TCR2En)
 
 /* TCR_EL2 Registers bits */
 #define TCR_EL2_RES1		((1U << 31) | (1 << 23))

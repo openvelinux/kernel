@@ -542,6 +542,7 @@
 #define SYS_HFGITR_EL2			sys_reg(3, 4, 1, 1, 6)
 #define SYS_ZCR_EL2			sys_reg(3, 4, 1, 2, 0)
 #define SYS_TRFCR_EL2			sys_reg(3, 4, 1, 2, 1)
+#define SYS_HCRX_EL2			sys_reg(3, 4, 1, 2, 2)
 #define SYS_DACR32_EL2			sys_reg(3, 4, 3, 0, 0)
 #define SYS_HDFGRTR_EL2			sys_reg(3, 4, 3, 1, 4)
 #define SYS_HDFGWTR_EL2			sys_reg(3, 4, 3, 1, 5)
@@ -1097,6 +1098,8 @@
 #define ID_AA64MMFR1_EL1_HAFDBS_SHIFT		0
 #define ID_AA64MMFR1_EL1_HAFDBS_HAFT		UL(0b0011)
 #define ID_AA64MMFR1_EL1_HAFDBS_HDBSS		UL(0b0100)
+
+#define ID_AA64MMFR1_EL1_HCX_SHIFT		40
 
 #if defined(CONFIG_ARM64_4K_PAGES)
 #define ID_AA64MMFR0_TGRAN_SHIFT		ID_AA64MMFR0_TGRAN4_SHIFT
