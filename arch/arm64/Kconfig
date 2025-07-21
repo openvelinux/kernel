@@ -116,6 +116,7 @@ config ARM64
 	select ARM_GIC_V3
 	select ARM_GIC_V3_ITS if PCI
 	select ARM_PSCI_FW
+	select ARM64_LS64 if !FUNCTION_ALIGNMENT_64B
 	select BUILDTIME_TABLE_SORT
 	select CLONE_BACKWARDS
 	select COMMON_CLK
@@ -2184,6 +2185,9 @@ config ARM64_TWED
 	default y
 	help
 	  Delayed Trapping of WFE (part of the ARMv8.6 Extensions)
+
+config ARM64_LS64
+	bool
 
 endmenu
 

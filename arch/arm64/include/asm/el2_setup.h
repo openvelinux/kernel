@@ -28,6 +28,7 @@
 	cbz	x0, .Lskip_hcrx_\@
 	mov_q	x0, HCRX_HOST_FLAGS
 
+#ifdef CONFIG_ARM64_LS64
 	/* Enable LS64, LS64_V if supported */
 	mrs_s	x1, SYS_ID_AA64ISAR1_EL1
 	ubfx	x1, x1, #ID_AA64ISAR1_EL1_LS64_SHIFT, #4
@@ -36,6 +37,7 @@
 	cmp	x1, #ID_AA64ISAR1_EL1_LS64_LS64_V
 	b.lt	.Lset_hcrx_\@
 	orr	x0, x0, #HCRX_EL2_EnASR
+#endif
 
 .Lset_hcrx_\@ :
 	msr_s	SYS_HCRX_EL2, x0
