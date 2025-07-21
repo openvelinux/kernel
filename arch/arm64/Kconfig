@@ -1241,15 +1241,6 @@ config HISILICON_ERRATUM_162100801
 
 	  If unsure, say Y.
 
-config HISILICON_ERRATUM_1980005
-	bool "Hisilicon erratum IDC support"
-	default n
-	help
-	  The HiSilicon TSV100/200 SoC support idc but report wrong value to
-	  kernel.
-
-	  If unsure, say N.
-
 config HISILICON_ERRATUM_162100602
 	bool "Hisilicon erratum 162100602"
 	depends on ARM_SMMU_V3 && ARCH_HISI
