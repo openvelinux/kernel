@@ -110,8 +110,8 @@ int resctrl_arch_set_cdp_enabled(enum resctrl_res_level ignored, bool enable)
 	partid = RESCTRL_RESERVED_CLOSID;
 
 	if (enable) {
-		partid_d = resctrl_get_config_index(partid, CDP_CODE);
-		partid_i = resctrl_get_config_index(partid, CDP_DATA);
+		partid_d = resctrl_get_config_index(partid, CDP_DATA);
+		partid_i = resctrl_get_config_index(partid, CDP_CODE);
 		regval = FIELD_PREP(MPAM_SYSREG_PARTID_D, partid_d) |
 			 FIELD_PREP(MPAM_SYSREG_PARTID_I, partid_i);
 
