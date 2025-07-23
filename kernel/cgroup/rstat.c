@@ -3,8 +3,6 @@
 
 #include <linux/sched/cputime.h>
 
-#include <trace/events/cgroup.h>
-
 static DEFINE_SPINLOCK(cgroup_rstat_lock);
 static DEFINE_PER_CPU(raw_spinlock_t, cgroup_rstat_cpu_lock);
 
@@ -198,33 +196,38 @@ unlock_ret:
 	return head;
 }
 
-/*
- * Helper functions for locking cgroup_rstat_lock.
- *
- * This makes it easier to diagnose locking issues and contention in
- * production environments.  The parameter @cpu_in_loop indicate lock
- * was released and re-taken when collection data from the CPUs. The
- * value -1 is used when obtaining the main lock else this is the CPU
- * number processed last.
- */
-static inline void __cgroup_rstat_lock(struct cgroup *cgrp, int cpu_in_loop)
-	__acquires(&cgroup_rstat_lock)
+/* see cgroup_rstat_flush() */
+static void cgroup_rstat_flush_locked(struct cgroup *cgrp, bool may_sleep)
+	__releases(&cgroup_rstat_lock) __acquires(&cgroup_rstat_lock)
 {
-	bool contended;
+	int cpu;
 
-	contended = !spin_trylock_irq(&cgroup_rstat_lock);
-	if (contended) {
-		trace_cgroup_rstat_lock_contended(cgrp, cpu_in_loop, contended);
-		spin_lock_irq(&cgroup_rstat_lock);
+	lockdep_assert_held(&cgroup_rstat_lock);
+
+	for_each_possible_cpu(cpu) {
+		struct cgroup *pos = cgroup_rstat_updated_list(cgrp, cpu);
+
+		for (; pos; pos = pos->rstat_flush_next) {
+			struct cgroup_subsys_state *css;
+
+			cgroup_base_stat_flush(pos, cpu);
+
+			rcu_read_lock();
+			list_for_each_entry_rcu(css, &pos->rstat_css_list,
+						rstat_css_node)
+				css->ss->css_rstat_flush(css, cpu);
+			rcu_read_unlock();
+		}
+
+		/* if @may_sleep, play nice and yield if necessary */
+		if (may_sleep && (need_resched() ||
+				  spin_needbreak(&cgroup_rstat_lock))) {
+			spin_unlock_irq(&cgroup_rstat_lock);
+			if (!cond_resched())
+				cpu_relax();
+			spin_lock_irq(&cgroup_rstat_lock);
+		}
 	}
-	trace_cgroup_rstat_locked(cgrp, cpu_in_loop, contended);
-}
-
-static inline void __cgroup_rstat_unlock(struct cgroup *cgrp, int cpu_in_loop)
-	__releases(&cgroup_rstat_lock)
-{
-	trace_cgroup_rstat_unlock(cgrp, cpu_in_loop, false);
-	spin_unlock_irq(&cgroup_rstat_lock);
 }
 
 /**
@@ -242,30 +245,52 @@ static inline void __cgroup_rstat_unlock(struct cgroup *cgrp, int cpu_in_loop)
  */
 void cgroup_rstat_flush(struct cgroup *cgrp)
 {
-	int cpu;
-
 	might_sleep();
-	for_each_possible_cpu(cpu) {
-		struct cgroup *pos;
 
-		/* Reacquire for each CPU to avoid disabling IRQs too long */
-		__cgroup_rstat_lock(cgrp, cpu);
-		pos = cgroup_rstat_updated_list(cgrp, cpu);
-		for (; pos; pos = pos->rstat_flush_next) {
-			struct cgroup_subsys_state *css;
+	spin_lock_irq(&cgroup_rstat_lock);
+	cgroup_rstat_flush_locked(cgrp, true);
+	spin_unlock_irq(&cgroup_rstat_lock);
+}
 
-			cgroup_base_stat_flush(pos, cpu);
+/**
+ * cgroup_rstat_flush_irqsafe - irqsafe version of cgroup_rstat_flush()
+ * @cgrp: target cgroup
+ *
+ * This function can be called from any context.
+ */
+void cgroup_rstat_flush_irqsafe(struct cgroup *cgrp)
+{
+	unsigned long flags;
 
-			rcu_read_lock();
-			list_for_each_entry_rcu(css, &pos->rstat_css_list,
-						rstat_css_node)
-				css->ss->css_rstat_flush(css, cpu);
-			rcu_read_unlock();
-		}
-		__cgroup_rstat_unlock(cgrp, cpu);
-		if (!cond_resched())
-			cpu_relax();
-	}
+	spin_lock_irqsave(&cgroup_rstat_lock, flags);
+	cgroup_rstat_flush_locked(cgrp, false);
+	spin_unlock_irqrestore(&cgroup_rstat_lock, flags);
+}
+
+/**
+ * cgroup_rstat_flush_hold - flush stats in @cgrp's subtree and hold
+ * @cgrp: target cgroup
+ *
+ * Flush stats in @cgrp's subtree and prevent further flushes.  Must be
+ * paired with cgroup_rstat_flush_release().
+ *
+ * This function may block.
+ */
+void cgroup_rstat_flush_hold(struct cgroup *cgrp)
+	__acquires(&cgroup_rstat_lock)
+{
+	might_sleep();
+	spin_lock_irq(&cgroup_rstat_lock);
+	cgroup_rstat_flush_locked(cgrp, true);
+}
+
+/**
+ * cgroup_rstat_flush_release - release cgroup_rstat_flush_hold()
+ */
+void cgroup_rstat_flush_release(void)
+	__releases(&cgroup_rstat_lock)
+{
+	spin_unlock_irq(&cgroup_rstat_lock);
 }
 
 int cgroup_rstat_init(struct cgroup *cgrp)
@@ -528,12 +553,11 @@ void cgroup_base_stat_cputime_show(struct seq_file *seq)
 	struct cgroup_base_stat bstat;
 
 	if (cgroup_parent(cgrp)) {
-		cgroup_rstat_flush(cgrp);
-		__cgroup_rstat_lock(cgrp, -1);
+		cgroup_rstat_flush_hold(cgrp);
 		bstat = cgrp->bstat;
 		cputime_adjust(&cgrp->bstat.cputime, &cgrp->prev_cputime,
 			       &bstat.cputime.utime, &bstat.cputime.stime);
-		__cgroup_rstat_unlock(cgrp, -1);
+		cgroup_rstat_flush_release();
 	} else {
 		root_cgroup_cputime(&bstat);
 	}
@@ -607,7 +631,7 @@ int cgroup_base_stat_percpu_show(struct seq_file *seq)
 		return -ENOMEM;
 
 	if (cgroup_parent(cgrp))
-		__cgroup_rstat_lock(cgrp, -1);
+		cgroup_rstat_flush_hold(cgrp);
 
 	for_each_possible_cpu(i) {
 		bstat = per_cpu_ptr(pcbstat, i);
@@ -615,7 +639,7 @@ int cgroup_base_stat_percpu_show(struct seq_file *seq)
 	}
 
 	if (cgroup_parent(cgrp))
-		__cgroup_rstat_unlock(cgrp, -1);
+		cgroup_rstat_flush_release();
 
 	for (e = bstats; e < bstats + ARRAY_SIZE(bstats); e++) {
 		seq_puts(seq, e->name);

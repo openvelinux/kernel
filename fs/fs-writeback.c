@@ -2060,6 +2060,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 	struct blk_plug plug;
 
 	blk_start_plug(&plug);
+	spin_lock(&wb->list_lock);
 	for (;;) {
 		/*
 		 * Stop writeback when nr_pages has been consumed
@@ -2083,9 +2084,6 @@ static long wb_writeback(struct bdi_writeback *wb,
 		 */
 		if (work->for_background && !wb_over_bg_thresh(wb))
 			break;
-
-
-		spin_lock(&wb->list_lock);
 
 		/*
 		 * Kupdate and background works are special and we want to
@@ -2116,19 +2114,13 @@ static long wb_writeback(struct bdi_writeback *wb,
 		 * mean the overall work is done. So we keep looping as long
 		 * as made some progress on cleaning pages or inodes.
 		 */
-		if (progress) {
-			spin_unlock(&wb->list_lock);
+		if (progress)
 			continue;
-		}
-
 		/*
 		 * No more inodes for IO, bail
 		 */
-		if (list_empty(&wb->b_more_io)) {
-			spin_unlock(&wb->list_lock);
+		if (list_empty(&wb->b_more_io))
 			break;
-		}
-
 		/*
 		 * Nothing written. Wait for some inode to
 		 * become available for writeback. Otherwise
@@ -2140,7 +2132,9 @@ static long wb_writeback(struct bdi_writeback *wb,
 		spin_unlock(&wb->list_lock);
 		/* This function drops i_lock... */
 		inode_sleep_on_writeback(inode);
+		spin_lock(&wb->list_lock);
 	}
+	spin_unlock(&wb->list_lock);
 	blk_finish_plug(&plug);
 
 	return nr_pages - work->nr_pages;
