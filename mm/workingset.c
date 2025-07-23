@@ -296,8 +296,9 @@ void workingset_refault(struct page *page, void *shadow)
 	bool workingset;
 	int memcgid;
 
-	rcu_read_lock();
 	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
+
+	rcu_read_lock();
 	/*
 	 * Look up the memcg associated with the stored ID. It might
 	 * have been deleted since the page's eviction.
@@ -315,21 +316,8 @@ void workingset_refault(struct page *page, void *shadow)
 	 * configurations instead.
 	 */
 	eviction_memcg = mem_cgroup_from_id(memcgid);
-	if (!mem_cgroup_disabled() &&
-	    (!eviction_memcg || !mem_cgroup_tryget(eviction_memcg))) {
-		rcu_read_unlock();
-		return;
-	}
-
-	rcu_read_unlock();
-
-	/*
-	 * Flush stats (and potentially sleep) outside the RCU read section.
-	 * XXX: With per-memcg flushing and thresholding, is ratelimiting
-	 * still needed here?
-	 */
-	mem_cgroup_flush_stats_ratelimited(eviction_memcg);
-
+	if (!mem_cgroup_disabled() && !eviction_memcg)
+		goto out;
 	eviction_lruvec = mem_cgroup_lruvec(eviction_memcg, pgdat);
 	refault = atomic_long_read(&eviction_lruvec->nonresident_age);
 
@@ -363,6 +351,8 @@ void workingset_refault(struct page *page, void *shadow)
 	lruvec = mem_cgroup_lruvec(memcg, pgdat);
 
 	inc_lruvec_state(lruvec, WORKINGSET_REFAULT_BASE + file);
+
+	mem_cgroup_flush_stats_delayed();
 	/*
 	 * Compare the distance to the existing workingset size. We
 	 * don't activate pages that couldn't stay resident even if
@@ -383,9 +373,8 @@ void workingset_refault(struct page *page, void *shadow)
 						     NR_INACTIVE_ANON);
 		}
 	}
-	mem_cgroup_put(eviction_memcg);
 	if (refault_distance > workingset_size)
-		return;
+		goto out;
 
 	SetPageActive(page);
 	workingset_age_nonresident(lruvec, thp_nr_pages(page));
@@ -398,6 +387,8 @@ void workingset_refault(struct page *page, void *shadow)
 		lru_note_cost_page(page);
 		inc_lruvec_state(lruvec, WORKINGSET_RESTORE_BASE + file);
 	}
+out:
+	rcu_read_unlock();
 }
 
 /**
@@ -503,7 +494,6 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 		struct lruvec *lruvec;
 		int i;
 
-		mem_cgroup_flush_stats_ratelimited(sc->memcg);
 		lruvec = mem_cgroup_lruvec(sc->memcg, NODE_DATA(sc->nid));
 		for (pages = 0, i = 0; i < NR_LRU_LISTS; i++)
 			pages += lruvec_page_state_local(lruvec,
