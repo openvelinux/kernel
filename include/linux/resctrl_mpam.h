@@ -1,17 +1,16 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#ifndef _RESCTRL_H
-#define _RESCTRL_H
+#ifndef _RESCTRL_MPAM_H
+#define _RESCTRL_MPAM_H
 
-#ifdef CONFIG_ARM_CPU_RESCTRL
-
-#include <linux/resctrl_mpam.h>
-
-#else
-
-#include <linux/cacheinfo.h>
+#include <linux/cpu.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/pid.h>
+#include <linux/resctrl_types.h>
+
+#ifdef CONFIG_ARCH_HAS_CPU_RESCTRL
+#include <asm/resctrl.h>
+#endif
 
 /* CLOSID, RMID value used by the default control group */
 #define RESCTRL_RESERVED_CLOSID		0
@@ -31,28 +30,52 @@ int proc_resctrl_show(struct seq_file *m,
 /* max value for struct rdt_domain's mbps_val */
 #define MBA_MAX_MBPS   U32_MAX
 
-/**
- * enum resctrl_conf_type - The type of configuration.
- * @CDP_NONE:	No prioritisation, both code and data are controlled or monitored.
- * @CDP_CODE:	Configuration applies to instruction fetches.
- * @CDP_DATA:	Configuration applies to reads and writes.
- */
-enum resctrl_conf_type {
-	CDP_NONE,
-	CDP_CODE,
-	CDP_DATA,
-};
-
-#define CDP_NUM_TYPES	(CDP_DATA + 1)
-
 /*
- * Event IDs, the values match those used to program IA32_QM_EVTSEL before
- * reading IA32_QM_CTR on RDT systems.
+ * Resctrl uses u32 to hold the user-space config. The maximum bitmap size is
+ * 32.
  */
-enum resctrl_event_id {
-	QOS_L3_OCCUP_EVENT_ID		= 0x01,
-	QOS_L3_MBM_TOTAL_EVENT_ID	= 0x02,
-	QOS_L3_MBM_LOCAL_EVENT_ID	= 0x03,
+#define RESCTRL_MAX_CBM			32
+
+extern unsigned int resctrl_rmid_realloc_limit;
+extern unsigned int resctrl_rmid_realloc_threshold;
+
+/**
+ * struct pseudo_lock_region - pseudo-lock region information
+ * @s:			Resctrl schema for the resource to which this
+ *			pseudo-locked region belongs
+ * @closid:		The closid that this pseudo-locked region uses
+ * @d:			RDT domain to which this pseudo-locked region
+ *			belongs
+ * @cbm:		bitmask of the pseudo-locked region
+ * @lock_thread_wq:	waitqueue used to wait on the pseudo-locking thread
+ *			completion
+ * @thread_done:	variable used by waitqueue to test if pseudo-locking
+ *			thread completed
+ * @cpu:		core associated with the cache on which the setup code
+ *			will be run
+ * @line_size:		size of the cache lines
+ * @size:		size of pseudo-locked region in bytes
+ * @kmem:		the kernel memory associated with pseudo-locked region
+ * @minor:		minor number of character device associated with this
+ *			region
+ * @debugfs_dir:	pointer to this region's directory in the debugfs
+ *			filesystem
+ * @pm_reqs:		Power management QoS requests related to this region
+ */
+struct pseudo_lock_region {
+	struct resctrl_schema	*s;
+	u32			closid;
+	struct rdt_domain	*d;
+	u32			cbm;
+	wait_queue_head_t	lock_thread_wq;
+	int			thread_done;
+	int			cpu;
+	unsigned int		line_size;
+	unsigned int		size;
+	void			*kmem;
+	unsigned int		minor;
+	struct dentry		*debugfs_dir;
+	struct list_head	pm_reqs;
 };
 
 /**
@@ -65,45 +88,11 @@ struct resctrl_staged_config {
 	bool			have_new_ctrl;
 };
 
-enum resctrl_domain_type {
-	RESCTRL_CTRL_DOMAIN,
-	RESCTRL_MON_DOMAIN,
-};
-
 /**
- * struct rdt_domain_hdr - common header for different domain types
+ * struct rdt_domain - group of CPUs sharing a resctrl resource
  * @list:		all instances of this resource
  * @id:			unique id for this instance
- * @type:		type of this instance
  * @cpu_mask:		which CPUs share this resource
- */
-struct rdt_domain_hdr {
-	struct list_head		list;
-	int				id;
-	enum resctrl_domain_type	type;
-	struct cpumask			cpu_mask;
-};
-
-/**
- * struct rdt_ctrl_domain - group of CPUs sharing a resctrl control resource
- * @hdr:		common header for different domain types
- * @plr:		pseudo-locked region (if any) associated with domain
- * @staged_config:	parsed configuration to be applied
- * @mbps_val:		When mba_sc is enabled, this holds the array of user
- *			specified control values for mba_sc in MBps, indexed
- *			by closid
- */
-struct rdt_ctrl_domain {
-	struct rdt_domain_hdr		hdr;
-	struct pseudo_lock_region	*plr;
-	struct resctrl_staged_config	staged_config[CDP_NUM_TYPES];
-	u32				*mbps_val;
-};
-
-/**
- * struct rdt_mon_domain - group of CPUs sharing a resctrl monitor resource
- * @hdr:		common header for different domain types
- * @ci:			cache info for this domain
  * @rmid_busy_llc:	bitmap of which limbo RMIDs are above threshold
  * @mbm_total:		saved state for MBM total bandwidth
  * @mbm_local:		saved state for MBM local bandwidth
@@ -111,17 +100,27 @@ struct rdt_ctrl_domain {
  * @cqm_limbo:		worker to periodically read CQM h/w counters
  * @mbm_work_cpu:	worker CPU for MBM h/w counters
  * @cqm_work_cpu:	worker CPU for CQM h/w counters
+ * @plr:		pseudo-locked region (if any) associated with domain
+ * @staged_config:	parsed configuration to be applied
+ * @mbps_val:		When mba_sc is enabled, this holds the array of user
+ *			specified control values for mba_sc in MBps, indexed
+ *			by closid
  */
-struct rdt_mon_domain {
-	struct rdt_domain_hdr		hdr;
-	struct cacheinfo		*ci;
+struct rdt_domain {
+	struct list_head		list;
+	int				id;
+	struct cpumask			cpu_mask;
 	unsigned long			*rmid_busy_llc;
 	struct mbm_state		*mbm_total;
 	struct mbm_state		*mbm_local;
+	struct mbm_state		*mbm_core;
 	struct delayed_work		mbm_over;
 	struct delayed_work		cqm_limbo;
 	int				mbm_work_cpu;
 	int				cqm_work_cpu;
+	struct pseudo_lock_region	*plr;
+	struct resctrl_staged_config	staged_config[CDP_NUM_TYPES];
+	u32				*mbps_val;
 };
 
 /**
@@ -135,6 +134,8 @@ struct rdt_mon_domain {
  * @arch_has_sparse_bitmasks:	True if a bitmask like f00f is valid.
  * @arch_has_per_cpu_cfg:	True if QOS_CFG register for this cache
  *				level has CPU scope.
+ * @intpri_wd:		Number of implemented bits in the priority
+ *			partition.
  */
 struct resctrl_cache {
 	unsigned int	cbm_len;
@@ -142,6 +143,7 @@ struct resctrl_cache {
 	unsigned int	shareable_bits;
 	bool		arch_has_sparse_bitmasks;
 	bool		arch_has_per_cpu_cfg;
+	unsigned int	intpri_wd;
 };
 
 /**
@@ -161,6 +163,7 @@ enum membw_throttle_mode {
 /**
  * struct resctrl_membw - Memory bandwidth allocation related data
  * @min_bw:		Minimum memory bandwidth percentage user can request
+ * @max_bw:		Maximum memory bandwidth value, used as the reset value
  * @bw_gran:		Granularity at which the memory bandwidth is allocated
  * @delay_linear:	True if memory B/W delay is in linear scale
  * @arch_needs_linear:	True if we can't configure non-linear resources
@@ -168,24 +171,29 @@ enum membw_throttle_mode {
  *			different memory bandwidths
  * @mba_sc:		True if MBA software controller(mba_sc) is enabled
  * @mb_map:		Mapping of memory B/W percentage to memory B/W delay
+ * @intpri_wd:		Number of implemented bits in the priority
+ *			partition.
  */
 struct resctrl_membw {
 	u32				min_bw;
+	u32				max_bw;
 	u32				bw_gran;
 	u32				delay_linear;
 	bool				arch_needs_linear;
 	enum membw_throttle_mode	throttle_mode;
 	bool				mba_sc;
 	u32				*mb_map;
+	u32                             intpri_wd;
 };
 
-struct rdt_parse_data;
-struct resctrl_schema;
-
-enum resctrl_scope {
-	RESCTRL_L2_CACHE = 2,
-	RESCTRL_L3_CACHE = 3,
-	RESCTRL_L3_NODE,
+/**
+ * enum resctrl_schema_fmt - The format user-space provides for a schema.
+ * @RESCTRL_SCHEMA_BITMAP:	The schema is a bitmap in hex.
+ * @RESCTRL_SCHEMA_RANGE:	The schema is a decimal number.
+ */
+enum resctrl_schema_fmt {
+	RESCTRL_SCHEMA_BITMAP,
+	RESCTRL_SCHEMA_RANGE,
 };
 
 /**
@@ -194,18 +202,17 @@ enum resctrl_scope {
  * @alloc_capable:	Is allocation available on this machine
  * @mon_capable:	Is monitor feature available on this machine
  * @num_rmid:		Number of RMIDs available
- * @ctrl_scope:		Scope of this resource for control functions
- * @mon_scope:		Scope of this resource for monitor functions
+ * @cache_level:	Which cache level defines scope of this resource
  * @cache:		Cache allocation related data
  * @membw:		If the component has bandwidth controls, their properties.
- * @ctrl_domains:	RCU list of all control domains for this resource
- * @mon_domains:	RCU list of all monitor domains for this resource
+ * @domains:		RCU list of all domains for this resource
  * @name:		Name to use in "schemata" file.
  * @data_width:		Character width of data when displaying
  * @default_ctrl:	Specifies default cache cbm or memory B/W percent.
  * @format_str:		Per resource format string to show domain value
- * @parse_ctrlval:	Per resource function pointer to parse control values
  * @evt_list:		List of monitoring events
+ * @mbm_cfg_mask:	Bandwidth sources that can be tracked when bandwidth
+ *			monitoring events can be configured.
  * @fflags:		flags to choose base and info files
  * @cdp_capable:	Is the CDP feature available on this resource
  */
@@ -213,24 +220,30 @@ struct rdt_resource {
 	int			rid;
 	bool			alloc_capable;
 	bool			mon_capable;
+	bool			invisible;
+	bool			is_volatile;
 	int			num_rmid;
-	enum resctrl_scope	ctrl_scope;
-	enum resctrl_scope	mon_scope;
+	int			cache_level;
 	struct resctrl_cache	cache;
 	struct resctrl_membw	membw;
-	struct list_head	ctrl_domains;
-	struct list_head	mon_domains;
+	struct list_head	domains;
 	char			*name;
 	int			data_width;
 	u32			default_ctrl;
 	const char		*format_str;
-	int			(*parse_ctrlval)(struct rdt_parse_data *data,
-						 struct resctrl_schema *s,
-						 struct rdt_ctrl_domain *d);
 	struct list_head	evt_list;
+	unsigned int		mbm_cfg_mask;
 	unsigned long		fflags;
 	bool			cdp_capable;
+	enum resctrl_schema_fmt schema_fmt;
 };
+
+/*
+ * Get the resource that exists at this level. If the level is not supported
+ * a dummy/not-capable resource can be returned. Levels >= RDT_NUM_RESOURCES
+ * will return NULL.
+ */
+struct rdt_resource *resctrl_arch_get_resource(enum resctrl_res_level l);
 
 /**
  * struct resctrl_schema - configuration abilities of a resource presented to
@@ -246,30 +259,109 @@ struct rdt_resource {
  */
 struct resctrl_schema {
 	struct list_head		list;
-	char				name[8];
+	char				name[16];
 	enum resctrl_conf_type		conf_type;
 	struct rdt_resource		*res;
 	u32				num_closid;
 };
 
+struct resctrl_cpu_sync {
+	u32 closid;
+	u32 rmid;
+};
+
+struct resctrl_mon_config_info {
+	struct rdt_resource *r;
+	struct rdt_domain   *d;
+	u32                  evtid;
+	u32                  mon_config;
+
+	int                  err;
+};
+
+/**
+ * struct mon_evt - Entry in the event list of a resource
+ * @evtid:		event id
+ * @name:		name of the event
+ * @configurable:	true if the event is configurable
+ * @list:		entry in &rdt_resource->evt_list
+ */
+struct mon_evt {
+	enum resctrl_event_id	evtid;
+	char			*name;
+	bool			configurable;
+	struct list_head	list;
+};
+
+/*
+ * Update and re-load this CPUs defaults. Called via IPI, takes a pointer to
+ * struct resctrl_cpu_sync, or NULL.
+ */
+void resctrl_arch_sync_cpu_defaults(void *info);
+
 /* The number of closid supported by this resource regardless of CDP */
 u32 resctrl_arch_get_num_closid(struct rdt_resource *r);
-u32 resctrl_arch_system_num_rmid_idx(void);
+
+struct rdt_domain *resctrl_arch_find_domain(struct rdt_resource *r, int id);
 int resctrl_arch_update_domains(struct rdt_resource *r, u32 closid);
+
+bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt);
+void resctrl_arch_mon_event_config_write(void *info);
+void resctrl_arch_mon_event_config_read(void *info);
+
+/* For use by arch code that needs to remap resctrl's smaller CDP closid */
+static inline u32 resctrl_get_config_index(u32 closid,
+					   enum resctrl_conf_type type)
+{
+	switch (type) {
+	default:
+	case CDP_NONE:
+		return closid;
+	case CDP_CODE:
+			return (closid * 2) + 1;
+	case CDP_DATA:
+			return (closid * 2);
+	}
+}
+
+/*
+ * Caller must be in a RCU read-side critical section, or hold the
+ * cpuhp read lock to prevent the struct rdt_domain being freed.
+ */
+static inline struct rdt_domain *
+resctrl_get_domain_from_cpu(int cpu, struct rdt_resource *r)
+{
+	struct rdt_domain *d;
+
+	/*
+	 * Walking r->domains, ensure it can't race with cpuhp.
+	 * Because this is called via IPI by rdt_ctrl_update(), assertions
+	 * about locks this thread holds will lead to false positives. Check
+	 * someone is holding the CPUs lock.
+	 */
+	if (IS_ENABLED(CONFIG_HOTPLUG_CPU) && IS_ENABLED(CONFIG_LOCKDEP))
+		lockdep_is_cpus_held();
+
+	list_for_each_entry_rcu(d, &r->domains, list) {
+		/* Find the domain that contains this CPU */
+		if (cpumask_test_cpu(cpu, &d->cpu_mask))
+			return d;
+	}
+
+	return NULL;
+}
 
 /*
  * Update the ctrl_val and apply this config right now.
  * Must be called on one of the domain's CPUs.
  */
-int resctrl_arch_update_one(struct rdt_resource *r, struct rdt_ctrl_domain *d,
+int resctrl_arch_update_one(struct rdt_resource *r, struct rdt_domain *d,
 			    u32 closid, enum resctrl_conf_type t, u32 cfg_val);
 
-u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_ctrl_domain *d,
+u32 resctrl_arch_get_config(struct rdt_resource *r, struct rdt_domain *d,
 			    u32 closid, enum resctrl_conf_type type);
-int resctrl_online_ctrl_domain(struct rdt_resource *r, struct rdt_ctrl_domain *d);
-int resctrl_online_mon_domain(struct rdt_resource *r, struct rdt_mon_domain *d);
-void resctrl_offline_ctrl_domain(struct rdt_resource *r, struct rdt_ctrl_domain *d);
-void resctrl_offline_mon_domain(struct rdt_resource *r, struct rdt_mon_domain *d);
+int resctrl_online_domain(struct rdt_resource *r, struct rdt_domain *d);
+void resctrl_offline_domain(struct rdt_resource *r, struct rdt_domain *d);
 void resctrl_online_cpu(unsigned int cpu);
 void resctrl_offline_cpu(unsigned int cpu);
 
@@ -298,7 +390,7 @@ void resctrl_offline_cpu(unsigned int cpu);
  * Return:
  * 0 on success, or -EIO, -EINVAL etc on error.
  */
-int resctrl_arch_rmid_read(struct rdt_resource *r, struct rdt_mon_domain *d,
+int resctrl_arch_rmid_read(struct rdt_resource *r, struct rdt_domain *d,
 			   u32 closid, u32 rmid, enum resctrl_event_id eventid,
 			   u64 *val, void *arch_mon_ctx);
 
@@ -331,7 +423,7 @@ static inline void resctrl_arch_rmid_read_context_check(void)
  *
  * This can be called from any CPU.
  */
-void resctrl_arch_reset_rmid(struct rdt_resource *r, struct rdt_mon_domain *d,
+void resctrl_arch_reset_rmid(struct rdt_resource *r, struct rdt_domain *d,
 			     u32 closid, u32 rmid,
 			     enum resctrl_event_id eventid);
 
@@ -344,10 +436,17 @@ void resctrl_arch_reset_rmid(struct rdt_resource *r, struct rdt_mon_domain *d,
  *
  * This can be called from any CPU.
  */
-void resctrl_arch_reset_rmid_all(struct rdt_resource *r, struct rdt_mon_domain *d);
+void resctrl_arch_reset_rmid_all(struct rdt_resource *r, struct rdt_domain *d);
 
 extern unsigned int resctrl_rmid_realloc_threshold;
 extern unsigned int resctrl_rmid_realloc_limit;
 
-#endif /* ARM_CPU_RESCTRL */
-#endif /* _RESCTRL_H */
+extern bool resctrl_mounted;
+
+int resctrl_init(void);
+void resctrl_exit(void);
+
+int resctrl_arch_mon_resource_init(void);
+void mbm_config_rftype_init(const char *config);
+
+#endif /* _RESCTRL_MPAM_H */
