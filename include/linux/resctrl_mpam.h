@@ -318,9 +318,9 @@ static inline u32 resctrl_get_config_index(u32 closid,
 	case CDP_NONE:
 		return closid;
 	case CDP_CODE:
-			return (closid * 2) + 1;
+		return (closid * 2) + 1;
 	case CDP_DATA:
-			return (closid * 2);
+		return (closid * 2);
 	}
 }
 
