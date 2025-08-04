@@ -3455,6 +3455,7 @@ static struct file *io_uring_get_file(struct io_ring_ctx *ctx)
 }
 
 static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
+				  struct io_uring_params_ext *ext_p,
 				  struct io_uring_params __user *params)
 {
 	struct io_ring_ctx *ctx;
@@ -3512,6 +3513,7 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
 	    !(ctx->flags & IORING_SETUP_SQPOLL))
 		ctx->syscall_iopoll = 1;
 
+	ctx->ext_flags = ext_p->flags;
 	ctx->compat = in_compat_syscall();
 	if (!ns_capable_noaudit(&init_user_ns, CAP_IPC_LOCK))
 		ctx->user = get_uid(current_user());
@@ -3560,7 +3562,7 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
 	if (ret)
 		goto err;
 
-	ret = io_sq_offload_create(ctx, p);
+	ret = io_sq_offload_create(ctx, p, ext_p);
 	if (ret)
 		goto err;
 	/* always set a rsrc node */
@@ -3636,6 +3638,7 @@ err:
 static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 {
 	struct io_uring_params p;
+	struct io_uring_params_ext ext_p = {};
 	int i;
 
 	if (copy_from_user(&p, params, sizeof(p)))
@@ -3651,10 +3654,25 @@ static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 			IORING_SETUP_R_DISABLED | IORING_SETUP_SUBMIT_ALL |
 			IORING_SETUP_COOP_TASKRUN | IORING_SETUP_TASKRUN_FLAG |
 			IORING_SETUP_SQE128 | IORING_SETUP_CQE32 |
-			IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN))
+			IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN |
+			IORING_SETUP_EXT_PARAM))
 		return -EINVAL;
 
-	return io_uring_create(entries, &p, params);
+	if (p.flags & IORING_SETUP_EXT_PARAM) {
+		if (copy_from_user(&ext_p, (void __user *)params +
+				   offsetof(struct io_uring_params_full, ext_p),
+				   sizeof(ext_p)))
+			return -EFAULT;
+		for (i = 0; i < ARRAY_SIZE(ext_p.resv); i++) {
+			if (ext_p.resv[i])
+				return -EINVAL;
+		}
+
+		if (ext_p.flags & ~(IORING_SETUP_SQ_THREAD_FORCE_IDLE))
+			return -EINVAL;
+	}
+
+	return io_uring_create(entries, &p, &ext_p, params);
 }
 
 SYSCALL_DEFINE2(io_uring_setup, u32, entries,

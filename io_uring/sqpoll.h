@@ -18,9 +18,12 @@ struct io_sq_data {
 
 	unsigned long		state;
 	struct completion	exited;
+	ktime_t			sq_thread_wakeup_period;
+	struct hrtimer		timer;
 };
 
-int io_sq_offload_create(struct io_ring_ctx *ctx, struct io_uring_params *p);
+int io_sq_offload_create(struct io_ring_ctx *ctx, struct io_uring_params *p,
+			 struct io_uring_params_ext *ext_p);
 void io_sq_thread_finish(struct io_ring_ctx *ctx);
 void io_sq_thread_stop(struct io_sq_data *sqd);
 void io_sq_thread_park(struct io_sq_data *sqd);
