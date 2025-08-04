@@ -412,15 +412,13 @@ err:
 	return ret;
 }
 
-static int acpi_smbus_cmi_remove(struct acpi_device *device)
+static void acpi_smbus_cmi_remove(struct acpi_device *device)
 {
 	struct acpi_smbus_cmi *smbus_cmi = acpi_driver_data(device);
 
 	i2c_del_adapter(&smbus_cmi->adapter);
 	kfree(smbus_cmi);
 	device->driver_data = NULL;
-
-	return 0;
 }
 
 static struct acpi_driver acpi_smbus_cmi_driver = {
