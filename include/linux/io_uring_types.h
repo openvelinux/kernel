@@ -197,6 +197,7 @@ struct io_ring_ctx {
 
 		struct io_rings		*rings;
 		unsigned int		flags;
+		unsigned int		ext_flags;
 		enum task_work_notify_mode	notify_method;
 		unsigned int		compat: 1;
 		unsigned int		drain_next: 1;
@@ -350,6 +351,7 @@ struct io_ring_ctx {
 
 	struct list_head		defer_list;
 	unsigned			sq_thread_idle;
+	ktime_t				sq_thread_wakeup_period;
 	/* protected by ->completion_lock */
 	unsigned			evfd_last_cq_tail;
 };
