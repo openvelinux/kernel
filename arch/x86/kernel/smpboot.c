@@ -279,8 +279,6 @@ static void notrace start_secondary(void *unused)
 	cpu_startup_entry(CPUHP_AP_ONLINE_IDLE);
 }
 
-#define topology_is_primary_thread topology_is_primary_thread
-
 /**
  * topology_phys_to_logical_pkg - Map a physical package id to a logical
  *

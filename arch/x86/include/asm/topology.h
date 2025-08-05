@@ -152,6 +152,8 @@ static inline bool topology_is_primary_thread(unsigned int cpu)
 {
 	return cpumask_test_cpu(cpu, cpu_primary_thread_mask);
 }
+#define topology_is_primary_thread topology_is_primary_thread
+
 #else /* CONFIG_SMP */
 #define topology_max_packages()			(1)
 static inline int
