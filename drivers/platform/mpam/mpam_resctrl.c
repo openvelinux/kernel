@@ -945,7 +945,7 @@ static int mpam_resctrl_resource_init(struct mpam_resctrl_res *res)
 		if (cache_has_usable_cmax(class))
 			r->alloc_capable = true;
 
-		r->membw.min_bw = 0;
+		r->membw.min_bw = 1;
 		r->membw.bw_gran = max(100 / (1 << cprops->cmax_wd), 1);
 		break;
 
