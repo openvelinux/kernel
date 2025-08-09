@@ -6,6 +6,8 @@
 static DEFINE_SPINLOCK(cgroup_rstat_lock);
 static DEFINE_PER_CPU(raw_spinlock_t, cgroup_rstat_cpu_lock);
 
+static atomic_t stats_flush_ongoing = ATOMIC_INIT(0);
+
 static void cgroup_base_stat_flush(struct cgroup *cgrp, int cpu);
 
 static struct cgroup_rstat_cpu *cgroup_rstat_cpu(struct cgroup *cgrp, int cpu)
@@ -250,29 +252,26 @@ void cgroup_rstat_flush(struct cgroup *cgrp)
 }
 
 /**
- * cgroup_rstat_flush_hold - flush stats in @cgrp's subtree and hold
- * @cgrp: target cgroup
+ * cgroup_rstat_flush_ratelimited - Flush statistics in @cgrp's subtree
+ * @cgrp: Target cgroup
  *
- * Flush stats in @cgrp's subtree and prevent further flushes.  Must be
- * paired with cgroup_rstat_flush_release().
+ * Flushes the statistics in @cgrp's root tree, skipping concurrent flushers.
+ * This is intended for flushing the entire tree while avoiding the thundering
+ * herd problem on the rstat global lock.
+ * tradeoff: Higher cost for low-frequency reads, but reduced lock contention
+ * for high-frequency reads.
  *
- * This function may block.
+ * Return: true if a flush was performed.
  */
-void cgroup_rstat_flush_hold(struct cgroup *cgrp)
-	__acquires(&cgroup_rstat_lock)
+bool cgroup_rstat_flush_ratelimited(struct cgroup *cgrp)
 {
-	might_sleep();
-	spin_lock_irq(&cgroup_rstat_lock);
-	cgroup_rstat_flush_locked(cgrp);
-}
+	if (atomic_read(&stats_flush_ongoing) ||
+	    atomic_xchg(&stats_flush_ongoing, 1))
+		return false;
 
-/**
- * cgroup_rstat_flush_release - release cgroup_rstat_flush_hold()
- */
-void cgroup_rstat_flush_release(void)
-	__releases(&cgroup_rstat_lock)
-{
-	spin_unlock_irq(&cgroup_rstat_lock);
+	cgroup_rstat_flush(&cgrp->root->cgrp);
+	atomic_set(&stats_flush_ongoing, 0);
+	return true;
 }
 
 int cgroup_rstat_init(struct cgroup *cgrp)
@@ -533,11 +532,17 @@ void cgroup_base_stat_cputime_show(struct seq_file *seq)
 	struct cgroup_base_stat bstat;
 
 	if (cgroup_parent(cgrp)) {
-		cgroup_rstat_flush_hold(cgrp);
+		/*
+		 * We always flush the entire tree, so concurrent flushers can just
+		 * skip. This avoids a thundering herd problem on the rstat global lock.
+		 */
+		cgroup_rstat_flush_ratelimited(cgrp);
+
+		spin_lock_irq(&cgroup_rstat_lock);
 		bstat = cgrp->bstat;
 		cputime_adjust(&cgrp->bstat.cputime, &cgrp->prev_cputime,
 			       &bstat.cputime.utime, &bstat.cputime.stime);
-		cgroup_rstat_flush_release();
+		spin_unlock_irq(&cgroup_rstat_lock);
 	} else {
 		root_cgroup_cputime(&bstat);
 	}
