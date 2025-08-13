@@ -6270,7 +6270,8 @@ static struct cgroup *cgroup_get_from_file(struct file *f)
  * before grabbing cgroup_threadgroup_rwsem and will hold a reference
  * to the target cgroup.
  */
-static int cgroup_css_set_fork(struct kernel_clone_args *kargs)
+static int cgroup_css_set_fork(struct task_struct *child,
+			       struct kernel_clone_args *kargs)
 	__acquires(&cgroup_mutex) __acquires(&cgroup_threadgroup_rwsem)
 {
 	int ret;
@@ -6282,7 +6283,7 @@ static int cgroup_css_set_fork(struct kernel_clone_args *kargs)
 #ifdef CONFIG_BYTEDANCE_ASYNC_FORK
 	if (kargs->flags & CLONE_INTO_CGROUP) {
 		if (!mutex_trylock(&cgroup_mutex)) {
-			ret = try_async_fork_rollback(current);
+			ret = try_async_fork_rollback(child);
 			if (ret)
 				return ret;
 			mutex_lock(&cgroup_mutex);
@@ -6290,7 +6291,7 @@ static int cgroup_css_set_fork(struct kernel_clone_args *kargs)
 	}
 
 	if (!cgroup_threadgroup_change_try_begin(current)) {
-		ret = try_async_fork_rollback(current);
+		ret = try_async_fork_rollback(child);
 		if (ret) {
 			if (kargs->flags & CLONE_INTO_CGROUP)
 				mutex_unlock(&cgroup_mutex);
@@ -6417,7 +6418,7 @@ int cgroup_can_fork(struct task_struct *child, struct kernel_clone_args *kargs)
 	struct cgroup_subsys *ss;
 	int i, j, ret;
 
-	ret = cgroup_css_set_fork(kargs);
+	ret = cgroup_css_set_fork(child, kargs);
 	if (ret)
 		return ret;
 

@@ -409,13 +409,13 @@ void async_copy_fn(struct callback_head *work)
 		put_user(task_pid_vnr(current), current->set_child_tid);
 }
 
-int async_fork_rollback(struct mm_struct *parent_mm)
+int async_fork_rollback(struct mm_struct *child_mm)
 {
-	struct mm_struct *child_mm;
+	struct mm_struct *parent_mm;
 	struct vm_area_struct *vma, *child_vma;
 	int rc;
 
-	child_mm = parent_mm->async_copy_child_mm;
+	parent_mm = child_mm->async_copy_parent_mm;
 
 	for (vma = parent_mm->mmap; vma; vma = vma->vm_next) {
 		child_vma = READ_ONCE(vma->child_vma);
