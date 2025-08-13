@@ -131,12 +131,12 @@ static inline void try_clean_async_copy(struct mm_struct *mm)
 	clean_async_copy(mm);
 }
 
-int async_fork_rollback(struct mm_struct *parent_mm);
+int async_fork_rollback(struct mm_struct *child_mm);
 
-static inline int try_async_fork_rollback(struct task_struct *parent)
+static inline int try_async_fork_rollback(struct task_struct *child)
 {
-	if (parent->mm && is_parent_mm_in_async_copy(parent->mm))
-		return async_fork_rollback(parent->mm);
+	if (child->mm && is_child_mm_in_async_copy(child->mm))
+		return async_fork_rollback(child->mm);
 	return 0;
 }
 
@@ -243,7 +243,7 @@ static inline void try_enable_async_copy(struct mm_struct *parent_mm,
 					 struct mm_struct *child_mm,
 					 struct task_struct *p) {}
 
-static inline int try_async_fork_rollback(struct task_struct *parent)
+static inline int try_async_fork_rollback(struct task_struct *child)
 {
 	return 0;
 }
