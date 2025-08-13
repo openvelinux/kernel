@@ -346,6 +346,13 @@ static void create_worker_cb(struct callback_head *cb)
 	wqe = worker->wqe;
 	wq = wqe->wq;
 	acct = &wqe->acct[worker->create_index];
+
+	rcu_read_lock();
+	do_create = !io_wqe_activate_free_worker(wqe, acct);
+	rcu_read_unlock();
+	if (!do_create)
+		goto not_create;
+
 	raw_spin_lock(&wqe->lock);
 	if (acct->nr_workers < acct->max_workers) {
 		acct->nr_workers++;
@@ -355,6 +362,7 @@ static void create_worker_cb(struct callback_head *cb)
 	if (do_create) {
 		create_io_worker(wq, wqe, worker->create_index);
 	} else {
+not_create:
 		atomic_dec(&acct->nr_running);
 		io_worker_ref_put(wq);
 	}
