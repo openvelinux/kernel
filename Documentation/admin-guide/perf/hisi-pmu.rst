@@ -101,6 +101,17 @@ CCL/ICL-ID. For I/O die, the ICL-ID is followed by:
 5'b00011: HAC_ICL;
 5'b10000: PCIe_ICL;
 
+6. ch: NoC PMU supports filtering the event counts of certain transaction
+channel with this option. The current supported channels are as follows:
+
+- 3'b010: Request channel
+- 3'b100: Snoop channel
+- 3'b110: Response channel
+- 3'b111: Data channel
+
+7. tt_en: NoC PMU supports counting only transactions that have tracetag set
+if this option is set. See the 2nd list for more information about tracetag.
+
 Users could configure IDs to count data come from specific CCL/ICL, by setting
 srcid_cmd & srcid_msk, and data desitined for specific CCL/ICL by setting
 tgtid_cmd & tgtid_msk. A set bit in srcid_msk/tgtid_msk means the PMU will not
