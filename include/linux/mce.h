@@ -15,4 +15,9 @@ static void mcestat_record(struct task_struct *task,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_KVM)
+extern bool mce_kvm __read_mostly;
+extern bool mce_kill_kvm __read_mostly;
+#endif
+
 #endif

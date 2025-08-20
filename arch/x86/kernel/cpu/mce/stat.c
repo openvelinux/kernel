@@ -17,6 +17,82 @@ struct mce_stat {
 static struct mce_stat mcestat[MAX_NR_RECORD];
 static atomic_t mce_records = ATOMIC_INIT(0);
 static bool mcestat_enabled __read_mostly = true;
+#if IS_ENABLED(CONFIG_KVM)
+bool mce_kvm __read_mostly = true;
+bool mce_kill_kvm __read_mostly = true;
+
+static int mce_kvm_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n", mce_kvm);
+	return 0;
+}
+
+static ssize_t
+mce_kvm_write(struct file *file, const char __user *buf, size_t len, loff_t *ppos)
+{
+	unsigned long val;
+	int ret;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	ret = kstrtoul_from_user(buf, len, 0, &val);
+	if (ret)
+		return ret;
+
+	mce_kvm = !!val;
+	return len;
+}
+
+static int mce_kvm_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mce_kvm_show, NULL);
+}
+
+static const struct proc_ops  mce_kvm_fops = {
+	.proc_open                   = mce_kvm_open,
+	.proc_read                   = seq_read,
+	.proc_lseek                  = seq_lseek,
+	.proc_write                  = mce_kvm_write,
+	.proc_release                = single_release,
+};
+
+static int mce_kill_kvm_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n", mce_kill_kvm);
+	return 0;
+}
+
+static ssize_t
+mce_kill_kvm_write(struct file *file, const char __user *buf, size_t len, loff_t *ppos)
+{
+	unsigned long val;
+	int ret;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	ret = kstrtoul_from_user(buf, len, 0, &val);
+	if (ret)
+		return ret;
+
+	mce_kill_kvm = !!val;
+	return len;
+}
+
+static int mce_kill_kvm_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mce_kill_kvm_show, NULL);
+}
+
+static const struct proc_ops mce_kill_kvm_fops = {
+	.proc_open                   = mce_kill_kvm_open,
+	.proc_read                   = seq_read,
+	.proc_lseek                 = seq_lseek,
+	.proc_write                  = mce_kill_kvm_write,
+	.proc_release                = single_release,
+};
+#endif
 
 static int mcestat_enabled_show(struct seq_file *m, void *v)
 {
@@ -159,7 +235,24 @@ static int __init proc_mce_init(void)
 		pr_warn("Failed to register /proc/mcestat_enabled");
 		goto remove_mcestat;
 	}
+#if IS_ENABLED(CONFIG_KVM)
+	if (!proc_create("mce_kvm", 0644, NULL, &mce_kvm_fops)) {
+		pr_warn("Failed to register /proc/mce_kvm");
+		goto remove_mcestat_enabled;
+	}
+	if (!proc_create("mce_kill_kvm", 0644, NULL,
+			 &mce_kill_kvm_fops)) {
+		pr_warn("Failed to register /proc/mce_kill_kvm");
+		goto remove_mce_kvm;
+	}
+#endif
 	return 0;
+#if IS_ENABLED(CONFIG_KVM)
+remove_mce_kvm:
+	remove_proc_entry("mce_kvm", NULL);
+remove_mcestat_enabled:
+	remove_proc_entry("mcestat_enabled", NULL);
+#endif
 remove_mcestat:
 	remove_proc_entry("mcestat", NULL);
 	return -ENOMEM;
