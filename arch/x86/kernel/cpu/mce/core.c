@@ -614,7 +614,7 @@ static struct notifier_block early_nb = {
 	.priority	= MCE_PRIO_EARLY,
 };
 
-#if IS_ENABLED(CONFIG_KVM)
+#if defined(CONFIG_BYTEDANCE_X86_MCE_STAT) && defined(CONFIG_KVM)
 static char *kvm_mod_names[] = {
 	"kvm",
 	"kvm_intel_0",
@@ -680,7 +680,7 @@ static int uc_decode_notifier(struct notifier_block *nb, unsigned long val,
 	if (!memory_failure(pfn, 0)) {
 		set_mce_nospec(pfn);
 		mce->kflags |= MCE_HANDLED_UC;
-#if IS_ENABLED(CONFIG_KVM)
+#if defined(CONFIG_BYTEDANCE_X86_MCE_STAT) && defined(CONFIG_KVM)
 	} else if (mce_kvm) {
 		struct task_struct *kvm_task = NULL;
 		int signal = 0;

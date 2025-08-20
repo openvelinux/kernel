@@ -4,7 +4,7 @@
 
 #include <linux/sched.h>
 
-#ifdef CONFIG_X86_MCE
+#ifdef CONFIG_BYTEDANCE_X86_MCE_STAT
 extern void mcestat_record(struct task_struct *task,
 			   unsigned long addr, int signal, bool cmci);
 #else
