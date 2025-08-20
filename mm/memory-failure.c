@@ -522,7 +522,7 @@ static void collect_procs_anon(struct page *page, struct list_head *to_kill,
 		struct anon_vma_chain *vmac;
 		struct task_struct *t = task_early_kill(tsk, force_early);
 
-#if !defined(CONFIG_X86_MCE)
+#if !defined(CONFIG_BYTEDANCE_X86_MCE_STAT)
 		if (!t)
 			continue;
 #endif
@@ -561,7 +561,7 @@ static void collect_procs_file(struct page *page, struct list_head *to_kill,
 	for_each_process(tsk) {
 		struct task_struct *t = task_early_kill(tsk, force_early);
 
-#if !defined(CONFIG_X86_MCE)
+#if !defined(CONFIG_BYTEDANCE_X86_MCE_STAT)
 		if (!t)
 			continue;
 #endif
