@@ -614,6 +614,55 @@ static struct notifier_block early_nb = {
 	.priority	= MCE_PRIO_EARLY,
 };
 
+#if IS_ENABLED(CONFIG_KVM)
+static char *kvm_mod_names[] = {
+	"kvm",
+	"kvm_intel_0",
+	"kvm_intel_1",
+	"kvm_intel_2",
+};
+
+typedef int (*kvm_mce_notifier_t)(struct mce *mce, struct task_struct **kvm_task);
+static int kvm_uc_decode(struct mce *mce, char *mod_name,
+			 struct task_struct **kvm_task)
+{
+	kvm_mce_notifier_t t;
+	struct module *mod;
+	char sym_name[64];
+	int ret;
+	int n;
+
+	if (!mod_name)
+		return NOTIFY_DONE;
+
+	mod = find_module(mod_name);
+	if (!mod)
+		return NOTIFY_DONE;
+
+	if (!try_module_get(mod))
+		return NOTIFY_DONE;
+
+	n = snprintf(sym_name, sizeof(sym_name),
+		     "%s:%s", mod_name, "kvm_mce_notifier");
+	if (n > sizeof(sym_name) - 1) {
+		pr_err("Symbol %s too long\n", sym_name);
+		module_put(mod);
+		return NOTIFY_DONE;
+	}
+	t = (kvm_mce_notifier_t)module_kallsyms_lookup_name(sym_name);
+	if (!t) {
+		pr_err("Could not find symbol %s\n", sym_name);
+		module_put(mod);
+		return NOTIFY_DONE;
+	}
+
+	ret = t(mce, kvm_task);
+
+	module_put(mod);
+	return ret;
+}
+#endif
+
 static int uc_decode_notifier(struct notifier_block *nb, unsigned long val,
 			      void *data)
 {
@@ -631,7 +680,24 @@ static int uc_decode_notifier(struct notifier_block *nb, unsigned long val,
 	if (!memory_failure(pfn, 0)) {
 		set_mce_nospec(pfn);
 		mce->kflags |= MCE_HANDLED_UC;
-	} else {
+#if IS_ENABLED(CONFIG_KVM)
+	} else if (mce_kvm) {
+		struct task_struct *kvm_task = NULL;
+		int signal = 0;
+		int i, ret;
+
+		for (i = 0; i < ARRAY_SIZE(kvm_mod_names); i++) {
+			ret = kvm_uc_decode(mce, kvm_mod_names[i], &kvm_task);
+			if (ret == NOTIFY_OK)
+				break;
+			cond_resched();
+		}
+
+		if (ret == NOTIFY_OK && mce_kill_kvm) {
+			do_send_sig_info(SIGBUS, SEND_SIG_PRIV, kvm_task,
+					 PIDTYPE_PID);
+			signal = SIGBUS;
+		}
 		/*
 		 * S (Signaling) flag, bit 56 - Indicates (when set)
 		 * that a machine check exception was generated for
@@ -640,6 +706,10 @@ static int uc_decode_notifier(struct notifier_block *nb, unsigned long val,
 		 * is clear, this UCR error was not signaled via a
 		 * corrected machine check (CMC).
 		 */
+		mcestat_record(kvm_task, mce->addr, signal,
+			       !(mce->status & MCI_STATUS_S));
+#endif
+	} else {
 		mcestat_record(NULL, mce->addr, 0,
 			       !(mce->status & MCI_STATUS_S));
 	}
