@@ -419,6 +419,7 @@ static int hibmc_pci_probe(struct pci_dev *pdev,
 
 	drm_fbdev_generic_setup(dev, dev->mode_config.preferred_depth);
 
+	hibmc_debugfs_init(priv);
 	return 0;
 
 err_unload:

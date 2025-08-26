@@ -135,10 +135,9 @@ static struct drm_info_list hibmc_debugfs_list[] = {
 		{ "hibmc-dp", hibmc_dp_show },
 };
 
-void hibmc_debugfs_init(struct drm_connector *connector)
+void hibmc_debugfs_init(struct hibmc_drm_private *priv)
 {
-	struct drm_device *dev = connector->dev;
-	struct hibmc_drm_private *priv = to_hibmc_drm_private(dev);
+	struct drm_device *dev = &priv->dev;
 	struct drm_minor *minor = dev->primary;
 
 	/* create the file in drm directory, so we don't need to remove manually */

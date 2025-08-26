@@ -77,7 +77,7 @@ int hibmc_ddc_create(struct drm_device *drm_dev, struct hibmc_vdac *connector);
 void hibmc_ddc_del(struct hibmc_vdac *vdac);
 int hibmc_dp_init(struct hibmc_drm_private *priv);
 
-void hibmc_debugfs_init(struct drm_connector *connector);
+void hibmc_debugfs_init(struct hibmc_drm_private *priv);
 
 irqreturn_t hibmc_dp_hpd_isr(int irq, void *arg);
 

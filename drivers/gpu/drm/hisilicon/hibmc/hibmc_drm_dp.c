@@ -235,8 +235,8 @@ int hibmc_dp_init(struct hibmc_drm_private *priv)
 
 	drm_encoder_helper_add(encoder, &hibmc_dp_encoder_helper_funcs);
 
-	ret = drm_connector_init_with_ddc(dev, connector, &hibmc_dp_conn_funcs,
-					  DRM_MODE_CONNECTOR_DisplayPort, &dp->aux.ddc);
+	ret = drm_connector_init(dev, connector, &hibmc_dp_conn_funcs,
+					  DRM_MODE_CONNECTOR_DisplayPort);
 	if (ret) {
 		drm_err(dev, "init dp connector failed: %d\n", ret);
 		return ret;
@@ -246,7 +246,6 @@ int hibmc_dp_init(struct hibmc_drm_private *priv)
 
 	drm_connector_attach_encoder(connector, encoder);
 
-	hibmc_debugfs_init(connector);
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	return 0;
