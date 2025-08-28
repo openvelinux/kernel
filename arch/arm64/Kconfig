@@ -1009,6 +1009,16 @@ config HISILICON_ERRATUM_162100125
 	  CNP support for Hisilicon LINXICORE9100 cores.
 
 	  If unsure, say Y.
+config HISILICON_ERRATUM_165010801
+	bool "Hisilicon erratum 165010801"
+	depends on ARCH_HISI
+	default y
+	help
+	  On HIP12, when GIC receives multiple interrupts of the same priority and
+	  different types, the interrupts are selected in the following sequence:
+	  SPI > LPI > SGI > PPI. This scheduling rule may cause PPI starvation.
+	  To prevent starvation from triggering system watchdog hardlockup, the
+	  interrupt priority is explicitly increased in the arch_timer driver.
 
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"

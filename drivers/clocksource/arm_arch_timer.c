@@ -28,6 +28,11 @@
 #include <linux/arm-smccc.h>
 #include <linux/ptp_kvm.h>
 
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+#include <linux/irqchip/arm-gic-common.h>
+#include <linux/irqchip/arm-gic-v3.h>
+#endif
+
 #include <asm/arch_timer.h>
 #include <asm/virt.h>
 
@@ -91,6 +96,10 @@ static enum vdso_clock_mode vdso_default = VDSO_CLOCKMODE_ARCHTIMER;
 #else
 static enum vdso_clock_mode vdso_default = VDSO_CLOCKMODE_NONE;
 #endif /* CONFIG_GENERIC_GETTIMEOFDAY */
+
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+static bool prio_setup;
+#endif
 
 static cpumask_t evtstrm_available = CPU_MASK_NONE;
 static bool evtstrm_enable __ro_after_init = IS_ENABLED(CONFIG_ARM_ARCH_TIMER_EVTSTREAM);
@@ -336,6 +345,17 @@ static struct ate_acpi_oem_info hisi_161010101_oem_info[] = {
 };
 #endif
 
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+static struct ate_acpi_oem_info hisi_165010801_oem_info[] = {
+	{
+		.oem_id		= "HISI  ",
+		.oem_table_id	= "HIP12   ",
+		.oem_revision	= 0,
+	},
+	{ /* Sentinel indicating the end of the OEM array */ },
+};
+#endif
+
 #ifdef CONFIG_ARM64_ERRATUM_858921
 static u64 notrace arm64_858921_read_cntpct_el0(void)
 {
@@ -466,6 +486,13 @@ static const struct arch_timer_erratum_workaround ool_workarounds[] = {
 		.set_next_event_virt = erratum_set_next_event_virt,
 	},
 #endif
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+	{
+		.match_type = ate_match_acpi_oem_info,
+		.id = hisi_165010801_oem_info,
+		.desc = "HiSilicon erratum 165010801",
+	},
+#endif
 #ifdef CONFIG_ARM64_ERRATUM_858921
 	{
 		.match_type = ate_match_local_cap_id,
@@ -572,6 +599,12 @@ void arch_timer_enable_workaround(const struct arch_timer_erratum_workaround *wa
 
 	if (wa->read_cntvct_el0 || wa->read_cntpct_el0)
 		atomic_set(&timer_unstable_counter_workaround_in_use, 1);
+
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+	if (!strncmp(wa->desc, "HiSilicon erratum 165010801",
+		     strlen("HiSilicon erratum 165010801")))
+		prio_setup = true;
+#endif
 
 	/*
 	 * Don't use the vdso fastpath if errata require using the
@@ -978,6 +1011,18 @@ static int arch_timer_starting_cpu(unsigned int cpu)
 	u32 flags;
 
 	__arch_timer_setup(ARCH_TIMER_TYPE_CP15, clk);
+
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+	if (prio_setup && is_kernel_in_hyp_mode()) {
+		struct irq_data *d = irq_get_irq_data(arch_timer_ppi[arch_timer_uses_ppi]);
+
+		if (!d)
+			pr_warn("WARNING: Invalid arch_timer ppi irq: %d!\n",
+				arch_timer_ppi[arch_timer_uses_ppi]);
+		else
+			gic_irq_set_prio(d, GICD_INT_DEF_PRI & (GICD_INT_DEF_PRI - 1));
+	}
+#endif
 
 	flags = check_ppi_trigger(arch_timer_ppi[arch_timer_uses_ppi]);
 	enable_percpu_irq(arch_timer_ppi[arch_timer_uses_ppi], flags);

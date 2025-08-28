@@ -652,6 +652,10 @@ static inline bool gic_enable_sre(void)
 	return !!(val & ICC_SRE_EL1_SRE);
 }
 
+
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+extern void gic_irq_set_prio(struct irq_data *d, u8 prio);
+#endif
 #endif
 
 #endif

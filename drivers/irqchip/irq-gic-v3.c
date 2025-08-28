@@ -458,7 +458,7 @@ static int gic_irq_get_irqchip_state(struct irq_data *d,
 	return 0;
 }
 
-static void gic_irq_set_prio(struct irq_data *d, u8 prio)
+void gic_irq_set_prio(struct irq_data *d, u8 prio)
 {
 	void __iomem *base = gic_dist_base(d);
 	u32 offset, index;
