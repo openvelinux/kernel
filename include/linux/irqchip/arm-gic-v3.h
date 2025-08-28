@@ -756,6 +756,10 @@ static inline enum gic_intid_range __get_intid_range(irq_hw_number_t hwirq)
 	}
 }
 
+
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+extern void gic_irq_set_prio(struct irq_data *d, u8 prio);
+#endif
 #endif
 
 #endif
