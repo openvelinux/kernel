@@ -254,6 +254,7 @@ enum resctrl_schema_fmt {
  * @alloc_capable:	Is allocation available on this machine
  * @mon_capable:	Is monitor feature available on this machine
  * @num_rmid:		Number of RMIDs available
+ * @mbm_cntr_assignable:	Whether memory bandwidth counters can be assigned
  * @ctrl_scope:		Scope of this resource for control functions
  * @mon_scope:		Scope of this resource for monitor functions
  * @cache:		Cache allocation related data
@@ -272,6 +273,7 @@ struct rdt_resource {
 	bool			alloc_capable;
 	bool			mon_capable;
 	int			num_rmid;
+	bool			mbm_cntr_assignable;
 	enum resctrl_scope	ctrl_scope;
 	enum resctrl_scope	mon_scope;
 	struct resctrl_cache	cache;
@@ -291,6 +293,11 @@ struct rdt_resource {
  * will return NULL.
  */
 struct rdt_resource *resctrl_arch_get_resource(enum resctrl_res_level l);
+
+static inline bool resctrl_arch_mbm_cntr_assign_enabled(struct rdt_resource *r)
+{
+	return r->mbm_cntr_assignable;
+}
 
 /**
  * struct resctrl_schema - configuration abilities of a resource presented to
