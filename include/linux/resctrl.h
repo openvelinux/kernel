@@ -271,6 +271,7 @@ enum resctrl_schema_fmt {
  * @num_rmid:		Number of RMIDs available
  * @mbm_cntr_assignable:	Whether memory bandwidth counters can be assigned
  * @num_mbm_cntrs:	Number of assignable bandwidth counters per domain
+ * @mbm_cfg_mask:	Memory transactions supported by assigned counters
  * @ctrl_scope:		Scope of this resource for control functions
  * @mon_scope:		Scope of this resource for monitor functions
  * @cache:		Cache allocation related data
@@ -291,6 +292,7 @@ struct rdt_resource {
 	int			num_rmid;
 	bool			mbm_cntr_assignable;
 	int			num_mbm_cntrs;
+	unsigned int		mbm_cfg_mask;
 	enum resctrl_scope	ctrl_scope;
 	enum resctrl_scope	mon_scope;
 	struct resctrl_cache	cache;
@@ -380,6 +382,8 @@ static inline bool resctrl_is_mbm_event(enum resctrl_event_id eventid)
 	return (eventid >= QOS_L3_MBM_TOTAL_EVENT_ID &&
 		eventid <= QOS_L3_MBM_LOCAL_EVENT_ID);
 }
+
+u32 resctrl_get_mon_evt_cfg(enum resctrl_event_id eventid);
 
 /* Iterate over all memory bandwidth events */
 #define for_each_mbm_event_id(eventid)				\
