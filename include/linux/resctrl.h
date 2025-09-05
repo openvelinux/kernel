@@ -255,6 +255,7 @@ enum resctrl_schema_fmt {
  * @mon_capable:	Is monitor feature available on this machine
  * @num_rmid:		Number of RMIDs available
  * @mbm_cntr_assignable:	Whether memory bandwidth counters can be assigned
+ * @num_mbm_cntrs:	Number of assignable bandwidth counters per domain
  * @ctrl_scope:		Scope of this resource for control functions
  * @mon_scope:		Scope of this resource for monitor functions
  * @cache:		Cache allocation related data
@@ -274,6 +275,7 @@ struct rdt_resource {
 	bool			mon_capable;
 	int			num_rmid;
 	bool			mbm_cntr_assignable;
+	int			num_mbm_cntrs;
 	enum resctrl_scope	ctrl_scope;
 	enum resctrl_scope	mon_scope;
 	struct resctrl_cache	cache;
