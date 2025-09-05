@@ -377,6 +377,10 @@ void resctrl_enable_mon_event(enum resctrl_event_id eventid);
 
 bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt);
 
+void resctrl_arch_config_cntr(struct rdt_resource *r, struct rdt_mon_domain *d,
+			      enum resctrl_event_id evtid, u32 rmid, u32 closid,
+			      u32 cntr_id, bool assign);
+
 static inline bool resctrl_is_mbm_event(enum resctrl_event_id eventid)
 {
 	return (eventid >= QOS_L3_MBM_TOTAL_EVENT_ID &&
