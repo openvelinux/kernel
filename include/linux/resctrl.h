@@ -264,7 +264,6 @@ enum resctrl_schema_fmt {
  * @data_width:		Character width of data when displaying
  * @format_str:		Per resource format string to show domain value
  * @schema_fmt:		Which format string and parser is used for this schema.
- * @evt_list:		List of monitoring events
  * @fflags:		flags to choose base and info files
  * @cdp_capable:	Is the CDP feature available on this resource
  */
@@ -283,7 +282,6 @@ struct rdt_resource {
 	int			data_width;
 	const char		*format_str;
 	enum resctrl_schema_fmt	schema_fmt;
-	struct list_head	evt_list;
 	unsigned long		fflags;
 	bool			cdp_capable;
 };
@@ -348,6 +346,8 @@ void resctrl_arch_sync_cpu_closid_rmid(void *info);
 u32 resctrl_arch_get_num_closid(struct rdt_resource *r);
 u32 resctrl_arch_system_num_rmid_idx(void);
 int resctrl_arch_update_domains(struct rdt_resource *r, u32 closid);
+
+void resctrl_enable_mon_event(enum resctrl_event_id eventid);
 
 __init bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt);
 
