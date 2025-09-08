@@ -2202,6 +2202,9 @@ void mca_bsp_init(struct cpuinfo_x86 *c)
 	mce_flags.succor	 = cpu_feature_enabled(X86_FEATURE_SUCCOR);
 	mce_flags.smca		 = cpu_feature_enabled(X86_FEATURE_SMCA);
 
+	if (mce_flags.smca)
+		smca_bsp_init();
+
 	rdmsrl(MSR_IA32_MCG_CAP, cap);
 
 	/* Use accurate RIP reporting if available. */
