@@ -1978,7 +1978,7 @@ static unsigned long collect_longterm_unpinnable_pages(
 					unsigned long nr_pages,
 					struct page **pages)
 {
-	bool drain_allow = true;
+	int drained = 0;
 	struct folio *folio;
 	long i = 0;
 	unsigned long collected = 0;
@@ -1999,10 +1999,17 @@ static unsigned long collect_longterm_unpinnable_pages(
 			continue;
 		}
 
-		if (drain_allow && folio_ref_count(folio) !=
-				   folio_expected_ref_count(folio) + 1) {
+		if (drained == 0 &&
+				folio_ref_count(folio) !=
+				folio_expected_ref_count(folio) + 1) {
+			lru_add_drain();
+			drained = 1;
+		}
+		if (drained == 1 &&
+				folio_ref_count(folio) !=
+				folio_expected_ref_count(folio) + 1) {
 			lru_add_drain_all();
-			drain_allow = false;
+			drained = 2;
 		}
 
 		if (!folio_isolate_lru(folio))
