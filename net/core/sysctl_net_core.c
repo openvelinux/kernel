@@ -376,6 +376,8 @@ proc_dolongvec_minmax_bpf_restricted(struct ctl_table *table, int write,
 }
 #endif
 
+extern int socket_ops_hook_enable;
+
 static struct ctl_table net_core_table[] = {
 	{
 		.procname	= "wmem_max",
@@ -653,6 +655,15 @@ static struct ctl_table net_core_table[] = {
 		.procname	= "net_rx_action_nested",
 		.data		= &net_rx_action_nested,
 		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+	{
+		.procname	= "socket_ops_hook_enable",
+		.data		= &socket_ops_hook_enable,
+		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,

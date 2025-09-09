@@ -2286,6 +2286,9 @@ static bool sock_use_custom_sol_socket(const struct socket *sock)
 	return test_bit(SOCK_CUSTOM_SOCKOPT, &sock->flags);
 }
 
+int socket_ops_hook_enable __read_mostly;
+EXPORT_SYMBOL(socket_ops_hook_enable);
+
 int do_sock_setsockopt(struct socket *sock, bool compat, int level,
 		       int optname, sockptr_t optval, int optlen)
 {
@@ -2314,9 +2317,18 @@ int do_sock_setsockopt(struct socket *sock, bool compat, int level,
 	if (kernel_optval)
 		optval = KERNEL_SOCKPTR(kernel_optval);
 	ops = READ_ONCE(sock->ops);
-	if (level == SOL_SOCKET && !sock_use_custom_sol_socket(sock))
-		err = sock_setsockopt(sock, level, optname, optval, optlen);
-	else if (unlikely(!ops->setsockopt))
+	if (level == SOL_SOCKET && !sock_use_custom_sol_socket(sock)) {
+		if (!READ_ONCE(socket_ops_hook_enable)) {
+			err = sock_setsockopt(sock, level, optname, optval,
+					      optlen);
+		} else {
+			err = ops->setsockopt(sock, level, optname, optval,
+					      optlen);
+			if (err == -ENOPROTOOPT || err == -EOPNOTSUPP)
+				err = sock_setsockopt(sock, level, optname,
+						      optval, optlen);
+		}
+	} else if (unlikely(!ops->setsockopt))
 		err = -EOPNOTSUPP;
 	else
 		err = ops->setsockopt(sock, level, optname, optval,
