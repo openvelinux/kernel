@@ -6198,7 +6198,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			 * Bias pick_next to pick a task from this cfs_rq, as
 			 * p is sleeping when it is within its sched_slice.
 			 */
-			if (task_sleep && se && !throttled_hierarchy(cfs_rq))
+			if (task_sleep && se)
 				set_next_buddy(se);
 			break;
 		}
@@ -7685,7 +7685,7 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	 * lead to a throttle).  This both saves work and prevents false
 	 * next-buddy nomination below.
 	 */
-	if (unlikely(throttled_hierarchy(cfs_rq_of(pse))))
+	if (task_is_throttled(p))
 		return;
 
 	if (sched_feat(NEXT_BUDDY) && scale && !(wake_flags & WF_FORK)) {
@@ -7991,8 +7991,8 @@ static bool yield_to_task_fair(struct rq *rq, struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
 
-	/* throttled hierarchies are not runnable */
-	if (!se->on_rq || throttled_hierarchy(cfs_rq_of(se)))
+	/* !se->on_rq also covers throttled task */
+	if (!se->on_rq)
 		return false;
 
 	/* Tell the scheduler that we'd really like pse to run next. */
