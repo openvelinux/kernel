@@ -3219,9 +3219,6 @@ static void update_cfs_group(struct sched_entity *se)
 	if (!gcfs_rq)
 		return;
 
-	if (throttled_hierarchy(gcfs_rq))
-		return;
-
 #ifndef CONFIG_SMP
 	shares = READ_ONCE(gcfs_rq->tg->shares);
 
