@@ -4973,6 +4973,11 @@ static inline int throttled_hierarchy(struct cfs_rq *cfs_rq)
 	return cfs_bandwidth_used() && cfs_rq->throttle_count;
 }
 
+static inline int lb_throttled_hierarchy(struct task_struct *p, int dst_cpu)
+{
+	return throttled_hierarchy(task_group(p)->cfs_rq[dst_cpu]);
+}
+
 static inline bool task_is_throttled(struct task_struct *p)
 {
 	return cfs_bandwidth_used() && p->throttled;
@@ -5962,6 +5967,11 @@ static inline int throttled_hierarchy(struct cfs_rq *cfs_rq)
 }
 
 void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b) {}
+
+static inline int lb_throttled_hierarchy(struct task_struct *p, int dst_cpu)
+{
+	return 0;
+}
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 static void init_cfs_rq_runtime(struct cfs_rq *cfs_rq) {}
@@ -8321,10 +8331,14 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 
 	/*
 	 * We do not migrate tasks that are:
-	 * 1) cannot be migrated to this CPU due to cpus_ptr, or
-	 * 2) running (obviously), or
-	 * 3) are cache-hot on their current CPU.
+	 * 1) target cfs_rq is in throttled hierarchy, or
+	 * 2) cannot be migrated to this CPU due to cpus_ptr, or
+	 * 3) running (obviously), or
+	 * 4) are cache-hot on their current CPU.
 	 */
+	if (lb_throttled_hierarchy(p, env->dst_cpu))
+		return 0;
+
 	/* Disregard pcpu kthreads; they are where they need to be. */
 	if (kthread_is_per_cpu(p))
 		return 0;
