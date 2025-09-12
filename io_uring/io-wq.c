@@ -340,7 +340,7 @@ static void create_worker_cb(struct callback_head *cb)
 	struct io_wq *wq;
 	struct io_wqe *wqe;
 	struct io_wqe_acct *acct;
-	bool do_create = false;
+	bool activated_free_worker, do_create = false;
 
 	worker = container_of(cb, struct io_worker, create_work);
 	wqe = worker->wqe;
@@ -348,9 +348,9 @@ static void create_worker_cb(struct callback_head *cb)
 	acct = &wqe->acct[worker->create_index];
 
 	rcu_read_lock();
-	do_create = !io_wqe_activate_free_worker(wqe, acct);
+	activated_free_worker = io_wqe_activate_free_worker(wqe, acct);
 	rcu_read_unlock();
-	if (!do_create)
+	if (activated_free_worker)
 		goto not_create;
 
 	raw_spin_lock(&wqe->lock);
