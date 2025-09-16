@@ -3141,12 +3141,19 @@ static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 			if (!alloc_bootmem_huge_page(h))
 				break;
 		} else {
+			if (hugetlb_vmemmap_optimizable_size(h) &&
+			    (si_mem_available() == 0) && !list_empty(&page_list)) {
+				prep_and_add_allocated_page(h, &page_list);
+				INIT_LIST_HEAD(&page_list);
+			}
+
 			page = alloc_pool_huge_page(h, &node_states[N_MEMORY],
 							node_alloc_noretry);
 			if (!page)
 				break;
 			list_add(&page->lru, &page_list);
 		}
+
 		cond_resched();
 	}
 
