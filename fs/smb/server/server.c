@@ -270,14 +270,7 @@ static void handle_ksmbd_work(struct work_struct *wk)
 
 	ksmbd_conn_try_dequeue_request(work);
 	ksmbd_free_work_struct(work);
-	atomic_dec(&conn->mux_smb_requests);
-	/*
-	 * Checking waitqueue to dropping pending requests on
-	 * disconnection. waitqueue_active is safe because it
-	 * uses atomic operation for condition.
-	 */
-	if (!atomic_dec_return(&conn->r_count) && waitqueue_active(&conn->r_count_q))
-		wake_up(&conn->r_count_q);
+	ksmbd_conn_r_count_dec(conn);
 }
 
 /**
@@ -296,11 +289,6 @@ static int queue_ksmbd_work(struct ksmbd_conn *conn)
 	if (err)
 		return 0;
 
-	if (atomic_inc_return(&conn->mux_smb_requests) >= conn->vals->max_credits) {
-		atomic_dec_return(&conn->mux_smb_requests);
-		return -ENOSPC;
-	}
-
 	work = ksmbd_alloc_work_struct();
 	if (!work) {
 		pr_err("allocation for work failed\n");
@@ -312,7 +300,7 @@ static int queue_ksmbd_work(struct ksmbd_conn *conn)
 	conn->request_buf = NULL;
 
 	ksmbd_conn_enqueue_request(work);
-	atomic_inc(&conn->r_count);
+	ksmbd_conn_r_count_inc(conn);
 	/* update activity on connection */
 	conn->last_active = jiffies;
 	INIT_WORK(&work->work, handle_ksmbd_work);
@@ -363,6 +351,7 @@ static int server_conf_init(void)
 	server_conf.auth_mechs |= KSMBD_AUTH_KRB5 |
 				KSMBD_AUTH_MSKRB5;
 #endif
+	server_conf.max_inflight_req = SMB2_MAX_CREDITS;
 	return 0;
 }
 
