@@ -1,5 +1,7 @@
 /arch/arm64/ @guojinhui.liam @cuiyunhui
 /arch/arm64/kvm/ @xieyongji @dengliang.1214 @fam.zheng
+/arch/arm/kernel/perf_*.c @liangyan.peng @zhangyuchen.lcr
+/arch/*/include/asm/perf_event.h @liangyan.peng @zhangyuchen.lcr
 /arch/*/include/asm/percpu.h @zhengqi.arch
 /arch/*/include/asm/tlb.h @zhengqi.arch
 /arch/riscv/ @cuiyunhui @guojinhui.liam
@@ -7,6 +9,7 @@
 /arch/x86/kernel/cpu/mce/ @qirui.001 @zhaozhengyu
 /arch/x86/kvm/ @xieyongji @dengliang.1214 @fam.zheng
 /arch/x86/mm/ @lizhe.67 @weiguixiong
+/arch/x86/events/ @liangyan.peng @zhangyuchen.lcr
 /asm/elf.h @hezhongkun.hzk
 /binfmt @hezhongkun.hzk
 /block/ @xieyongji @yinxin.x @lilintjpu @changfengnan @lilei.777 @zhujia.zj
@@ -59,7 +62,7 @@
 /drivers/net/ @chenwei.0515 @wangdongdong.6
 /drivers/nvme/ @guzebing @lilintjpu @zhangqiankun.0212
 /drivers/pci/ @guojinhui.liam @cuiyunhui
-/drivers/perf/ @huangjie.albert
+/drivers/perf/ @liangyan.peng @zhangyuchen.lcr
 /drivers/ras/ @qirui.001
 /drivers/scsi/ @changfengnan @lilintjpu @lilei.777
 /drivers/vdpa/ @xieyongji @fam.zheng
@@ -123,6 +126,7 @@
 /include/linux/page_table_check.h @liusongtang
 /include/linux/pagewalk.h @songmuchun
 /include/linux/percpu*.h @zhengqi.arch
+/include/linux/perf_event.h @liangyan.peng @zhangyuchen.lcr
 /include/linux/pgalloc_tag.h @liusongtang
 /include/linux/preempt.h @zhouchengming @zhouchuyi @songmuchun
 /include/linux/psi* @zhouchengming @zhouchuyi
@@ -158,12 +162,13 @@
 /include/uapi/linux/elf.h @hezhongkun.hzk
 /include/uapi/linux/fs* @yinxin.x @lilintjpu
 /include/uapi/linux/fuse.h @lilintjpu @zhangtianci.1997 @zhujia.zj @yinxin.x
+/include/uapi/linux/perf_event.h @liangyan.peng @zhangyuchen.lcr
 /include/uapi/linux/nvme* @guzebing @lilintjpu @zhangqiankun.0212
 /include/uapi/linux/sched.h @zhouchengming @zhouchuyi @songmuchun
 /include/uapi/scsi/ @changfengnan @lilintjpu @lilei.777
 /io_uring/ @changfengnan @lilintjpu
 /kernel/bpf/ @wangdongdong.6 @cong.wang @zhoufeng.zf @huangjie.albert @zhangyuchen.lcr
-/kernel/events/ @maxing.lan @huangjie.albert
+/kernel/events/ @liangyan.peng @zhangyuchen.lcr
 /kernel/freezer.c @songmuchun
 /kernel/sched/ @zhouchengming @zhouchuyi @songmuchun
 /kernel/sched/cpufreq*.c @zhouchuyi
@@ -209,8 +214,9 @@
 /net/ceph/ @xuqiliang @liuliangqi
 /samples/cgroup/* @zhengqi.arch
 /security/ @weiguixiong
+/tools/lib/perf/ @liangyan.peng @zhangyuchen.lcr
 /tools/mm/ @songmuchun
-/tools/perf/ @maxing.lan @huangjie.albert
+/tools/perf/ @liangyan.peng @zhangyuchen.lcr
 /tools/testing/memblock/ @liusongtang
 /tools/testing/radix-tree/linux/maple_tree.h @zhangpeng.00
 /tools/testing/radix-tree/maple.c @zhangpeng.00
