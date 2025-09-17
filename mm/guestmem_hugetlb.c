@@ -200,9 +200,6 @@ static int guestmem_hugetlb_split_folio(struct folio *folio)
 		return 0;
 
 	orig_nr_pages = folio_nr_pages(folio);
-	ret = guestmem_hugetlb_stash_metadata(folio);
-	if (ret)
-		return ret;
 
 	/*
 	 * hugetlb_vmemmap_restore_folio() has to be called ahead of the rest
@@ -210,6 +207,14 @@ static int guestmem_hugetlb_split_folio(struct folio *folio)
 	 * folio, so the first few struct pages are still intact.
 	 */
 	ret = hugetlb_vmemmap_restore(folio_hstate(folio), &folio->page);
+	if (ret)
+		return ret;
+
+	/*
+	 * Stash metadata after vmemmap stuff so the outcome of the vmemmap
+	 * restoration is stashed.
+	 */
+	ret = guestmem_hugetlb_stash_metadata(folio);
 	if (ret)
 		goto err;
 
@@ -254,8 +259,7 @@ static int guestmem_hugetlb_split_folio(struct folio *folio)
 	return 0;
 
 err:
-	guestmem_hugetlb_unstash_free_metadata(folio);
-
+	hugetlb_vmemmap_optimize(folio_hstate(folio), &folio->page);
 	return ret;
 }
 
