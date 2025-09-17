@@ -5793,6 +5793,9 @@ static int sched_idle_rq(struct rq *rq)
 #ifdef CONFIG_SMP
 static int sched_idle_cpu(int cpu)
 {
+	if (!sched_feat(SIS_SCHED_IDLE))
+		return 0;
+
 	return sched_idle_rq(cpu_rq(cpu));
 }
 #endif
@@ -10670,7 +10673,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 {
 	int continue_balancing = 1;
 	int cpu = rq->cpu;
-	int busy = idle != CPU_IDLE && !sched_idle_cpu(cpu);
+	int busy = idle != CPU_IDLE && !sched_idle_rq(rq);
 	unsigned long interval;
 	struct sched_domain *sd;
 	/* Earliest time when we have to do rebalance again */
@@ -10715,7 +10718,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 				 * state even if we migrated tasks. Update it.
 				 */
 				idle = idle_cpu(cpu) ? CPU_IDLE : CPU_NOT_IDLE;
-				busy = idle != CPU_IDLE && !sched_idle_cpu(cpu);
+				busy = idle != CPU_IDLE && !sched_idle_rq(rq);
 			}
 			sd->last_balance = jiffies;
 			interval = get_sd_balance_interval(sd, busy);
