@@ -58,6 +58,12 @@ SCHED_FEAT(TTWU_QUEUE, true)
 SCHED_FEAT(SIS_PROP, false)
 SCHED_FEAT(SIS_UTIL, true)
 
+
+/*
+ * Enable or disable sched_idle_cpu selection in select_task_rq_fair().
+ */
+SCHED_FEAT(SIS_SCHED_IDLE, true)
+
 /*
  * Issue a WARN when we do multiple update_rq_clock() calls
  * in a single rq->lock section. Default disabled because the
