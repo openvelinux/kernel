@@ -3565,6 +3565,11 @@ static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 			if (!alloc_bootmem_huge_page(h, NUMA_NO_NODE))
 				break;
 		} else {
+			if (hugetlb_vmemmap_optimizable_size(h) &&
+			    (si_mem_available() == 0) && !list_empty(&folio_list)) {
+				prep_and_add_allocated_folios(h, &folio_list);
+				INIT_LIST_HEAD(&folio_list);
+			}
 			folio = alloc_pool_huge_folio(h, &node_states[N_MEMORY],
 							node_alloc_noretry);
 			if (!folio)
