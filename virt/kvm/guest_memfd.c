@@ -626,8 +626,10 @@ static int kvm_gmem_ioctl_convert_range(struct file *file,
 	nr_pages = param->size >> PAGE_SHIFT;
 
 	ret = kvm_gmem_convert_range(file, start, nr_pages, shared, &error_index);
-	if (ret)
+	if (ret && ret != -EAGAIN) {
 		param->error_offset = error_index << PAGE_SHIFT;
+		WARN_ONCE(true, "inode %px setting error offset at 0x%llx ret %d", file_inode(file), param->error_offset, ret);
+	}
 
 	return ret;
 }
