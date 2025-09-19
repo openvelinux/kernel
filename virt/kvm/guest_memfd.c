@@ -1045,7 +1045,8 @@ repeat:
 		void *p;
 
 		p = kvm_gmem_allocator_private(inode);
-		folio = kvm_gmem_allocator_ops(inode)->alloc_folio(p);
+		policy = kvm_gmem_get_pgoff_policy(KVM_GMEM_I(inode), index);
+		folio = kvm_gmem_allocator_ops(inode)->alloc_folio(p, policy);
 		if (IS_ERR(folio))
 			return folio;
 

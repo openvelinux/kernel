@@ -443,10 +443,9 @@ static void guestmem_hugetlb_teardown(void *priv, size_t inode_size)
 	kfree(private);
 }
 
-static struct folio *guestmem_hugetlb_alloc_folio(void *priv)
+static struct folio *guestmem_hugetlb_alloc_folio(void *priv, struct mempolicy *mpol)
 {
 	struct guestmem_hugetlb_private *private = priv;
-	struct mempolicy *mpol;
 	struct folio *folio;
 	pgoff_t ilx;
 	int ret;
@@ -463,7 +462,8 @@ static struct folio *guestmem_hugetlb_alloc_folio(void *priv)
 	 * TODO: mempolicy would probably have to be stored on the inode, use
 	 * task policy for now.
 	 */
-	mpol = get_task_policy(current);
+	if (!mpol)
+		mpol = get_task_policy(current);
 
 	/* TODO: ignore interleaving for now. */
 	ilx = NO_INTERLEAVE_INDEX;

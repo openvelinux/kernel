@@ -7,7 +7,7 @@
 struct guestmem_allocator_operations {
 	void *(*inode_setup)(size_t size, u64 flags);
 	void (*inode_teardown)(void *private, size_t inode_size);
-	struct folio *(*alloc_folio)(void *private);
+	struct folio *(*alloc_folio)(void *private, struct mempolicy *mpol);
 	int (*split_folio)(struct folio *folio);
 	void (*merge_folio)(struct folio *folio);
 	void (*free_folio)(struct folio *folio);
