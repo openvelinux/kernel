@@ -109,7 +109,8 @@ struct arm_pmu {
 	struct notifier_block	cpu_pm_nb;
 	/* the attr_groups array must be NULL-terminated */
 	const struct attribute_group *attr_groups[ARMPMU_NR_ATTR_GROUPS + 1];
-	/* store the PMMIR_EL1 to expose slots */
+
+	bool		has_smt;
 	u64		reg_pmmir;
 
 	/* Only to be used by ACPI probing code */
