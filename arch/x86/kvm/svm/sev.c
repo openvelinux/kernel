@@ -4779,9 +4779,9 @@ out_no_trace:
 }
 
 /*
- * Find the offset of the next contiguous shared PFN range within the bounds of
- * pfn_start/npages_max. If no shared pages are present, 'offset' will correspond
- * to the end off the range and 'npages_shared' will be 0.
+ * Find the offset of the first shared PFN range within the bounds of
+ * pfn_start/npages_max. If no shared pages are present, 'offset' will
+ * correspond to the end off the range and 'npages_shared' will be 0.
  */
 static int next_shared_offset(struct kvm *kvm, kvm_pfn_t pfn_start, long npages_max,
 			      kvm_pfn_t *offset, long *npages_shared)
@@ -4851,6 +4851,9 @@ int sev_gmem_prepare(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, int max_order)
 	pfn_start = ALIGN_DOWN(pfn, npages);
 	gfn_start = ALIGN_DOWN(gfn, npages);
 
+	pr_debug("%s: called: gfn 0x%llx pfn 0x%llx max_order %d\n",
+		 __func__, gfn, pfn, max_order);
+
 	for (pfn = pfn_start, gfn = gfn_start; pfn < pfn_start + npages;) {
 		long npages_shared;
 		kvm_pfn_t offset;
@@ -4859,7 +4862,7 @@ int sev_gmem_prepare(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, int max_order)
 		rc = next_shared_offset(kvm, pfn, npages - (pfn - pfn_start),
 					&offset, &npages_shared);
 		if (rc < 0)
-			return offset;
+			return rc;
 
 		pfn += offset;
 		gfn += offset;
@@ -4892,9 +4895,6 @@ int sev_gmem_prepare(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, int max_order)
 			npages_shared -= (1ul << order);
 		}
 	}
-
-	pr_debug("%s: updated: gfn_start 0x%llx pfn_start 0x%llx npages %ld max_order %d\n",
-		 __func__, gfn_start, pfn_start, npages, max_order);
 
 	return 0;
 }
