@@ -16,6 +16,7 @@ struct guestmem_allocator_operations {
 	 * allocator provides.
 	 */
 	size_t (*nr_pages_in_folio)(void *priv);
+	bool (*skip_merge_folio)(struct folio *folio);
 };
 
 extern const struct guestmem_allocator_operations guestmem_hugetlb_ops;

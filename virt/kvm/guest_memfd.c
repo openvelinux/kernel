@@ -828,6 +828,9 @@ static inline int kvm_gmem_try_merge_folio_in_filemap(struct inode *inode,
 	priv = kvm_gmem_allocator_private(inode);
 	to_nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(priv);
 
+	if (kvm_gmem_allocator_ops(inode)->skip_merge_folio(first_folio))
+		return 0;
+
 	if (kvm_gmem_has_some_shared(inode, first_folio->index, to_nr_pages))
 		return 0;
 

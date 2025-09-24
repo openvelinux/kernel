@@ -46,6 +46,7 @@ struct guestmem_hugetlb_stash_item {
 	struct hstate *h;
 	/* Count of split pages, individually freed, waiting to be merged. */
 	atomic_t nr_pages_waiting_to_be_merged;
+	int split_count;
 };
 
 struct workqueue_struct *guestmem_hugetlb_wq __ro_after_init;
@@ -133,22 +134,32 @@ static int guestmem_hugetlb_stash_metadata(struct folio *folio)
 	struct guestmem_hugetlb_stash_item *stash;
 	void *entry;
 
-	stash = kzalloc(sizeof(*stash), 1);
-	if (!stash)
-		return -ENOMEM;
+	entry = xa_load(&guestmem_hugetlb_stash, folio_pfn(folio));
+	if (entry) {
+		stash = entry;
+		stash->split_count++;
+	} else {
+		stash = kzalloc(sizeof(*stash), 1);
+		if (!stash)
+			return -ENOMEM;
+		pr_debug("%s: allocated stash for folio pfn %lx\n",
+			 __func__, folio_pfn(folio));
+	}
 
 	stash->h = folio_hstate(folio);
 	__guestmem_hugetlb_stash_metadata(&stash->hugetlb_metadata, folio);
 
-	xas_set_order(&xas, folio_pfn(folio), folio_order(folio));
+	if (!entry) {
+		xas_set_order(&xas, folio_pfn(folio), folio_order(folio));
 
-	xas_lock(&xas);
-	entry = xas_store(&xas, stash);
-	xas_unlock(&xas);
+		xas_lock(&xas);
+		entry = xas_store(&xas, stash);
+		xas_unlock(&xas);
 
-	if (xa_is_err(entry)) {
-		kfree(stash);
-		return xa_err(entry);
+		if (xa_is_err(entry)) {
+			kfree(stash);
+			return xa_err(entry);
+		}
 	}
 
 	return 0;
@@ -173,10 +184,9 @@ static int guestmem_hugetlb_unstash_free_metadata(struct folio *folio)
 
 	pfn = folio_pfn(folio);
 
-	stash = xa_erase(&guestmem_hugetlb_stash, pfn);
-	__guestmem_hugetlb_unstash_metadata(&stash->hugetlb_metadata, folio);
+	stash = xa_load(&guestmem_hugetlb_stash, pfn);
 
-	kfree(stash);
+	__guestmem_hugetlb_unstash_metadata(&stash->hugetlb_metadata, folio);
 
 	return 0;
 }
@@ -263,6 +273,24 @@ err:
 	return ret;
 }
 
+#define SPLIT_COUNT_MAX 10
+
+static bool guestmem_hugetlb_skip_merge_folio(struct folio *first_folio)
+{
+	struct guestmem_hugetlb_stash_item *stash;
+
+	stash = xa_load(&guestmem_hugetlb_stash, folio_pfn(first_folio));
+
+	if (WARN_ON_ONCE(!stash))
+		return false;
+
+	pr_debug("%s: folio %lx has split count %d (max %d), merge should be skipped: %d\n",
+		 __func__, folio_pfn(first_folio), stash->split_count,
+		 SPLIT_COUNT_MAX, stash->split_count > SPLIT_COUNT_MAX);
+
+	return stash->split_count > SPLIT_COUNT_MAX;
+}
+
 /**
  * guestmem_hugetlb_merge_folio() - Merge a HugeTLB folio from the folio
  * beginning @first_folio.
@@ -333,8 +361,15 @@ static void guestmem_hugetlb_cleanup_folio(struct folio *folio)
 	struct folio *merged_folio;
 
 	merged_folio = guestmem_hugetlb_maybe_merge_folio(folio);
-	if (merged_folio)
+	if (merged_folio) {
+		struct guestmem_hugetlb_stash_item *stash;
+
 		__folio_put(merged_folio);
+		stash = xa_erase(&guestmem_hugetlb_stash, folio_pfn(merged_folio));
+		kfree(stash);
+		pr_debug("%s: freed stash for folio pfn %lx (merged pfn %lx)\n",
+			 __func__, folio_pfn(folio), folio_pfn(merged_folio));
+	}
 }
 
 static void guestmem_hugetlb_cleanup_workfn(struct work_struct *work)
@@ -504,8 +539,23 @@ err_put_pages:
 
 static void guestmem_hugetlb_free_folio(struct folio *folio)
 {
-	if (xa_load(&guestmem_hugetlb_stash, folio_pfn(folio)))
+	struct guestmem_hugetlb_stash_item *stash;
+
+	stash = xa_load(&guestmem_hugetlb_stash, folio_pfn(folio));
+
+	if (stash && huge_page_size(stash->h) != folio_size(folio)) {
 		guestmem_hugetlb_register_folio_put_callback(folio);
+		return;
+	}
+
+	/*
+	 * put callback will handle final stash cleanup after merge, but
+	 * for stuff that's already been merged this is the last chance.
+	 */
+	xa_erase(&guestmem_hugetlb_stash, folio_pfn(folio));
+	kfree(stash);
+	pr_debug("%s: freed stash for folio pfn %lx\n",
+		 __func__, folio_pfn(folio));
 }
 
 const struct guestmem_allocator_operations guestmem_hugetlb_ops = {
@@ -516,5 +566,6 @@ const struct guestmem_allocator_operations guestmem_hugetlb_ops = {
 	.merge_folio = guestmem_hugetlb_merge_folio,
 	.free_folio = guestmem_hugetlb_free_folio,
 	.nr_pages_in_folio = guestmem_hugetlb_nr_pages_in_folio,
+	.skip_merge_folio = guestmem_hugetlb_skip_merge_folio,
 };
 EXPORT_SYMBOL_GPL(guestmem_hugetlb_ops);
