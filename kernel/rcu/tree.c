@@ -1474,7 +1474,7 @@ static void swake_up_one_online(struct swait_queue_head *wqh)
 	if (unlikely(cpu_is_offline(cpu))) {
 		int target;
 
-		target = cpumask_any_and(housekeeping_cpumask(HK_FLAG_RCU),
+		target = cpumask_any_and(housekeeping_cpumask(HK_TYPE_RCU),
 					 cpu_online_mask);
 
 		smp_call_function_single(target, swake_up_one_online_ipi,
