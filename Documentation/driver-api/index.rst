@@ -23,6 +23,7 @@ available subsections can be seen below.
    early-userspace/index
    pm/index
    clk
+   coco/index
    device-io
    dma-buf
    device_link
