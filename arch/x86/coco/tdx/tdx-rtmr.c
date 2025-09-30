@@ -127,13 +127,6 @@ struct tpm_chip *tdx_rtmr_device(void)
 	 * struct fake tpm bank for tdx.
 	 * Only one bank is available(SHA384)
 	 */
-	chip->allocated_banks =
-		kcalloc(1, sizeof(*chip->allocated_banks), GFP_KERNEL);
-	if (!chip->allocated_banks) {
-		pr_err("Error in allocating banks");
-		kfree(chip);
-		return ERR_PTR(-ENOMEM);
-	}
 
 	chip->allocated_banks[DEFAULT_SHA384_IDX].alg_id = TPM_ALG_SHA384;
 	chip->allocated_banks[DEFAULT_SHA384_IDX].digest_size =
