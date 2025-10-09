@@ -1719,6 +1719,9 @@ static struct inode *kvm_gmem_alloc_inode(struct super_block *sb)
 		return NULL;
 
 	mpol_shared_policy_init(&info->policy, NULL);
+	mt_init(&info->shareability);
+	info->allocator_ops = NULL;
+	info->allocator_private = NULL;
 
 	return &info->vfs_inode;
 }
@@ -1953,8 +1956,6 @@ static struct inode *kvm_gmem_inode_create(const char *name, loff_t size,
 	info = KVM_GMEM_I(inode);
 	if (WARN_ON_ONCE(!info))
 		goto out;
-
-	mt_init(&info->shareability);
 
 	err = kvm_gmem_shareability_setup(info, size, flags);
 	if (err)
