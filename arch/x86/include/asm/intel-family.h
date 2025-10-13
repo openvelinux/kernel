@@ -263,4 +263,6 @@
 #define INTEL_FAM5_QUARK_X1000		0x09 /* Quark X1000 SoC */
 #define INTEL_QUARK_X1000		IFM(5, 0x09) /* Quark X1000 SoC */
 
+#define INTEL_FAM6_ATOM_DARKMONT_X      0xDD /* Clearwater Forest */
+
 #endif /* _ASM_X86_INTEL_FAMILY_H */
