@@ -22,6 +22,7 @@ struct guestmem_hugetlb_private {
 	struct hstate *h;
 	struct hugepage_subpool *spool;
 	struct hugetlb_cgroup *h_cg_rsvd;
+	bool spool_active;
 };
 
 static size_t guestmem_hugetlb_nr_pages_in_folio(void *priv)
@@ -346,7 +347,7 @@ static void guestmem_hugetlb_merge_folio(struct folio *first_folio)
 
 	hugetlb_folio_list_add(first_folio, &h->hugepage_activelist);
 
-	hugetlb_vmemmap_optimize(h, &first_folio->page);
+	hugetlb_vmemmap_optimize_folio_nosync(h, first_folio);
 }
 
 static struct folio *guestmem_hugetlb_maybe_merge_folio(struct folio *folio)
@@ -419,6 +420,14 @@ static int __init guestmem_hugetlb_init(void)
 }
 subsys_initcall(guestmem_hugetlb_init);
 
+static void spool_release_cb(struct hugepage_subpool *spool, void *data)
+{
+	struct guestmem_hugetlb_private *private = data;
+
+	pr_debug_ratelimited("%s: called for spool %px data %px\n", __func__, spool, data);
+	private->spool_active = false;
+}
+
 static void *guestmem_hugetlb_setup(size_t size, u64 flags)
 
 {
@@ -461,13 +470,14 @@ static void *guestmem_hugetlb_setup(size_t size, u64 flags)
 
 	hpages = size >> huge_page_shift(h);
 	WARN_ON_ONCE(!hpages);
-	spool = hugepage_new_subpool(h, hpages, hpages, false);
+	spool = hugepage_new_subpool_cb(h, hpages, hpages, false, spool_release_cb, private);
 	if (!spool)
 		goto err_uncharge;
 
 	private->h = h;
 	private->spool = spool;
 	private->h_cg_rsvd = h_cg_rsvd;
+	private->spool_active = true;
 
 	return private;
 
@@ -486,6 +496,10 @@ static void guestmem_hugetlb_teardown(void *priv, size_t inode_size)
 	int idx;
 
 	hugepage_put_subpool(private->spool);
+
+	while (private->spool_active) {
+		cond_resched();
+	}
 
 	idx = hstate_index(private->h);
 	nr_pages = inode_size >> PAGE_SHIFT;

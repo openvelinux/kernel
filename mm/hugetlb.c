@@ -124,6 +124,8 @@ static inline void unlock_or_release_subpool(struct hugepage_subpool *spool,
 		if (spool->min_hpages != -1)
 			hugetlb_acct_memory(spool->hstate,
 						-spool->min_hpages);
+		if (spool->release_cb)
+			spool->release_cb(spool, spool->data);
 		kfree(spool);
 	}
 }
@@ -149,6 +151,24 @@ struct hugepage_subpool *hugepage_new_subpool(struct hstate *h, long max_hpages,
 		return NULL;
 	}
 	spool->rsv_hpages = min_hpages;
+
+	return spool;
+}
+
+struct hugepage_subpool *hugepage_new_subpool_cb(struct hstate *h, long max_hpages,
+						 long min_hpages, bool use_surplus,
+						 void (*release_cb)(struct hugepage_subpool *spool,
+								    void *data),
+						 void *data)
+{
+	struct hugepage_subpool *spool = hugepage_new_subpool(h, max_hpages, min_hpages,
+							      use_surplus);
+
+	if (!spool)
+		return NULL;
+
+	spool->release_cb = release_cb;
+	spool->data = data;
 
 	return spool;
 }

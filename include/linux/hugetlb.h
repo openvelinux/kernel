@@ -51,6 +51,8 @@ struct hugepage_subpool {
 	long min_hpages;	/* Minimum huge pages or -1 if no minimum. */
 	long rsv_hpages;	/* Pages reserved against global pool to */
 				/* satisfy minimum size. */
+	void (*release_cb)(struct hugepage_subpool *spool, void *opaque);
+	void *data;
 };
 
 struct resv_map {
@@ -123,6 +125,11 @@ extern int hugetlb_max_hstate __read_mostly;
 
 struct hugepage_subpool *hugepage_new_subpool(struct hstate *h, long max_hpages,
 					      long min_hpages, bool use_surplus);
+struct hugepage_subpool *hugepage_new_subpool_cb(struct hstate *h, long max_hpages,
+						 long min_hpages, bool use_surplus,
+						 void (*release_cb)(struct hugepage_subpool *spool,
+								    void *data),
+						 void *data);
 void hugepage_put_subpool(struct hugepage_subpool *spool);
 
 long hugepage_subpool_get_pages(struct hugepage_subpool *spool, long delta);
