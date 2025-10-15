@@ -2294,8 +2294,7 @@ int serial8250_do_startup(struct uart_port *port)
 	if (port->irq && !(up->port.flags & UPF_NO_THRE_TEST)) {
 		unsigned char iir1;
 
-		if (port->irqflags & IRQF_SHARED)
-			disable_irq_nosync(port->irq);
+		disable_irq(port->irq);
 
 		/*
 		 * Test for UARTs that do not reassert THRE when the
@@ -2319,8 +2318,7 @@ int serial8250_do_startup(struct uart_port *port)
 
 		spin_unlock_irqrestore(&port->lock, flags);
 
-		if (port->irqflags & IRQF_SHARED)
-			enable_irq(port->irq);
+		enable_irq(port->irq);
 
 		/*
 		 * If the interrupt is not reasserted, or we otherwise
