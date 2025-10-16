@@ -497,6 +497,12 @@ static int pcc_startup(struct mbox_chan *chan)
 	unsigned long irqflags;
 	int rc;
 
+	/*
+	 * Clear and acknowledge any pending interrupts on responder channel
+	 * before enabling the interrupt.
+	 */
+	check_and_ack(pchan, chan);
+
 	if (pchan->plat_irq > 0) {
 		irqflags = pcc_chan_plat_irq_can_be_shared(pchan) ?
 						IRQF_SHARED : 0;
