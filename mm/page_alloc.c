@@ -3339,7 +3339,7 @@ static int nr_pcp_free(struct per_cpu_pages *pcp, int high, bool free_high)
 static int nr_pcp_high(struct per_cpu_pages *pcp, struct zone *zone,
 		       bool free_high)
 {
-	int high = READ_ONCE(pcp->high_min);
+	int high = READ_ONCE(pcp->high);
 
 	if (unlikely(!high || free_high))
 		return 0;
@@ -3688,7 +3688,7 @@ static int nr_pcp_alloc(struct per_cpu_pages *pcp, int order)
 {
 	int high, batch, max_nr_alloc;
 
-	high = READ_ONCE(pcp->high_min);
+	high = READ_ONCE(pcp->high);
 	batch = READ_ONCE(pcp->batch);
 
 	/* Check for PCP disabled or boot pageset */
@@ -7046,15 +7046,14 @@ static int zone_batchsize(struct zone *zone)
 #endif
 }
 
-static int zone_highsize(struct zone *zone, int batch, int cpu_online,
-			 int high_fraction)
+static int zone_highsize(struct zone *zone, int batch, int cpu_online)
 {
 #ifdef CONFIG_MMU
 	int high;
 	int nr_split_cpus;
 	unsigned long total_pages;
 
-	if (!high_fraction) {
+	if (!percpu_pagelist_high_fraction) {
 		/*
 		 * By default, the high value of the pcp is based on the zone
 		 * low watermark so that if they are full then background
@@ -7067,15 +7066,15 @@ static int zone_highsize(struct zone *zone, int batch, int cpu_online,
 		 * value is based on a fraction of the managed pages in the
 		 * zone.
 		 */
-		total_pages = zone_managed_pages(zone) / high_fraction;
+		total_pages = zone_managed_pages(zone) / percpu_pagelist_high_fraction;
 	}
 
 	/*
 	 * Split the high value across all online CPUs local to the zone. Note
 	 * that early in boot that CPUs may not be online yet and that during
 	 * CPU hotplug that the cpumask is not yet updated when a CPU is being
-	 * onlined. For memory nodes that have no CPUs, split the high value
-	 * across all online CPUs to mitigate the risk that reclaim is triggered
+	 * onlined. For memory nodes that have no CPUs, split pcp->high across
+	 * all online CPUs to mitigate the risk that reclaim is triggered
 	 * prematurely due to pages stored on pcp lists.
 	 */
 	nr_split_cpus = cpumask_weight(cpumask_of_node(zone_to_nid(zone))) + cpu_online;
@@ -7103,21 +7102,19 @@ static int zone_highsize(struct zone *zone, int batch, int cpu_online,
  * However, guaranteeing these relations at all times would require e.g. write
  * barriers here but also careful usage of read barriers at the read side, and
  * thus be prone to error and bad for performance. Thus the update only prevents
- * store tearing. Any new users of pcp->batch, pcp->high_min and pcp->high_max
- * should ensure they can cope with those fields changing asynchronously, and
- * fully trust only the pcp->count field on the local CPU with interrupts
- * disabled.
+ * store tearing. Any new users of pcp->batch and pcp->high should ensure they
+ * can cope with those fields changing asynchronously, and fully trust only the
+ * pcp->count field on the local CPU with interrupts disabled.
  *
  * mutex_is_locked(&pcp_batch_high_lock) required when calling this function
  * outside of boot time (or some other assurance that no concurrent updaters
  * exist).
  */
-static void pageset_update(struct per_cpu_pages *pcp, unsigned long high_min,
-			   unsigned long high_max, unsigned long batch)
+static void pageset_update(struct per_cpu_pages *pcp, unsigned long high,
+		unsigned long batch)
 {
 	WRITE_ONCE(pcp->batch, batch);
-	WRITE_ONCE(pcp->high_min, high_min);
-	WRITE_ONCE(pcp->high_max, high_max);
+	WRITE_ONCE(pcp->high, high);
 }
 
 static void per_cpu_pages_init(struct per_cpu_pages *pcp, struct per_cpu_zonestat *pzstats)
@@ -7137,21 +7134,20 @@ static void per_cpu_pages_init(struct per_cpu_pages *pcp, struct per_cpu_zonesta
 	 * need to be as careful as pageset_update() as nobody can access the
 	 * pageset yet.
 	 */
-	pcp->high_min = BOOT_PAGESET_HIGH;
-	pcp->high_max = BOOT_PAGESET_HIGH;
+	pcp->high = BOOT_PAGESET_HIGH;
 	pcp->batch = BOOT_PAGESET_BATCH;
 	pcp->free_factor = 0;
 }
 
-static void __zone_set_pageset_high_and_batch(struct zone *zone, unsigned long high_min,
-					      unsigned long high_max, unsigned long batch)
+static void __zone_set_pageset_high_and_batch(struct zone *zone, unsigned long high,
+		unsigned long batch)
 {
 	struct per_cpu_pages *pcp;
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
 		pcp = per_cpu_ptr(zone->per_cpu_pageset, cpu);
-		pageset_update(pcp, high_min, high_max, batch);
+		pageset_update(pcp, high, batch);
 	}
 }
 
@@ -7161,34 +7157,19 @@ static void __zone_set_pageset_high_and_batch(struct zone *zone, unsigned long h
  */
 static void zone_set_pageset_high_and_batch(struct zone *zone, int cpu_online)
 {
-	int new_high_min, new_high_max, new_batch;
+	int new_high, new_batch;
 
 	new_batch = max(1, zone_batchsize(zone));
-	if (percpu_pagelist_high_fraction) {
-		new_high_min = zone_highsize(zone, new_batch, cpu_online,
-					     percpu_pagelist_high_fraction);
-		/*
-		 * PCP high is tuned manually, disable auto-tuning via
-		 * setting high_min and high_max to the manual value.
-		 */
-		new_high_max = new_high_min;
-	} else {
-		new_high_min = zone_highsize(zone, new_batch, cpu_online, 0);
-		new_high_max = zone_highsize(zone, new_batch, cpu_online,
-					     MIN_PERCPU_PAGELIST_HIGH_FRACTION);
-	}
+	new_high = zone_highsize(zone, new_batch, cpu_online);
 
-	if (zone->pageset_high_min == new_high_min &&
-	    zone->pageset_high_max == new_high_max &&
+	if (zone->pageset_high == new_high &&
 	    zone->pageset_batch == new_batch)
 		return;
 
-	zone->pageset_high_min = new_high_min;
-	zone->pageset_high_max = new_high_max;
+	zone->pageset_high = new_high;
 	zone->pageset_batch = new_batch;
 
-	__zone_set_pageset_high_and_batch(zone, new_high_min, new_high_max,
-					  new_batch);
+	__zone_set_pageset_high_and_batch(zone, new_high, new_batch);
 }
 
 void __meminit setup_zone_pageset(struct zone *zone)
@@ -7283,8 +7264,7 @@ static __meminit void zone_pcp_init(struct zone *zone)
 	 */
 	zone->per_cpu_pageset = &boot_pageset;
 	zone->per_cpu_zonestats = &boot_zonestats;
-	zone->pageset_high_min = BOOT_PAGESET_HIGH;
-	zone->pageset_high_max = BOOT_PAGESET_HIGH;
+	zone->pageset_high = BOOT_PAGESET_HIGH;
 	zone->pageset_batch = BOOT_PAGESET_BATCH;
 
 	if (populated_zone(zone))
@@ -9592,14 +9572,13 @@ void zone_pcp_update(struct zone *zone, int cpu_online)
 void zone_pcp_disable(struct zone *zone)
 {
 	mutex_lock(&pcp_batch_high_lock);
-	__zone_set_pageset_high_and_batch(zone, 0, 0, 1);
+	__zone_set_pageset_high_and_batch(zone, 0, 1);
 	__drain_all_pages(zone, true);
 }
 
 void zone_pcp_enable(struct zone *zone)
 {
-	__zone_set_pageset_high_and_batch(zone, zone->pageset_high_min,
-		zone->pageset_high_max, zone->pageset_batch);
+	__zone_set_pageset_high_and_batch(zone, zone->pageset_high, zone->pageset_batch);
 	mutex_unlock(&pcp_batch_high_lock);
 }
 
