@@ -279,7 +279,7 @@ static int klp_check_stack(struct task_struct *task, char *err_buf)
  * running, or it's sleeping on a to-be-patched or to-be-unpatched function, or
  * if the stack is unreliable, return false.
  */
-static bool klp_try_switch_task(struct task_struct *task)
+static bool klp_try_switch_task(struct task_struct *task, void *arg)
 {
 	static char err_buf[STACK_ERR_BUF_SIZE];
 	struct rq *rq;
@@ -308,6 +308,9 @@ static bool klp_try_switch_task(struct task_struct *task)
 	rq = task_rq_lock(task, &flags);
 
 	if (task_running(rq, task) && task != current) {
+		if (rq->nr_running == 1)
+			*((struct task_struct **)arg) = task;
+
 		snprintf(err_buf, STACK_ERR_BUF_SIZE,
 			 "%s: %s:%d is running\n", __func__, task->comm,
 			 task->pid);
@@ -387,7 +390,7 @@ static void klp_send_signals(void)
 void klp_try_complete_transition(void)
 {
 	unsigned int cpu;
-	struct task_struct *g, *task;
+	struct task_struct *g, *task, *busy_task = NULL;
 	struct klp_patch *patch;
 	bool complete = true;
 
@@ -404,7 +407,7 @@ void klp_try_complete_transition(void)
 	 */
 	read_lock(&tasklist_lock);
 	for_each_process_thread(g, task)
-		if (!klp_try_switch_task(task))
+		if (!klp_try_switch_task(task, &busy_task))
 			complete = false;
 	read_unlock(&tasklist_lock);
 
@@ -415,7 +418,7 @@ void klp_try_complete_transition(void)
 	for_each_possible_cpu(cpu) {
 		task = idle_task(cpu);
 		if (cpu_online(cpu)) {
-			if (!klp_try_switch_task(task)) {
+			if (!klp_try_switch_task(task, &busy_task)) {
 				complete = false;
 				/* Make idle task go through the main loop. */
 				wake_up_if_idle(cpu);
@@ -438,8 +441,11 @@ void klp_try_complete_transition(void)
 		 * later and/or wait for other methods like kernel exit
 		 * switching.
 		 */
-		schedule_delayed_work(&klp_transition_work,
-				      round_jiffies_relative(HZ));
+		if (unlikely(busy_task))
+			schedule_delayed_work_on(task_cpu(busy_task), &klp_transition_work, 1);
+		else
+			schedule_delayed_work(&klp_transition_work,
+					      round_jiffies_relative(HZ));
 		return;
 	}
 
