@@ -2425,6 +2425,7 @@ static const struct x86_cpu_id intel_pstate_cpu_oob_ids[] __initconst = {
 	X86_MATCH(INTEL_SKYLAKE_X,		core_funcs),
 	X86_MATCH(INTEL_ICELAKE_X,		core_funcs),
 	X86_MATCH(INTEL_SAPPHIRERAPIDS_X,	core_funcs),
+	X86_MATCH(INTEL_DIAMONDRAPIDS_X,	core_funcs),
 	{}
 };
 #endif
