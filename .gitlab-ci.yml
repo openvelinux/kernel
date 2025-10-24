@@ -1,1 +1,544 @@
-include: 'https://sysrepo.byted.org/kernel-ci/kernel-ci/raw/master/gitlab-ci.yml'
+##
+#
+# This file is included from .gitlab-ci.yml of linux-image-bsk branches.
+#
+stages:
+  - Prepare
+  - Merge
+  - Commit Validation
+  - Pre-build
+  - Build Business
+  - Build Signed
+  - Build Unsigned
+  - Build Debug
+  - Upload
+  - Slam
+  - Talos
+  - Test
+
+variables:
+  GIT_STRATEGY: fetch
+  # Artifacts paths
+  TEST_ARTIFACTS_PATH: "$CI_PROJECT_DIR/${CI_PIPELINE_ID}-${CI_JOB_NAME}"
+  CUSTOM_VARS_ENV: bytedance/custom_vars.env
+  CI_PATCH: bytedance/ci
+  SIGNATURE_KEY_PATH: bytedance/keys
+  SIGNATURE_SIGN_PATH: /data00/kernel-ci/sign
+
+CI-fetcher:
+  stage: Prepare
+  script:
+    - set -e
+    - rm -rf bytedance
+    - mkdir bytedance
+    - mkdir $SIGNATURE_KEY_PATH
+    # Extract the branch name from .gitlab-ci.yml
+    - branch='master'
+    - echo "Employ $branch branch of the Kernel CI/CD repository"
+    - repository="https://kernel-ci:$BSK_API_TOKEN@code.byted.org/sys/kernel-ci.git"
+    - git clone -b "$branch" "$repository" "$CI_PATCH" > /dev/null 2>&1
+    - (cd "$CI_PATCH"; git log --oneline -1)
+    - $CI_PATCH/prepare.sh "$SIGNATURE_KEY_PATH" "$SIGNATURE_SIGN_PATH"
+  artifacts:
+    name: ci-script
+    paths:
+      - $CI_PATCH
+      - $SIGNATURE_KEY_PATH
+      - $CUSTOM_VARS_ENV
+    expire_in: 30 days
+  tags:
+    - fetch-ci
+
+merge:
+  stage: Merge
+  only:
+    refs:
+      - schedules
+    variables:
+      - $SCHEDULE_TYPE == "merge"
+  dependencies:
+    - CI-fetcher
+  script:
+    - $CI_PATCH/merge.sh
+  allow_failure: false
+  tags:
+    - x86_64-build
+
+.commit_validation_template: &commit_validation_definition
+  stage: Commit Validation
+  dependencies:
+    - CI-fetcher
+  before_script:
+    - source $CUSTOM_VARS_ENV
+  script:
+    - COMMIT_RANGE="remotes/origin/$SourceBranch..HEAD"
+    - if test $(git rev-list --count $COMMIT_RANGE) -gt 2000; then
+    -   echo "Too many commits in $COMMIT_RANGE"
+    -   exit 1
+    - fi
+    - echo "$COMMAND $COMMIT_RANGE"
+    - $COMMAND $COMMIT_RANGE
+  except:
+    refs:
+      - tags
+      - schedules
+    variables:
+      - $CI_COMMIT_REF_PROTECTED == "true"
+  allow_failure: false
+  tags:
+    - x86_64-build
+
+downstream-format-validator:
+  <<: *commit_validation_definition
+  variables:
+    COMMAND: $CI_PATCH/downstream-format-validator -r
+
+compatibility-validator:
+  <<: *commit_validation_definition
+  variables:
+    COMMAND: $CI_PATCH/compatibility-validator
+  allow_failure: true
+
+upstream-fix-scanner:
+  <<: *commit_validation_definition
+  variables:
+    COMMAND: $CI_PATCH/upstream-fix-scanner -s -u origin/master -e $CI_PATCH/exclude-commits -r
+
+upstream-variance-viewer:
+  <<: *commit_validation_definition
+  variables:
+    COMMAND: $CI_PATCH/upstream-variance-viewer -r
+  allow_failure: true
+
+upstream-format-validator:
+  <<: *commit_validation_definition
+  variables:
+    COMMAND: $CI_PATCH/upstream-format-validator -r
+
+.prebuild_template: &prebuild_template
+  stage: Pre-build
+  dependencies:
+    - CI-fetcher
+  variables:
+    BUILD_ARGS: -d buster
+  script:
+    - $CI_PATCH/citool build-defconfig -j$(nproc) $BUILD_ARGS
+  tags:
+    - x86_64-build
+  except:
+    refs:
+      - schedules
+
+x86_64-defconfig-build:
+  <<: *prebuild_template
+  script:
+    - $CI_PATCH/citool build-defconfig -j$(nproc) $BUILD_ARGS
+
+aarch64-defconfig-build:
+  <<: *prebuild_template
+  script:
+    - $CI_PATCH/citool build-defconfig -j$(nproc) $BUILD_ARGS
+  tags:
+    - aarch64
+
+.build_template: &build_base
+  stage: Build Unsigned
+  dependencies:
+    - CI-fetcher
+  variables:
+    BUILD_ARGS: -d buster
+  before_script:
+    - source $CUSTOM_VARS_ENV
+  script:
+    - output=$($CI_PATCH/build-should-continue.sh "$FILTER_BRANCH_REGEX" "$SourceBranchVersion" "$BASE_PAGE" "$BuildArchConfig")
+    - if [ -n "$output" ]; then
+    -   echo "$output"
+    -   exit 0
+    - fi
+    - git fetch --tags --force
+    - $CI_PATCH/citool build --key-dir bytedance/keys -j$(nproc) $BUILD_ARGS
+  artifacts:
+    paths:
+      - output
+    expire_in: 30 days
+  tags:
+    - x86_64-build
+  except:
+    refs:
+      - schedules
+
+.build_signed_template: &build_signed_base
+  <<: *build_base
+  stage: Build Signed
+
+.build_debug_template: &build_debug_base
+  <<: *build_base
+  stage: Build Debug
+
+x86_64-bookworm-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d bookworm
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+  tags:
+   - x86_64-build
+
+aarch64-bookworm-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d bookworm
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+  tags:
+    - aarch64
+
+aarch64-64k-bookworm-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d bookworm
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+    BASE_PAGE: 64k
+  tags:
+    - aarch64
+
+x86_64-buster-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d buster
+
+x86_64-buster-sign-build:
+  <<: *build_signed_base
+  variables:
+    BUILD_ARGS: -d buster
+    SIGN_KERNEL: y
+  only:
+    refs:
+      - branches
+      - tags
+    variables:
+      - $CI_COMMIT_REF_PROTECTED == "true"
+
+.build_business_template: &build_business_template
+  <<: *build_base
+  stage: Build Business
+  when: manual
+
+x86_64-buster-lto_pgo-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d buster -c LLVM=-13 -c KCFLAGS="-fprofile-sample-use=./autofdo.prof"
+  only:
+    variables:
+      - $BaseBranch =~ /^v5.15\.*/
+
+x86_64-buster-business-build:
+  <<: *build_business_template
+  variables:
+    BUILD_ARGS: -d buster
+    BUSINESS_KERNEL: y
+
+x86_64-bookworm-business-build:
+  <<: *build_business_template
+  variables:
+    BUILD_ARGS: -d bookworm
+    BUSINESS_KERNEL: y
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+  tags:
+    - x86_64-build
+
+aarch64-bookworm-business-build:
+  <<: *build_business_template
+  variables:
+    BUILD_ARGS: -d bookworm
+    BUSINESS_KERNEL: y
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+  tags:
+    - aarch64
+
+aarch64-64k-bookworm-business-build:
+  <<: *build_business_template
+  variables:
+    BUILD_ARGS: -d bookworm
+    BUSINESS_KERNEL: y
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+    BASE_PAGE: 64k
+  tags:
+    - aarch64
+
+aarch64-buster-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d buster
+  tags:
+    - aarch64
+
+.aarch64-buster-sign-build-template: &build_aarch64_buster_sign_definition
+  <<: *build_signed_base
+  variables:
+    SIGN_KERNEL: y
+    BUILD_ARGS: -d buster
+  tags:
+    - aarch64
+  only:
+    refs:
+      - branches
+      - tags
+    variables:
+      - $CI_COMMIT_REF_PROTECTED == "true"
+
+aarch64-buster-sign-build:
+  <<: *build_aarch64_buster_sign_definition
+
+aarch64-buster-business-build:
+  <<: *build_business_template
+  variables:
+    BUILD_ARGS: -d buster
+    BUSINESS_KERNEL: y
+  tags:
+    - aarch64
+
+aarch64-64k-buster-business-build:
+  <<: *build_business_template
+  variables:
+    BUILD_ARGS: -d buster
+    BUSINESS_KERNEL: y
+    BASE_PAGE: 64k
+  tags:
+    - aarch64
+
+aarch64-64k-buster-build:
+  <<: *build_base
+  variables:
+    BUILD_ARGS: -d buster
+    BASE_PAGE: 64k
+  tags:
+    - aarch64
+  except:
+    refs:
+      - schedules
+
+aarch64-64k-buster-sign-build:
+  <<: *build_aarch64_buster_sign_definition
+  variables:
+    SIGN_KERNEL: y
+    BUILD_ARGS: -d buster
+    BASE_PAGE: 64k
+  except:
+    refs:
+      - schedules
+
+x86_64-buster-kvm-test: &test_base
+  stage: Test
+  dependencies:
+    - x86_64-buster-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: buster
+    TEST_ARCH: x86_64
+    TEST_TYPE: kvm
+    TEST_CASE: all_tests.yml
+  before_script:
+    - source $CUSTOM_VARS_ENV
+  script:
+    - set -e
+    - output=$($CI_PATCH/build-should-continue.sh "$FILTER_BRANCH_REGEX" "$SourceBranchVersion" "$BASE_PAGE" "$BuildArchConfig")
+    - if [ -n "$output" ]; then
+    -   echo "$output"
+    -   exit 0
+    - fi
+    - IMAGE=$TEST_DEBIAN_CODENAME-$TEST_ARCH-$CI_PIPELINE_ID-$CI_JOB_NAME.img
+    - $CI_PATCH/citool build-image -t $TEST_DEBIAN_CODENAME-$TEST_ARCH -o $IMAGE
+    - |
+      TEST_TARGET=${TEST_DEBIAN_CODENAME}-${TEST_ARCH}
+      $CI_PATCH/kernel_test.py $TEST_TYPE \
+        --image $IMAGE \
+        --test-kvm kernel_test_${TEST_TYPE}_${TEST_TARGET}_${CI_PIPELINE_ID}-${CI_JOB_NAME} \
+        --ssh-auth-method sshkey --ssh-pubkey-file ~/.ssh/id_rsa.pub \
+        --kernel-package-dir output/$TEST_TARGET --log-dir $TEST_ARTIFACTS_PATH \
+        --tests-yml $CI_PATCH/ci-unit-tests/$TEST_CASE;
+    - rm $IMAGE
+  after_script:
+    # Remove the artifacts directory, as the separate artifacts directory is
+    # created for each test job, so if not removed, the artifacts directory
+    # created for this test job will be left on the runner machine. If needed,
+    # the artifacts can be downloaded from Gitlab and staging apt source.
+    - rm -rf output
+  artifacts:
+    name: "${CI_PIPELINE_ID}_${CI_JOB_NAME}"
+    paths:
+      - $TEST_ARTIFACTS_PATH/
+    when: always
+    expire_in: 10 yrs
+  tags:
+    - x86_64-test
+  except:
+    refs:
+      - schedules
+
+aarch64-buster-kvm-test:
+  <<: *test_base
+  dependencies:
+    - aarch64-buster-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: buster
+    TEST_ARCH: aarch64
+    TEST_TYPE: kvm
+    TEST_CASE: all_tests.yml
+    BASE_KVM: kernel_ci_debian_buster_aarch64
+  tags:
+    - kernel test aarch64
+    - shell
+
+x86_64-bookworm-kvm-test:
+  <<: *test_base
+  dependencies:
+    - x86_64-bookworm-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: bookworm
+    TEST_ARCH: x86_64
+    TEST_TYPE: kvm
+    TEST_CASE: all_tests.yml
+    BASE_KVM: kernel_ci_debian_bookworm
+    FILTER_BRANCH_REGEX: ^v5\.15\.|v6\.6\.
+
+x86_64-benchmark-test:
+  stage: Test
+  dependencies:
+    - x86_64-buster-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: buster
+    TEST_ARCH: x86_64
+    TEST_TYPE: phy
+  script:
+    - set -e
+    - $CI_PATCH/perf_test.py
+  after_script:
+    - rm -rf output
+  allow_failure: true
+  when: manual
+  tags:
+    - x86_64-test
+  except:
+    refs:
+      - schedules
+
+x86_64-buster-mce-test:
+  <<: *test_base
+  stage: Test
+  dependencies:
+    - x86_64-buster-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: buster
+    TEST_ARCH: x86_64
+    TEST_TYPE: kvm
+    TEST_CASE: mce_test_all.yml
+    FILTER_BRANCH_REGEX: ^v5\.
+  allow_failure: true
+
+x86_64-buster-kasan-build:
+  <<: *build_debug_base
+  variables:
+    BUILD_ARGS: -d buster
+    KASAN_ARGS: y
+  when: manual
+
+x86_64-buster-kasan-test:
+  <<: *test_base
+  stage: Test
+  dependencies:
+    - x86_64-buster-kasan-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: buster
+    TEST_ARCH: x86_64
+    TEST_TYPE: kvm
+    TEST_CASE: all_tests.yml
+    BASE_KVM: kernel_ci_debian_buster
+  when: manual
+
+x86_64-buster-lto_pgo-test:
+  <<: *test_base
+  stage: Test
+  dependencies:
+    - x86_64-buster-lto_pgo-build
+    - CI-fetcher
+  variables:
+    GIT_STRATEGY: none
+    TEST_DEBIAN_CODENAME: buster
+    TEST_ARCH: x86_64
+    TEST_TYPE: kvm
+    TEST_CASE: all_tests_llvm.yml
+    BASE_KVM: kernel_ci_debian_buster
+  only:
+    variables:
+      - $BaseBranch =~ /^v5.15\.*/
+
+upload-to-apt-tos:
+  stage: Upload
+  dependencies:
+    - CI-fetcher
+    - x86_64-buster-build
+    - x86_64-buster-sign-build
+    - aarch64-buster-build
+    - aarch64-64k-buster-build
+    - aarch64-buster-sign-build
+    - aarch64-64k-buster-sign-build
+  script:
+    - $CI_PATCH/upload.sh
+  artifacts:
+    name: "output"
+    paths:
+      - output/link/
+    when: always
+    expire_in: 30 days
+  when: manual
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_REF_PROTECTED == "true"
+  tags:
+    - x86_64
+
+trigger-slam-binary:
+  stage: Slam
+  dependencies:
+    - CI-fetcher
+    - upload-to-apt-tos
+  script:
+    - $CI_PATCH/slam.sh
+  when: manual
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_REF_PROTECTED == "true"
+  tags:
+    - x86_64
+
+talos:
+  stage: Talos
+  dependencies:
+    - CI-fetcher
+    - upload-to-apt-tos
+    - trigger-slam-binary
+  script:
+    - $CI_PATCH/talos.sh
+  when: manual
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_REF_PROTECTED == "true"
+  tags:
+    - x86_64
+
