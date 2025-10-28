@@ -47,6 +47,9 @@ static int show_irq_affinity(int type, struct seq_file *m)
 {
 	struct irq_desc *desc = irq_to_desc((long)m->private);
 	const struct cpumask *mask;
+	int ret = 0;
+
+	raw_spin_lock_irq(&desc->lock);
 
 	switch (type) {
 	case AFFINITY:
@@ -64,7 +67,8 @@ static int show_irq_affinity(int type, struct seq_file *m)
 		break;
 #endif
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out_unlock;
 	}
 
 	switch (type) {
@@ -77,7 +81,10 @@ static int show_irq_affinity(int type, struct seq_file *m)
 		seq_printf(m, "%*pb\n", cpumask_pr_args(mask));
 		break;
 	}
-	return 0;
+
+out_unlock:
+	raw_spin_unlock_irq(&desc->lock);
+	return ret;
 }
 
 static int irq_affinity_hint_proc_show(struct seq_file *m, void *v)
