@@ -466,8 +466,9 @@ static void ext4_maybe_update_superblock(struct super_block *sb)
 	__u64 lifetime_write_kbytes;
 	__u64 diff_size;
 
-	if (sb_rdonly(sb) || !(sb->s_flags & SB_ACTIVE) ||
-	    !journal || (journal->j_flags & JBD2_UNMOUNT))
+	if (ext4_emergency_state(sb) || sb_rdonly(sb) ||
+	    !(sb->s_flags & SB_ACTIVE) || !journal ||
+	    journal->j_flags & JBD2_UNMOUNT)
 		return;
 
 	now = ktime_get_real_seconds();
@@ -774,7 +775,8 @@ static void update_super_work(struct work_struct *work)
 	 * We use directly jbd2 functions here to avoid recursing back into
 	 * ext4 error handling code during handling of previous errors.
 	 */
-	if (!sb_rdonly(sbi->s_sb) && journal) {
+	if (!ext4_emergency_state(sbi->s_sb) &&
+	    !sb_rdonly(sbi->s_sb) && journal) {
 		struct buffer_head *sbh = sbi->s_sbh;
 		bool call_notify_err = false;
 
@@ -828,7 +830,7 @@ void __ext4_error(struct super_block *sb, const char *function,
 	struct va_format vaf;
 	va_list args;
 
-	if (unlikely(ext4_forced_shutdown(sb)))
+	if (unlikely(ext4_emergency_state(sb)))
 		return;
 
 	trace_ext4_error(sb, function, line);
@@ -853,7 +855,7 @@ void __ext4_error_inode(struct inode *inode, const char *function,
 	va_list args;
 	struct va_format vaf;
 
-	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
+	if (unlikely(ext4_emergency_state(inode->i_sb)))
 		return;
 
 	trace_ext4_error(inode->i_sb, function, line);
@@ -888,7 +890,7 @@ void __ext4_error_file(struct file *file, const char *function,
 	struct inode *inode = file_inode(file);
 	char pathname[80], *path;
 
-	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
+	if (unlikely(ext4_emergency_state(inode->i_sb)))
 		return;
 
 	trace_ext4_error(inode->i_sb, function, line);
@@ -968,7 +970,7 @@ void __ext4_std_error(struct super_block *sb, const char *function,
 	char nbuf[16];
 	const char *errstr;
 
-	if (unlikely(ext4_forced_shutdown(sb)))
+	if (unlikely(ext4_emergency_state(sb)))
 		return;
 
 	/* Special case: if the error is EROFS, and we're not already
@@ -1062,7 +1064,7 @@ __acquires(bitlock)
 	struct va_format vaf;
 	va_list args;
 
-	if (unlikely(ext4_forced_shutdown(sb)))
+	if (unlikely(ext4_emergency_state(sb)))
 		return;
 
 	trace_ext4_error(sb, function, line);
@@ -1334,13 +1336,14 @@ static void ext4_put_super(struct super_block *sb)
 	ext4_mb_release(sb);
 	ext4_ext_release(sb);
 
-	if (!sb_rdonly(sb) && !aborted) {
-		ext4_clear_feature_journal_needs_recovery(sb);
-		ext4_clear_feature_orphan_present(sb);
-		es->s_state = cpu_to_le16(sbi->s_mount_state);
-	}
-	if (!sb_rdonly(sb))
+	if (!ext4_emergency_state(sb) && !sb_rdonly(sb)) {
+		if (!aborted) {
+			ext4_clear_feature_journal_needs_recovery(sb);
+			ext4_clear_feature_orphan_present(sb);
+			es->s_state = cpu_to_le16(sbi->s_mount_state);
+		}
 		ext4_commit_super(sb);
+	}
 
 	ext4_group_desc_free(sbi);
 	ext4_flex_groups_free(sbi);
@@ -3735,7 +3738,8 @@ static int ext4_run_li_request(struct ext4_li_request *elr)
 		if (group >= elr->lr_next_group) {
 			ret = 1;
 			if (elr->lr_first_not_zeroed != ngroups &&
-			    !sb_rdonly(sb) && test_opt(sb, INIT_INODE_TABLE)) {
+			    !ext4_emergency_state(sb) && !sb_rdonly(sb) &&
+			    test_opt(sb, INIT_INODE_TABLE)) {
 				elr->lr_next_group = elr->lr_first_not_zeroed;
 				elr->lr_mode = EXT4_LI_MODE_ITABLE;
 				ret = 0;
@@ -4034,7 +4038,7 @@ int ext4_register_li_request(struct super_block *sb,
 		goto out;
 	}
 
-	if (sb_rdonly(sb) ||
+	if (ext4_emergency_state(sb) || sb_rdonly(sb) ||
 	    (test_opt(sb, NO_PREFETCH_BLOCK_BITMAPS) &&
 	     (first_not_zeroed == ngroups || !test_opt(sb, INIT_INODE_TABLE))))
 		goto out;
@@ -6346,8 +6350,9 @@ static int ext4_sync_fs(struct super_block *sb, int wait)
 	bool needs_barrier = false;
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
 
-	if (unlikely(ext4_forced_shutdown(sb)))
-		return 0;
+	ret = ext4_emergency_state(sb);
+	if (unlikely(ret))
+		return ret;
 
 	trace_ext4_sync_fs(sb, wait);
 	flush_workqueue(sbi->rsv_conversion_wq);
@@ -6429,7 +6434,7 @@ out:
  */
 static int ext4_unfreeze(struct super_block *sb)
 {
-	if (ext4_forced_shutdown(sb))
+	if (ext4_emergency_state(sb))
 		return 0;
 
 	if (EXT4_SB(sb)->s_journal) {
@@ -6578,7 +6583,7 @@ static int __ext4_remount(struct fs_context *fc, struct super_block *sb)
 	flush_work(&sbi->s_sb_upd_work);
 
 	if ((bool)(fc->sb_flags & SB_RDONLY) != sb_rdonly(sb)) {
-		if (ext4_forced_shutdown(sb)) {
+		if (ext4_emergency_state(sb)) {
 			err = -EROFS;
 			goto restore_opts;
 		}
