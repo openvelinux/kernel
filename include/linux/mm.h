@@ -1564,12 +1564,7 @@ static inline unsigned long page_to_section(const struct page *page)
 {
 	return (page->flags >> SECTIONS_PGSHIFT) & SECTIONS_MASK;
 }
-#else /* !SECTION_IN_PAGE_FLAGS */
-static inline unsigned long page_to_section(const struct page *page)
-{
-	return 0;
-}
-#endif /* SECTION_IN_PAGE_FLAGS */
+#endif
 
 /* MIGRATE_CMA and ZONE_MOVABLE do not allow pin pages */
 #ifdef CONFIG_MIGRATION
