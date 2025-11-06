@@ -3725,6 +3725,7 @@ static void hw_info_put(struct amd64_pvt *pvt)
 	pci_dev_put(pvt->F1);
 	pci_dev_put(pvt->F2);
 	kfree(pvt->umc);
+	kfree(pvt->csels);
 }
 
 static struct low_ops umc_ops = {
@@ -3902,6 +3903,10 @@ static int per_family_init(struct amd64_pvt *pvt)
 	else
 		scnprintf(pvt->ctl_name, sizeof(pvt->ctl_name), "F%02Xh_M%02Xh",
 			  pvt->fam, pvt->model);
+
+	pvt->csels = kcalloc(pvt->max_mcs, sizeof(*pvt->csels), GFP_KERNEL);
+	if (!pvt->csels)
+		return -ENOMEM;
 
 	return 0;
 }
