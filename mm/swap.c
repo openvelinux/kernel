@@ -1016,6 +1016,15 @@ void release_pages(release_pages_arg arg, int nr)
 		if (!folio_put_testzero(folio))
 			continue;
 
+		if (unlikely(folio_has_type(folio))) {
+                        if (lruvec) {
+                                 unlock_page_lruvec_irqrestore(lruvec, flags);
+                                 lruvec = NULL;
+                         }
+                        free_typed_folio(folio);
+                        continue;
+                }
+
 		if (folio_test_large(folio)) {
 			if (lruvec) {
 				unlock_page_lruvec_irqrestore(lruvec, flags);
