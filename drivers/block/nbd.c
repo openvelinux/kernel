@@ -839,12 +839,11 @@ static int recv_work(void *data)
 	nbd_mark_nsock_dead(nbd, nsock, 1);
 	mutex_unlock(&nsock->tx_lock);
 
-	nbd_config_put(nbd);
-
 	spin_lock(&config->recv_lock);
 	atomic_dec(&config->recv_threads);
 	wake_up(&config->recv_wq);
 	spin_unlock(&config->recv_lock);
+	nbd_config_put(nbd);
 	kfree(args);
 
 	return 0;
