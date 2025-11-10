@@ -144,7 +144,7 @@ struct hw_perf_event_extra {
  * PERF_EVENT_FLAG_ARCH bits are reserved for architecture-specific
  * usage.
  */
-#define PERF_EVENT_FLAG_ARCH			0x000fffff
+#define PERF_EVENT_FLAG_ARCH			0x0fffffff
 #define PERF_EVENT_FLAG_USER_READ_CNT		0x80000000
 
 static_assert((PERF_EVENT_FLAG_USER_READ_CNT & PERF_EVENT_FLAG_ARCH) == 0);
@@ -157,7 +157,9 @@ struct hw_perf_event {
 	union {
 		struct { /* hardware */
 			u64		config;
+			u64		config1;
 			u64		last_tag;
+			u64		dyn_constraint;
 			unsigned long	config_base;
 			unsigned long	event_base;
 			int		event_base_rdpmc;
@@ -1284,6 +1286,9 @@ static inline void perf_sample_save_brstack(struct perf_sample_data *data,
 
 	if (branch_sample_hw_index(event))
 		size += sizeof(u64);
+
+	brs->nr = min_t(u16, event->attr.sample_max_stack, brs->nr);
+
 	size += brs->nr * sizeof(struct perf_branch_entry);
 
 	/*
