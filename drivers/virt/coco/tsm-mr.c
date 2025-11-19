@@ -65,18 +65,15 @@ static ssize_t tm_digest_read(struct file *filp, struct kobject *kobj,
 	 * ctx->refresh() is necessary only for LIVE MRs, while others retain
 	 * their values from their respective last ctx->write().
 	 */
-	if ((mr->mr_flags & TSM_MR_F_LIVE) && !ctx->in_sync) {
+	if ((mr->mr_flags & TSM_MR_F_LIVE)) {
 		up_read(&ctx->rwsem);
 
 		rc = down_write_killable(&ctx->rwsem);
 		if (rc)
 			return rc;
 
-		if (!ctx->in_sync) {
-			rc = ctx->tm->refresh(ctx->tm);
-			ctx->in_sync = !rc;
-			trace_tsm_mr_refresh(mr, rc);
-		}
+		rc = ctx->tm->refresh(ctx->tm);
+		trace_tsm_mr_refresh(mr, rc);
 
 		downgrade_write(&ctx->rwsem);
 	}
