@@ -247,4 +247,6 @@ source "drivers/cpuinspect/Kconfig"
 
 source "drivers/bytedance/Kconfig"
 
+source "drivers/resctrl/Kconfig"
+
 endmenu
