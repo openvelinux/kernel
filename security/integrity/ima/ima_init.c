@@ -136,6 +136,9 @@ int __init ima_init(void)
 		if (ima_tpm_chip) {
 			pr_info("TDX found.\n");
 			ima_tdx_device = ima_tpm_chip;
+			rc = tdx_rtmr_ccel_init();
+			if (rc)
+				pr_info("Failed to init TDX RTMR CCEL\n");
 		}
 	}
 #endif

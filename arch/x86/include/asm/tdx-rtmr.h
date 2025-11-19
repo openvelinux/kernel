@@ -110,3 +110,4 @@ struct tpm_chip *tdx_rtmr_device(void);
 int ima_extend_rtmr(struct tpm_chip *chip, u32 rtmr_idx,
 		    struct tpm_digest *digests);
 int tdx_get_boot_measurements(struct tdx_boot_digests *boot_digests);
+int tdx_rtmr_ccel_init(void);

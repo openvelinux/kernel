@@ -79,7 +79,7 @@ static struct bin_attribute bin_attr_tdx_rtmr_ccel __ro_after_init = {
 
 struct kobject *tdx_rtmr_kobj;
 
-static int __init tdx_rtmr_ccel_init(void)
+int __init tdx_rtmr_ccel_init(void)
 {
 	bin_attr_tdx_rtmr_ccel.size = 0;
 
@@ -89,8 +89,6 @@ static int __init tdx_rtmr_ccel_init(void)
 
 	return sysfs_create_bin_file(tdx_rtmr_kobj, &bin_attr_tdx_rtmr_ccel);
 }
-
-subsys_initcall(tdx_rtmr_ccel_init);
 
 static void ccel_record_eventlog(struct rtmr_event *rtmr_event, void *digests,
 				 const void *event_data, size_t event_data_len,
