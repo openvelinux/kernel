@@ -720,6 +720,12 @@ void kvm_set_cpu_caps(void)
 		F(TOPOEXT) | 0 /* PERFCTR_CORE */
 	);
 
+	kvm_cpu_cap_init_kvm_defined(CPUID_1E_1_EAX,
+		F(AMX_INT8_ALIAS) | F(AMX_BF16_ALIAS) | F(AMX_COMPLEX_ALIAS) |
+		F(AMX_FP16_ALIAS) | F(AMX_FP8) | F(AMX_TF32) | F(AMX_AVX512) |
+		F(AMX_MOVRS)
+	);
+
 	kvm_cpu_cap_init_kvm_defined(CPUID_24_0_EBX,
 		F(AVX10_128) | F(AVX10_256) | F(AVX10_512)
 	);
@@ -1174,6 +1180,20 @@ static inline int __do_cpuid_func(struct kvm_cpuid_array *array, u32 function)
 		if (!kvm_cpu_cap_has(X86_FEATURE_AMX_TILE)) {
 			entry->eax = entry->ebx = entry->ecx = entry->edx = 0;
 			break;
+		}
+
+		max_idx = entry->eax = min(entry->eax, 1u);
+
+		/* KVM only supports up to 0x1e.0x1, capped above via min(). */
+		if (max_idx >= 1) {
+			entry = do_host_cpuid(array, function, 1);
+			if (!entry)
+				goto out;
+
+			cpuid_entry_override(entry, CPUID_1E_1_EAX);
+			entry->ebx = 0;
+			entry->ecx = 0;
+			entry->edx = 0;
 		}
 		break;
 	case 0x24: {
