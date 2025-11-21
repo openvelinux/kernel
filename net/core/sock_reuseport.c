@@ -12,6 +12,7 @@
 #include <linux/idr.h>
 #include <linux/filter.h>
 #include <linux/rcupdate.h>
+#include <net/reuseport_policy.h>
 
 #define INIT_SOCKS 128
 
@@ -599,8 +600,15 @@ struct sock *reuseport_select_sock(struct sock *sk,
 
 select_by_hash:
 		/* no bpf or invalid bpf result: fall back to hash usage */
-		if (!sk2)
-			sk2 = reuseport_select_sock_by_hash(reuse, hash, socks);
+		if (!sk2) {
+			struct reuseport_policy *policy =
+				rcu_dereference(reuseport_policy);
+
+			if (policy)
+				sk2 = policy->select_sock(sk, reuse, hash, socks);
+			if (!sk2)
+				sk2 = reuseport_select_sock_by_hash(reuse, hash, socks);
+		}
 	}
 
 out:
