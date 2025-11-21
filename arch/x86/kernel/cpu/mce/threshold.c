@@ -73,6 +73,9 @@ void mce_set_storm_mode(bool storm)
 static void mce_handle_storm(unsigned int bank, bool on)
 {
 	switch (boot_cpu_data.x86_vendor) {
+	case X86_VENDOR_AMD:
+		mce_amd_handle_storm(bank, on);
+		break;
 	}
 }
 
