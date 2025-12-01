@@ -1052,8 +1052,14 @@ repeat:
 		p = kvm_gmem_allocator_private(inode);
 		policy = kvm_gmem_get_pgoff_policy(KVM_GMEM_I(inode), index);
 		folio = kvm_gmem_allocator_ops(inode)->alloc_folio(p, policy);
-		if (IS_ERR(folio))
+		if (IS_ERR(folio)) {
+			if (PTR_ERR(folio) == -EBUSY) {
+				pr_debug("%s: cpu %d inode %px retrying allocation for index %lx\n",
+					 __func__, smp_processor_id(), inode, index);
+				goto repeat;
+			}
 			return folio;
+		}
 
 		nr_pages = kvm_gmem_allocator_ops(inode)->nr_pages_in_folio(p);
 		index_floor = round_down(index, nr_pages);

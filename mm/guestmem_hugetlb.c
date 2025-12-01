@@ -501,9 +501,20 @@ static struct folio *guestmem_hugetlb_alloc_folio(void *priv, struct mempolicy *
 	pgoff_t ilx;
 	int ret;
 
+	/*
+	 * Since the hugepages for this inode will be reserved during setup
+	 * time, there isn't a risk that the subpool will be exhausted before
+	 * the entirety of the corresponding filemap is populated with
+	 * hugepages. However, if multiple vCPUs fault on the same hugepage
+	 * range, they might temporarily end up requesting more pages than what
+	 * is currently available in the subpool. Handle this might indicating
+	 * EBUSY since they fault for that range will eventually be satisfied
+	 * by the winning vCPU, at which point the other faults for the range
+	 * should get satisfied as well.
+	 */
 	ret = hugepage_subpool_get_pages(private->spool, 1);
 	if (ret == -ENOMEM) {
-		return ERR_PTR(-ENOMEM);
+		return ERR_PTR(-EBUSY);
 	} else if (ret > 0) {
 		/* guest_memfd will not use surplus pages. */
 		goto err_put_pages;
