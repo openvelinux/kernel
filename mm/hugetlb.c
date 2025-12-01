@@ -7150,6 +7150,16 @@ long hugetlb_unreserve_pages(struct inode *inode, long start, long end,
 	return 0;
 }
 
+void hugetlb_do_lock(void)
+{
+	spin_lock_irq(&hugetlb_lock);
+}
+
+void hugetlb_do_unlock(void)
+{
+	spin_unlock_irq(&hugetlb_lock);
+}
+
 void hugetlb_folio_list_add(struct folio *folio, struct list_head *list)
 {
 	/*
