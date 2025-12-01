@@ -307,6 +307,7 @@ static void guestmem_hugetlb_merge_folio(struct folio *first_folio)
 {
 	struct guestmem_hugetlb_stash_item *stash;
 	struct hstate *h;
+	int i;
 
 	stash = xa_load(&guestmem_hugetlb_stash, folio_pfn(first_folio));
 	h = stash->h;
@@ -327,6 +328,21 @@ static void guestmem_hugetlb_merge_folio(struct folio *first_folio)
 	first_folio->mapping = NULL;
 
 	__folio_set_hugetlb(first_folio);
+
+	/*
+	 * If the folio is merged without sub-pages going through
+	 * gmem's put callback, then gmem-specified flags might propagate
+	 * to tail pages and not get cleaned up before freeing them. Do
+	 * that now, before re-optimizing, so that all the sub-pages are
+	 * still present.
+	 */
+	for (i = 1; i < folio_nr_pages(first_folio); ++i) {
+		struct page *p = folio_page(first_folio, i);
+
+		pr_debug("%s: cleaning up flags for page %px pfn %lx flags %lx\n",
+			 __func__, p, page_to_pfn(p), p->flags);
+		p->flags &= ~(1UL << PG_unevictable);
+	}
 
 	hugetlb_folio_list_add(first_folio, &h->hugepage_activelist);
 
