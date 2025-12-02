@@ -1042,8 +1042,22 @@ static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index)
 
 repeat:
 	folio = filemap_lock_folio(inode->i_mapping, index);
-	if (!IS_ERR(folio))
+	if (!IS_ERR(folio)) {
+		/*
+		 * The folio is allocated/mapped, but it may still be in the
+		 * process of getting cleared, so retry until the uptodate
+		 * flag is set.
+		 */
+		if (!folio_test_uptodate(folio)) {
+			pr_debug("%s: cpu %d inode %px retrying lock for non-uptodate index %lx\n",
+				 __func__, smp_processor_id(), inode, index);
+			folio_unlock(folio);
+			folio_put(folio);
+			goto repeat;
+		}
+
 		return folio;
+	}
 
 	if (kvm_gmem_has_custom_allocator(inode)) {
 		size_t nr_pages;
@@ -1096,6 +1110,18 @@ repeat:
 			goto repeat;
 
 		return ERR_PTR(ret);
+	}
+
+	/*
+	 * Zero the whole folio before initial split to avoid need for dealing
+	 * with uninitialized ranges within a hugepage.
+	 */
+	if (!folio_test_uptodate(folio)) {
+		pr_debug("%s: cpu %d inode %px zero'ing folio %px pfn %lx index %lx order %d inode %px\n",
+			 __func__, smp_processor_id(), inode, folio,
+			 folio_pfn(folio), index, folio_order(folio), inode);
+		folio_zero_user(folio, folio->index << PAGE_SHIFT);
+		folio_mark_uptodate(folio);
 	}
 
 	/* Leave just filemap's refcounts on folio. */
@@ -1570,7 +1596,11 @@ static vm_fault_t kvm_gmem_fault_user_mapping(struct vm_fault *vmf)
 		goto out_folio;
 	}
 
-	if (!folio_test_uptodate(folio)) {
+	/*
+	 * The whole folio should've been zero'd at allocation time. Tail
+	 * pages should have inherited corresponding uptodate flag.
+	 */
+	if (WARN_ON_ONCE(!folio_test_uptodate(folio))) {
 		folio_zero_user(folio, folio->index << PAGE_SHIFT);
 		folio_mark_uptodate(folio);
 	}
@@ -2256,11 +2286,6 @@ int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 		goto out;
 	}
 
-	if (!folio_test_uptodate(folio)) {
-		folio_zero_user(folio, folio->index << PAGE_SHIFT);
-		folio_mark_uptodate(folio);
-	}
-
 	if (!kvm_memslot_is_gmem_only(slot) ||
 	    kvm_gmem_shareability_get(file_inode(file), index) == SHAREABILITY_GUEST)
 		r = kvm_gmem_prepare_folio(kvm, slot, gfn, folio);
@@ -2387,6 +2412,7 @@ long kvm_gmem_populate(struct kvm *kvm, gfn_t start_gfn, void __user *src, long 
 			break;
 		}
 
+		WARN_ON_ONCE(!folio_test_uptodate(folio));
 		folio_unlock(folio);
 		if (!IS_ALIGNED(gfn, 1 << max_order) || (npages - i) < (1 << max_order))
 			max_order = 0;
@@ -2414,8 +2440,6 @@ long kvm_gmem_populate(struct kvm *kvm, gfn_t start_gfn, void __user *src, long 
 
 		p = src ? src + i * PAGE_SIZE : NULL;
 		ret = post_populate(kvm, gfn, pfn, p, max_order, opaque);
-		if (!ret)
-			folio_mark_uptodate(folio);
 
 put_folio_and_exit:
 		folio_put(folio);
