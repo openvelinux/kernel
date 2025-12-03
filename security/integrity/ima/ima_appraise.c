@@ -70,7 +70,7 @@ bool is_ima_appraise_enabled(void)
  *
  * Return 1 to appraise or hash
  */
-int ima_must_appraise(struct file *file, struct mnt_idmap *idmap, struct inode *inode,
+int ima_must_appraise(struct mnt_idmap *idmap, struct inode *inode,
 		      int mask, enum ima_hooks func)
 {
 	u32 secid;
