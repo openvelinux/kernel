@@ -825,6 +825,7 @@ static int ima_calc_boot_aggregate_tfm(char *digest, u16 alg_id,
 	if (rc != 0)
 		return rc;
 
+#ifdef CONFIG_INTEL_TDX_GUEST
 	/* read boot measurements from MRTD, RTMR[0/1/2] and
 	 * do crypto_shash_update and crypto_shash_final
 	 */
@@ -847,6 +848,7 @@ static int ima_calc_boot_aggregate_tfm(char *digest, u16 alg_id,
 		}
 		goto save;
 	}
+#endif
 
 	/* cumulative digest over TPM registers 0-7 */
 	for (i = TPM_PCR0; i < TPM_PCR8; i++) {
@@ -871,7 +873,9 @@ static int ima_calc_boot_aggregate_tfm(char *digest, u16 alg_id,
 		}
 	}
 
+#ifdef CONFIG_INTEL_TDX_GUEST
 save:
+#endif
 	if (!rc)
 		crypto_shash_final(shash, digest);
 	return rc;
