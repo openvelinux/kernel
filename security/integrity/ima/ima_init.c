@@ -114,13 +114,31 @@ void __init ima_load_x509(void)
 }
 #endif
 
+#ifdef CONFIG_INTEL_TDX_GUEST
+static bool ima_rtmr_enabled;
+
+static int __init ima_rtmr_setup(char *str)
+{
+	int ret;
+
+	if (!str)
+		return 0;
+	ret = kstrtobool(str, &ima_rtmr_enabled);
+	if (ret)
+		pr_info("ima_rtmr: invalid value '%s'\n", str);
+	pr_info("ima_rtmr set to %d\n", ima_rtmr_enabled);
+	return 0;
+}
+__setup("ima_rtmr=", ima_rtmr_setup);
+#endif
+
 int __init ima_init(void)
 {
 	int rc;
 
 	ima_tpm_chip = tpm_default_chip();
 #ifdef CONFIG_INTEL_TDX_GUEST
-	if (!ima_tpm_chip) {
+	if (!ima_tpm_chip && ima_rtmr_enabled) {
 		u32 eax, sig[3];
 
 		pr_info("No TPM chip found, Checking TDX instead!\n");
