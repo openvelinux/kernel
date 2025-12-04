@@ -115,6 +115,22 @@ upstream-format-validator:
   variables:
     COMMAND: $CI_PATCH/upstream-format-validator -r
 
+kabi-validator:
+  stage: Commit Validation
+  dependencies:
+    - CI-fetcher
+  before_script:
+    - source $CUSTOM_VARS_ENV
+  script:
+    - $CI_PATCH/kabi-validator.py -t $SourceBranch
+  allow_failure: true
+  artifacts:
+    name: ${CI_PIPELINE_ID}_${CI_JOB_NAME}
+    paths:
+      - output/kabi-validator.log
+    when: always
+    expire_in: 10 yrs
+
 .prebuild_template: &prebuild_template
   stage: Pre-build
   dependencies:
