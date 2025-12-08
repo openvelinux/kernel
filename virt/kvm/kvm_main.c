@@ -1229,6 +1229,8 @@ static struct kvm *kvm_create_vm(unsigned long type, const char *fdname)
 	INIT_LIST_HEAD(&kvm->devices);
 	kvm->max_vcpus = KVM_MAX_VCPUS;
 
+	INIT_LIST_HEAD(&kvm->finalize_work_list);
+
 	BUILD_BUG_ON(KVM_MEM_SLOTS_NUM > SHRT_MAX);
 
 	/*
@@ -1349,6 +1351,31 @@ static void kvm_destroy_devices(struct kvm *kvm)
 	}
 }
 
+void kvm_enqueue_finalize_work(struct kvm *kvm, kvm_finalize_workfn fn, void *data)
+{
+	struct kvm_finalize_work *fwork;
+
+	fwork = kzalloc(sizeof(*fwork), GFP_KERNEL_ACCOUNT);
+	fwork->fn = fn;
+	fwork->data = data;
+
+	mutex_lock(&kvm->lock);
+	list_add_tail(&fwork->list, &kvm->finalize_work_list);
+	mutex_unlock(&kvm->lock);
+}
+
+static void kvm_finalize(struct kvm *kvm)
+{
+	struct kvm_finalize_work *fwork, *tmp;
+
+	mutex_lock(&kvm->lock);
+	list_for_each_entry_safe(fwork, tmp, &kvm->finalize_work_list, list) {
+		fwork->fn(fwork->data);
+		kfree(fwork);
+	}
+	mutex_unlock(&kvm->lock);
+}
+
 static void kvm_destroy_vm(struct kvm *kvm)
 {
 	int i;
@@ -1405,6 +1432,7 @@ static void kvm_destroy_vm(struct kvm *kvm)
 #ifdef CONFIG_KVM_GENERIC_MEMORY_ATTRIBUTES
 	xa_destroy(&kvm->mem_attr_array);
 #endif
+	kvm_finalize(kvm);
 	kvm_arch_free_vm(kvm);
 	preempt_notifier_dec();
 	hardware_disable_all();
