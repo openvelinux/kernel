@@ -3175,6 +3175,12 @@ void sev_free_vcpu(struct kvm_vcpu *vcpu)
 	svm = to_svm(vcpu);
 
 	/*
+	 * If KVM terminated after a vCPU exited due to a VMGEXIT, the GHCB
+	 * page might still be mapped.
+	 */
+	__kvm_vcpu_unmap(&svm->vcpu, &svm->sev_es.ghcb_map, false);
+
+	/*
 	 * If it's an SNP guest, then the VMSA was marked in the RMP table as
 	 * a guest-owned page. Transition the page to hypervisor state before
 	 * releasing it back to the system.
