@@ -23,6 +23,12 @@ struct guestmem_hugetlb_private {
 	struct hugepage_subpool *spool;
 	struct hugetlb_cgroup *h_cg_rsvd;
 	bool spool_active;
+
+	/* The below fields are protected by finalize_lock */
+	struct mutex finalize_lock;
+	bool teardown_started;
+	bool kvm_finalized;
+	size_t inode_size;
 };
 
 static size_t guestmem_hugetlb_nr_pages_in_folio(void *priv)
@@ -489,6 +495,8 @@ static void *guestmem_hugetlb_setup(size_t size, u64 flags)
 	private->h_cg_rsvd = h_cg_rsvd;
 	private->spool_active = true;
 
+	mutex_init(&private->finalize_lock);
+
 	return private;
 
 err_uncharge:
@@ -499,23 +507,65 @@ err_free:
 	return ERR_PTR(ret);
 }
 
-static void guestmem_hugetlb_teardown(void *priv, size_t inode_size)
+static void teardown_finalize(struct guestmem_hugetlb_private *private)
 {
-	struct guestmem_hugetlb_private *private = priv;
 	unsigned long nr_pages;
 	int idx;
 
-	hugepage_put_subpool(private->spool);
+	pr_debug("%s: waiting to subpool pages to be freed for instance %px inode_size %ld\n",
+		 __func__, private, private->inode_size);
 
-	while (private->spool_active) {
+	while (private->spool_active)
 		cond_resched();
-	}
+
+	pr_debug("%s: finalizing instance %px\n", __func__, private);
 
 	idx = hstate_index(private->h);
-	nr_pages = inode_size >> PAGE_SHIFT;
+	nr_pages = private->inode_size >> PAGE_SHIFT;
 	hugetlb_cgroup_uncharge_cgroup_rsvd(idx, nr_pages, private->h_cg_rsvd);
 
 	kfree(private);
+}
+
+static void guestmem_hugetlb_finalize(void *priv)
+{
+	struct guestmem_hugetlb_private *private = priv;
+
+	pr_debug("%s: finalize callback for priv %px teardown_started %d\n",
+		 __func__, private, private->teardown_started);
+
+	mutex_lock(&private->finalize_lock);
+
+	private->kvm_finalized = true;
+
+	/* inode teardown path will handle finalizing later. */
+	if (private->teardown_started)
+		teardown_finalize(private);
+
+	mutex_unlock(&private->finalize_lock);
+}
+
+static void guestmem_hugetlb_teardown(void *priv, size_t inode_size)
+{
+	struct guestmem_hugetlb_private *private = priv;
+
+	hugepage_put_subpool(private->spool);
+
+	mutex_lock(&private->finalize_lock);
+
+	private->teardown_started = true;
+	private->inode_size = inode_size;
+
+	/*
+	 * If KVM is finalized, it should be possible to reclaim all the
+	 * subpool pages and finalize here. Otherwise, defer to KVM to
+	 * call the guestmem_hugetlb_finalize() callback later since it
+	 * way not be possible to reclaim all subpool pages until then.
+	 */
+	if (private->kvm_finalized)
+		teardown_finalize(private);
+
+	mutex_unlock(&private->finalize_lock);
 }
 
 static struct folio *guestmem_hugetlb_alloc_folio(void *priv, struct mempolicy *mpol)
@@ -612,6 +662,7 @@ static void guestmem_hugetlb_free_folio(struct folio *folio)
 const struct guestmem_allocator_operations guestmem_hugetlb_ops = {
 	.inode_setup = guestmem_hugetlb_setup,
 	.inode_teardown = guestmem_hugetlb_teardown,
+	.finalize = guestmem_hugetlb_finalize,
 	.alloc_folio = guestmem_hugetlb_alloc_folio,
 	.split_folio = guestmem_hugetlb_split_folio,
 	.merge_folio = guestmem_hugetlb_merge_folio,
