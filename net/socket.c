@@ -2211,6 +2211,9 @@ static bool sock_use_custom_sol_socket(const struct socket *sock)
 	       (sk->sk_family == AF_INET || sk->sk_family == AF_INET6);
 }
 
+int socket_ops_hook_enable __read_mostly;
+EXPORT_SYMBOL(socket_ops_hook_enable);
+
 /*
  *	Set a socket option. Because we don't know the option lengths we have
  *	to pass the user mode parameter for the protocols to sort out.
@@ -2247,9 +2250,18 @@ int __sys_setsockopt(int fd, int level, int optname, char __user *user_optval,
 
 	if (kernel_optval)
 		optval = KERNEL_SOCKPTR(kernel_optval);
-	if (level == SOL_SOCKET && !sock_use_custom_sol_socket(sock))
-		err = sock_setsockopt(sock, level, optname, optval, optlen);
-	else if (unlikely(!sock->ops->setsockopt))
+	if (level == SOL_SOCKET && !sock_use_custom_sol_socket(sock)) {
+		if (!READ_ONCE(socket_ops_hook_enable)) {
+			err = sock_setsockopt(sock, level, optname, optval,
+					      optlen);
+		} else {
+			err = sock->ops->setsockopt(sock, level, optname, optval,
+					      optlen);
+			if (err == -ENOPROTOOPT || err == -EOPNOTSUPP)
+				err = sock_setsockopt(sock, level, optname,
+						      optval, optlen);
+		}
+	} else if (unlikely(!sock->ops->setsockopt))
 		err = -EOPNOTSUPP;
 	else
 		err = sock->ops->setsockopt(sock, level, optname, optval,
