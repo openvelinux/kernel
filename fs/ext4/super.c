@@ -5824,6 +5824,7 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	percpu_down_write(&EXT4_SB(sb)->s_writepages_rwsem);
 	if (!parse_options(data, sb, &parsed_opts, 1)) {
 		err = -EINVAL;
+		percpu_up_write(&EXT4_SB(sb)->s_writepages_rwsem);
 		goto restore_opts;
 	}
 	percpu_up_write(&EXT4_SB(sb)->s_writepages_rwsem);
