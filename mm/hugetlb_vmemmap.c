@@ -79,7 +79,6 @@ static int split_vmemmap_huge_pmd(pmd_t *pmd, unsigned long start)
 		/* Make pte visible before pmd. See comment in pmd_install(). */
 		smp_wmb();
 		pmd_populate_kernel(&init_mm, pmd, pgtable);
-		flush_tlb_kernel_range(start, start + PMD_SIZE);
 	} else {
 		pte_free_kernel(&init_mm, pgtable);
 	}
@@ -196,8 +195,6 @@ static int vmemmap_remap_range(unsigned long start, unsigned long end,
 		if (ret)
 			return ret;
 	} while (pgd++, addr = next, addr != end);
-
-	flush_tlb_kernel_range(start, end);
 
 	return 0;
 }
@@ -470,6 +467,9 @@ int hugetlb_vmemmap_restore(const struct hstate *h, struct page *head)
 	 * discarded vmemmap pages must be allocated and remapping.
 	 */
 	ret = vmemmap_remap_alloc(vmemmap_start, vmemmap_end, vmemmap_reuse);
+
+	flush_tlb_kernel_range(vmemmap_reuse, vmemmap_end);
+
 	if (!ret) {
 		ClearHPageVmemmapOptimized(head);
 		static_branch_dec(&hugetlb_optimize_vmemmap_key);
@@ -539,7 +539,8 @@ static bool vmemmap_should_optimize(const struct hstate *h, const struct page *h
 
 static int __hugetlb_vmemmap_optimize(const struct hstate *h,
 					struct page *head,
-					struct list_head *vmemmap_pages)
+					struct list_head *vmemmap_pages,
+					bool get_hugetlb_lock)
 {
 	int ret = 0;
 	unsigned long vmemmap_start = (unsigned long)head, vmemmap_end;
@@ -554,6 +555,11 @@ static int __hugetlb_vmemmap_optimize(const struct hstate *h,
 	vmemmap_reuse	= vmemmap_start;
 	vmemmap_start	+= HUGETLB_VMEMMAP_RESERVE_SIZE;
 
+
+	if (get_hugetlb_lock) {
+		hugetlb_do_lock();
+	}
+
 	/*
 	 * Remap the vmemmap virtual address range [@vmemmap_start, @vmemmap_end)
 	 * to the page which @vmemmap_reuse is mapped to.  Add pages previously
@@ -561,6 +567,12 @@ static int __hugetlb_vmemmap_optimize(const struct hstate *h,
 	 * the caller.
 	 */
 	ret = vmemmap_remap_free(vmemmap_start, vmemmap_end, vmemmap_reuse, vmemmap_pages);
+
+	if (get_hugetlb_lock)
+		hugetlb_do_unlock();
+
+	flush_tlb_kernel_range(vmemmap_reuse, vmemmap_end);
+
 	if (ret)
 		static_branch_dec(&hugetlb_optimize_vmemmap_key);
 	else
@@ -579,19 +591,11 @@ static int __hugetlb_vmemmap_optimize(const struct hstate *h,
  * can use HPageVmemmapOptimized(@head) to detect if @head's vmemmap pages
  * have been optimized.
  */
-void hugetlb_vmemmap_optimize(const struct hstate *h, struct page *head)
+void hugetlb_vmemmap_optimize(const struct hstate *h, struct page *head, bool get_hugetlb_lock)
 {
 	LIST_HEAD(vmemmap_pages);
 
-	__hugetlb_vmemmap_optimize(h, head, &vmemmap_pages);
-	free_vmemmap_page_list(&vmemmap_pages);
-}
-
-void hugetlb_vmemmap_optimize_folio_nosync(const struct hstate *h, struct folio *folio)
-{
-	LIST_HEAD(vmemmap_pages);
-
-	__hugetlb_vmemmap_optimize(h, &folio->page, &vmemmap_pages);
+	__hugetlb_vmemmap_optimize(h, head, &vmemmap_pages, get_hugetlb_lock);
 	free_vmemmap_page_list(&vmemmap_pages);
 }
 
@@ -602,7 +606,7 @@ void hugetlb_vmemmap_optimize_folios(struct hstate *h, struct list_head *folio_l
 
 	list_for_each_entry(folio, folio_list, lru) {
 		int ret = __hugetlb_vmemmap_optimize(h, &folio->page,
-								&vmemmap_pages);
+						     &vmemmap_pages, false);
 
 		/*
 		 * Pages to be freed may have been accumulated.  If we
@@ -611,7 +615,7 @@ void hugetlb_vmemmap_optimize_folios(struct hstate *h, struct list_head *folio_l
 		if (ret == -ENOMEM && !list_empty(&vmemmap_pages)) {
 			free_vmemmap_page_list(&vmemmap_pages);
 			INIT_LIST_HEAD(&vmemmap_pages);
-			__hugetlb_vmemmap_optimize(h, &folio->page, &vmemmap_pages);
+			__hugetlb_vmemmap_optimize(h, &folio->page, &vmemmap_pages, false);
 		}
 	}
 
