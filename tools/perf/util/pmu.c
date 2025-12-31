@@ -835,6 +835,7 @@ __weak const struct pmu_metrics_table *pmu_metrics_table__find(void)
 static bool perf_pmu__match_ignoring_suffix(const char *pmu_name, const char *tok)
 {
 	const char *p;
+	bool has_underscore = false;
 
 	if (strncmp(pmu_name, tok, strlen(tok)))
 		return false;
@@ -843,11 +844,13 @@ static bool perf_pmu__match_ignoring_suffix(const char *pmu_name, const char *to
 	if (*p == 0)
 		return true;
 
-	if (*p == '_')
-		++p;
-
-	/* Ensure we end in a number */
+	/* Ensure we end in a number or a mix of number and "_". */
 	while (1) {
+		if (!has_underscore && (*p == '_')) {
+			has_underscore = true;
+			++p;
+		}
+
 		if (!isdigit(*p))
 			return false;
 		if (*(++p) == 0)
