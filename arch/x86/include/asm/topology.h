@@ -297,4 +297,6 @@ void init_freq_invariance_cppc(void);
 #define arch_init_invariance_cppc init_freq_invariance_cppc
 #endif
 
+extern int arch_sched_node_distance(int from, int to);
+
 #endif /* _ASM_X86_TOPOLOGY_H */
