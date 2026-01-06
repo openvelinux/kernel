@@ -141,7 +141,7 @@ static DEFINE_PER_CPU_READ_MOSTLY(struct logical_maps, logical_maps) = {
 
 unsigned int __max_logical_packages __read_mostly;
 EXPORT_SYMBOL(__max_logical_packages);
-unsigned int logical_packages __read_mostly;
+static unsigned int logical_packages __read_mostly;
 static unsigned int logical_die __read_mostly;
 
 /* Maximum number of SMT threads on any online core */

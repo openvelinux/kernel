@@ -154,7 +154,6 @@ extern unsigned int __max_die_per_package;
 
 extern unsigned int __max_logical_packages;
 #define topology_max_packages()			(__max_logical_packages)
-extern unsigned int logical_packages;
 
 static inline int topology_max_die_per_package(void)
 {
@@ -195,7 +194,6 @@ static inline bool topology_is_primary_thread(unsigned int cpu)
 
 #else /* CONFIG_SMP */
 #define topology_max_packages()			(1)
-#define logical_packages			(1)
 static inline int
 topology_update_package_map(unsigned int apicid, unsigned int cpu) { return 0; }
 static inline int
