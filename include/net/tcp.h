@@ -210,6 +210,40 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_EXP_FASTOPEN_BASE  4
 #define TCPOLEN_EXP_SMC_BASE   6
 
+/*
+ * RFC7974:
+ *
+ * When used for host identification, the TCP experimental option uses
+ *   the experiment identification mechanism described in [RFC6994] and
+ *   has the following format and content.
+ *
+ *    0          1          2          3
+ *    01234567 89012345 67890123 45678901
+ *   +--------+--------+--------+--------+
+ *   |  Kind  | Length |       ExID      |
+ *   +--------+--------+--------+--------+
+ *   |  HOST_ID ...
+ *   +--------+---
+ *
+ *   Kind:  The option kind value is 253.
+ *
+ *   Length:  The length of the option is variable, based on the required
+ *      size of the host identifier (e.g., a 2-octet HOST_ID will require
+ *      a length of 6, while a 4-octet HOST_ID will require a length of
+ *      8).
+ *
+ *   ExID:  The experiment ID value is 0x0348 (840).
+ *
+ *   HOST_ID:  The host identifier is a value that can be used to
+ *      differentiate among the various hosts sharing a common public IP
+ *      address.  See below for further discussion of this value.
+ */
+
+#define TCP_HOSTID_KIND		253
+#define TCP_HOSTID_LENGTH	8
+#define TCP_HOSTID_EXID		0x0348
+#define TCP_DST_HOSTID_EXID	0x0349
+
 /* But this is what stacks really send out. */
 #define TCPOLEN_TSTAMP_ALIGNED		12
 #define TCPOLEN_WSCALE_ALIGNED		4

@@ -1624,6 +1624,10 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 	tcp_sync_mss(newsk, dst_mtu(dst));
 	newtp->advmss = tcp_mss_clamp(tcp_sk(sk), dst_metric_advmss(dst));
 
+	newtp->local_classid = 0;
+	newtp->remote_classid = 0;
+	newtp->classid_len = 0;
+
 	tcp_initialize_rcv_mss(newsk);
 
 #ifdef CONFIG_TCP_MD5SIG

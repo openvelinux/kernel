@@ -460,6 +460,10 @@ struct tcp_sock {
 	 */
 	struct request_sock __rcu *fastopen_rsk;
 	struct saved_syn *saved_syn;
+
+	u32 classid_len;
+	u32 local_classid;
+	u32 remote_classid;
 };
 
 enum tsq_enum {

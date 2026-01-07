@@ -11946,6 +11946,19 @@ __bpf_kfunc int bpf_sock_addr_set_sun_path(struct bpf_sock_addr_kern *sa_kern,
 
 	return 0;
 }
+
+__bpf_kfunc void bpf_tcp_set_classid(struct sock *sk, u32 local, u32 remote)
+{
+	struct tcp_sock *tp;
+
+	if (!sk || !sk_fullsock(sk) || sk->sk_protocol != IPPROTO_TCP)
+		return;
+
+	tp = tcp_sk(sk);
+	tp->local_classid = local;
+	tp->remote_classid = remote;
+}
+
 __diag_pop();
 
 int bpf_dynptr_from_skb_rdonly(struct sk_buff *skb, u64 flags,
@@ -11974,6 +11987,10 @@ BTF_SET8_START(bpf_kfunc_check_set_sock_addr)
 BTF_ID_FLAGS(func, bpf_sock_addr_set_sun_path)
 BTF_SET8_END(bpf_kfunc_check_set_sock_addr)
 
+BTF_SET8_START(bpf_kfunc_check_set_tcp_sock)
+BTF_ID_FLAGS(func, bpf_tcp_set_classid)
+BTF_SET8_END(bpf_kfunc_check_set_tcp_sock)
+
 static const struct btf_kfunc_id_set bpf_kfunc_set_skb = {
 	.owner = THIS_MODULE,
 	.set = &bpf_kfunc_check_set_skb,
@@ -11987,6 +12004,11 @@ static const struct btf_kfunc_id_set bpf_kfunc_set_xdp = {
 static const struct btf_kfunc_id_set bpf_kfunc_set_sock_addr = {
 	.owner = THIS_MODULE,
 	.set = &bpf_kfunc_check_set_sock_addr,
+};
+
+static const struct btf_kfunc_id_set bpf_kfunc_set_tcp_cg_skb = {
+	.owner = THIS_MODULE,
+	.set = &bpf_kfunc_check_set_tcp_sock,
 };
 
 static int __init bpf_kfunc_init(void)
@@ -12004,6 +12026,7 @@ static int __init bpf_kfunc_init(void)
 	ret = ret ?: register_btf_kfunc_id_set(BPF_PROG_TYPE_LWT_SEG6LOCAL, &bpf_kfunc_set_skb);
 	ret = ret ?: register_btf_kfunc_id_set(BPF_PROG_TYPE_NETFILTER, &bpf_kfunc_set_skb);
 	ret = ret ?: register_btf_kfunc_id_set(BPF_PROG_TYPE_XDP, &bpf_kfunc_set_xdp);
+	ret = ret ?: register_btf_kfunc_id_set(BPF_PROG_TYPE_CGROUP_SKB, &bpf_kfunc_set_tcp_cg_skb);
 	return ret ?: register_btf_kfunc_id_set(BPF_PROG_TYPE_CGROUP_SOCK_ADDR,
 						&bpf_kfunc_set_sock_addr);
 }

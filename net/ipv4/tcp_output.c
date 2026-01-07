@@ -427,6 +427,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_FAST_OPEN_COOKIE	BIT(8)
 #define OPTION_SMC		BIT(9)
 #define OPTION_MPTCP		BIT(10)
+#define OPTION_HOSTID		BIT(11)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -713,6 +714,37 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 		ptr += (len + 3) >> 2;
 	}
 
+	if (OPTION_HOSTID & options) {
+		unsigned int size = tp->classid_len;
+
+		if (size && tp->remote_classid) {
+			*ptr++ = htonl((TCP_HOSTID_KIND << 24)   |
+				       (TCP_HOSTID_LENGTH << 16) |
+				       (TCP_DST_HOSTID_EXID));
+
+			// Due to historical reasons, classid uses LITTLE_ENDIAN
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+			*ptr++ = tp->remote_classid;
+#else
+			*ptr++ = ntohl(tp->remote_classid);
+#endif
+			size -= TCP_HOSTID_LENGTH;
+		}
+
+		if (size && tp->local_classid) {
+			*ptr++ = htonl((TCP_HOSTID_KIND << 24)   |
+				       (TCP_HOSTID_LENGTH << 16) |
+				       (TCP_HOSTID_EXID));
+
+			// Due to historical reasons, classid uses LITTLE_ENDIAN
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+			*ptr++ = tp->local_classid;
+#else
+			*ptr++ = ntohl(tp->local_classid);
+#endif
+		}
+	}
+
 	smc_options_write(ptr, &options);
 
 	mptcp_options_write(th, ptr, tp, opts);
@@ -986,6 +1018,23 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 		size += TCPOLEN_SACK_BASE_ALIGNED +
 			opts->num_sack_blocks * TCPOLEN_SACK_PERBLOCK;
+	}
+
+	if (tp->local_classid != 0 || tp->remote_classid != 0) {
+		unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		unsigned int opt_size = 0;
+
+		if (!skb) {
+			opt_size += (tp->local_classid ? TCP_HOSTID_LENGTH : 0);
+			opt_size += (tp->remote_classid ? TCP_HOSTID_LENGTH : 0);
+
+			tp->classid_len = opt_size;
+		}
+
+		if (tp->classid_len && remaining >= tp->classid_len) {
+			opts->options |= OPTION_HOSTID;
+			size += tp->classid_len;
+		}
 	}
 
 	if (unlikely(BPF_SOCK_OPS_TEST_FLAG(tp,
