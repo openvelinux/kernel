@@ -353,14 +353,6 @@ static void guestmem_hugetlb_merge_folio(struct folio *first_folio)
 
 	hugetlb_folio_list_add(first_folio, &h->hugepage_activelist);
 
-	/*
-         * Since vmemmap re-allocations might involve copying struct
-         * page data to new physical backing pages, and also involves
-         * use of ->lru fields for accounting, care needs to be taken
-         * to avoid list corruption due to activity involving adjacent
-         * entries that modify the ->lru field values (such as other
-         * folios being added/removed from h->hugepage_activelist).
-         */
 	hugetlb_vmemmap_optimize(h, &first_folio->page, true);
 }
 

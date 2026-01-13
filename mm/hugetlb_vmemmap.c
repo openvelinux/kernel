@@ -556,10 +556,6 @@ static int __hugetlb_vmemmap_optimize(const struct hstate *h,
 	vmemmap_start	+= HUGETLB_VMEMMAP_RESERVE_SIZE;
 
 
-	if (get_hugetlb_lock) {
-		hugetlb_do_lock();
-	}
-
 	/*
 	 * Remap the vmemmap virtual address range [@vmemmap_start, @vmemmap_end)
 	 * to the page which @vmemmap_reuse is mapped to.  Add pages previously
@@ -567,9 +563,6 @@ static int __hugetlb_vmemmap_optimize(const struct hstate *h,
 	 * the caller.
 	 */
 	ret = vmemmap_remap_free(vmemmap_start, vmemmap_end, vmemmap_reuse, vmemmap_pages);
-
-	if (get_hugetlb_lock)
-		hugetlb_do_unlock();
 
 	flush_tlb_kernel_range(vmemmap_reuse, vmemmap_end);
 
