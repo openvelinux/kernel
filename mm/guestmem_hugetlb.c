@@ -219,13 +219,20 @@ static int guestmem_hugetlb_split_folio(struct folio *folio)
 	orig_nr_pages = folio_nr_pages(folio);
 
 	/*
+	 * Remove the first folio from h->hugepage_activelist since it is no
+	 * longer a HugeTLB page. The other split pages should not be on any
+	 * lists.
+	 */
+	hugetlb_folio_list_del(folio);
+
+	/*
 	 * hugetlb_vmemmap_restore_folio() has to be called ahead of the rest
 	 * because it checks and page type. This doesn't actually split the
 	 * folio, so the first few struct pages are still intact.
 	 */
 	ret = hugetlb_vmemmap_restore(folio_hstate(folio), &folio->page);
 	if (ret)
-		return ret;
+		goto err_optimized;
 
 	/*
 	 * Stash metadata after vmemmap stuff so the outcome of the vmemmap
@@ -242,13 +249,6 @@ static int guestmem_hugetlb_split_folio(struct folio *folio)
 	 * mapcount increasing.
 	 */
 	__folio_clear_hugetlb(folio);
-
-	/*
-	 * Remove the first folio from h->hugepage_activelist since it is no
-	 * longer a HugeTLB page. The other split pages should not be on any
-	 * lists.
-	 */
-	hugetlb_folio_list_del(folio);
 
 	/* Actually split page by undoing prep_compound_page() */
 	__folio_clear_head(folio);
@@ -277,6 +277,8 @@ static int guestmem_hugetlb_split_folio(struct folio *folio)
 
 err:
 	hugetlb_vmemmap_optimize(folio_hstate(folio), &folio->page, true);
+err_optimized:
+	hugetlb_folio_list_add(folio, &folio_hstate(folio)->hugepage_activelist);
 	return ret;
 }
 
@@ -351,9 +353,9 @@ static void guestmem_hugetlb_merge_folio(struct folio *first_folio)
 		p->flags &= ~(1UL << PG_unevictable);
 	}
 
-	hugetlb_folio_list_add(first_folio, &h->hugepage_activelist);
-
 	hugetlb_vmemmap_optimize(h, &first_folio->page, true);
+
+	hugetlb_folio_list_add(first_folio, &h->hugepage_activelist);
 }
 
 static struct folio *guestmem_hugetlb_maybe_merge_folio(struct folio *folio)
