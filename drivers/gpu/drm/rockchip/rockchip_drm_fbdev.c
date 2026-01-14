@@ -90,7 +90,6 @@ static int rockchip_drm_fbdev_create(struct drm_fb_helper *helper,
 	offset = fbi->var.xoffset * bytes_per_pixel;
 	offset += fbi->var.yoffset * fb->pitches[0];
 
-	dev->mode_config.fb_base = 0;
 	fbi->screen_base = rk_obj->kvaddr + offset;
 	fbi->screen_size = rk_obj->base.size;
 	fbi->fix.smem_len = rk_obj->base.size;

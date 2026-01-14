@@ -10,7 +10,6 @@
 #include <linux/bitops.h>
 #include <linux/cpuhotplug.h>
 #include <linux/delay.h>
-#include <linux/dma-iommu.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -275,15 +274,14 @@ static int hisi_ptt_update_aux(struct hisi_ptt *hisi_ptt, int index, bool stop)
 	buf->pos += size;
 
 	/*
-	 * Just commit the traced data if we're going to stop. Otherwise if the
-	 * resident AUX buffer cannot contain the data of next trace buffer,
-	 * apply a new one.
+	 * Always commit the data to the AUX buffer in time to make sure
+	 * userspace got enough time to consume the data.
+	 *
+	 * If we're not going to stop, apply a new one and check whether
+	 * there's enough room for the next trace.
 	 */
-	if (stop) {
-		perf_aux_output_end(handle, buf->pos);
-	} else if (buf->length - buf->pos < HISI_PTT_TRACE_BUF_SIZE) {
-		perf_aux_output_end(handle, buf->pos);
-
+	perf_aux_output_end(handle, size);
+	if (!stop) {
 		buf = perf_aux_output_begin(handle, event);
 		if (!buf)
 			return -EINVAL;
@@ -370,12 +368,54 @@ static void hisi_ptt_del_free_filter(struct hisi_ptt *hisi_ptt,
 	kfree(filter);
 }
 
+static ssize_t hisi_ptt_filter_show(struct device *dev, struct device_attribute *attr,
+				    char *buf)
+{
+	struct hisi_ptt_filter_desc *filter;
+	unsigned long filter_val;
+
+	filter = container_of(attr, struct hisi_ptt_filter_desc, attr);
+	filter_val = hisi_ptt_get_filter_val(filter->devid, filter->is_port) |
+		     (filter->is_port ? HISI_PTT_PMU_FILTER_IS_PORT : 0);
+
+	return sysfs_emit(buf, "0x%05lx\n", filter_val);
+}
+
+static int hisi_ptt_check_duplicated_filters(struct hisi_ptt *hisi_ptt, u16 devid, bool is_port)
+{
+	struct hisi_ptt_filter_desc *filter;
+	struct list_head *target_list;
+	u8 devfn = devid & 0xff;
+
+	if (is_port)
+		target_list = &hisi_ptt->port_filters;
+	else
+		target_list = &hisi_ptt->req_filters;
+
+	list_for_each_entry(filter, target_list, list) {
+		if (filter->devid == devid) {
+			pci_warn(hisi_ptt->pdev,
+				 "ignore duplicated filter %04x:%02x:%02x.%d\n",
+				 pci_domain_nr(hisi_ptt->pdev->bus),
+				 PCI_BUS_NUM(devid), PCI_SLOT(devfn),
+				 PCI_FUNC(devfn));
+
+			return -EEXIST;
+		}
+	}
+
+	return 0;
+}
+
 static struct hisi_ptt_filter_desc *
 hisi_ptt_alloc_add_filter(struct hisi_ptt *hisi_ptt, u16 devid, bool is_port)
 {
 	struct hisi_ptt_filter_desc *filter;
 	u8 devfn = devid & 0xff;
 	char *filter_name;
+
+	if (hisi_ptt_check_duplicated_filters(hisi_ptt, devid, is_port))
+		return NULL;
 
 	filter_name = kasprintf(GFP_KERNEL, "%04x:%02x:%02x.%d", pci_domain_nr(hisi_ptt->pdev->bus),
 				 PCI_BUS_NUM(devid), PCI_SLOT(devfn), PCI_FUNC(devfn));
@@ -398,6 +438,11 @@ hisi_ptt_alloc_add_filter(struct hisi_ptt *hisi_ptt, u16 devid, bool is_port)
 	filter->is_port = is_port;
 	filter->devid = devid;
 
+	sysfs_attr_init(&filter->attr.attr);
+	filter->attr.attr.name = filter->name;
+	filter->attr.attr.mode = 0400; /* DEVICE_ATTR_ADMIN_RO */
+	filter->attr.show = hisi_ptt_filter_show;
+
 	if (filter->is_port) {
 		list_add_tail(&filter->list, &hisi_ptt->port_filters);
 
@@ -410,74 +455,18 @@ hisi_ptt_alloc_add_filter(struct hisi_ptt *hisi_ptt, u16 devid, bool is_port)
 	return filter;
 }
 
-static ssize_t hisi_ptt_filter_show(struct device *dev, struct device_attribute *attr,
-				    char *buf)
-{
-	struct hisi_ptt_filter_desc *filter;
-	unsigned long filter_val;
-
-	filter = container_of(attr, struct hisi_ptt_filter_desc, attr);
-	filter_val = hisi_ptt_get_filter_val(filter->devid, filter->is_port) |
-		     (filter->is_port ? HISI_PTT_PMU_FILTER_IS_PORT : 0);
-
-	return sysfs_emit(buf, "0x%05lx\n", filter_val);
-}
-
-static int hisi_ptt_create_rp_filter_attr(struct hisi_ptt *hisi_ptt,
-					  struct hisi_ptt_filter_desc *filter)
-{
-	struct kobject *kobj = &hisi_ptt->hisi_ptt_pmu.dev->kobj;
-
-	sysfs_attr_init(&filter->attr.attr);
-	filter->attr.attr.name = filter->name;
-	filter->attr.attr.mode = 0400; /* DEVICE_ATTR_ADMIN_RO */
-	filter->attr.show = hisi_ptt_filter_show;
-
-	return sysfs_add_file_to_group(kobj, &filter->attr.attr,
-				       HISI_PTT_RP_FILTERS_GRP_NAME);
-}
-
-static void hisi_ptt_remove_rp_filter_attr(struct hisi_ptt *hisi_ptt,
-					  struct hisi_ptt_filter_desc *filter)
-{
-	struct kobject *kobj = &hisi_ptt->hisi_ptt_pmu.dev->kobj;
-
-	sysfs_remove_file_from_group(kobj, &filter->attr.attr,
-				     HISI_PTT_RP_FILTERS_GRP_NAME);
-}
-
-static int hisi_ptt_create_req_filter_attr(struct hisi_ptt *hisi_ptt,
-					   struct hisi_ptt_filter_desc *filter)
-{
-	struct kobject *kobj = &hisi_ptt->hisi_ptt_pmu.dev->kobj;
-
-	sysfs_attr_init(&filter->attr.attr);
-	filter->attr.attr.name = filter->name;
-	filter->attr.attr.mode = 0400; /* DEVICE_ATTR_ADMIN_RO */
-	filter->attr.show = hisi_ptt_filter_show;
-
-	return sysfs_add_file_to_group(kobj, &filter->attr.attr,
-				       HISI_PTT_REQ_FILTERS_GRP_NAME);
-}
-
-static void hisi_ptt_remove_req_filter_attr(struct hisi_ptt *hisi_ptt,
-					   struct hisi_ptt_filter_desc *filter)
-{
-	struct kobject *kobj = &hisi_ptt->hisi_ptt_pmu.dev->kobj;
-
-	sysfs_remove_file_from_group(kobj, &filter->attr.attr,
-				     HISI_PTT_REQ_FILTERS_GRP_NAME);
-}
-
 static int hisi_ptt_create_filter_attr(struct hisi_ptt *hisi_ptt,
 				       struct hisi_ptt_filter_desc *filter)
 {
+	struct kobject *kobj = &hisi_ptt->hisi_ptt_pmu.dev->kobj;
 	int ret;
 
 	if (filter->is_port)
-		ret = hisi_ptt_create_rp_filter_attr(hisi_ptt, filter);
+		ret = sysfs_add_file_to_group(kobj, &filter->attr.attr,
+					      HISI_PTT_RP_FILTERS_GRP_NAME);
 	else
-		ret = hisi_ptt_create_req_filter_attr(hisi_ptt, filter);
+		ret = sysfs_add_file_to_group(kobj, &filter->attr.attr,
+					      HISI_PTT_REQ_FILTERS_GRP_NAME);
 
 	if (ret)
 		pci_err(hisi_ptt->pdev, "failed to create sysfs attribute for filter %s\n",
@@ -489,10 +478,14 @@ static int hisi_ptt_create_filter_attr(struct hisi_ptt *hisi_ptt,
 static void hisi_ptt_remove_filter_attr(struct hisi_ptt *hisi_ptt,
 					struct hisi_ptt_filter_desc *filter)
 {
+	struct kobject *kobj = &hisi_ptt->hisi_ptt_pmu.dev->kobj;
+
 	if (filter->is_port)
-		hisi_ptt_remove_rp_filter_attr(hisi_ptt, filter);
+		sysfs_remove_file_from_group(kobj, &filter->attr.attr,
+					     HISI_PTT_RP_FILTERS_GRP_NAME);
 	else
-		hisi_ptt_remove_req_filter_attr(hisi_ptt, filter);
+		sysfs_remove_file_from_group(kobj, &filter->attr.attr,
+					     HISI_PTT_REQ_FILTERS_GRP_NAME);
 }
 
 static void hisi_ptt_remove_all_filter_attributes(void *data)

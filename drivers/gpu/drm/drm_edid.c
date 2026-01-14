@@ -1556,6 +1556,65 @@ static const struct drm_display_mode edid_4k_modes[] = {
 
 /*** DDC fetch and block validation ***/
 
+/*
+ * The opaque EDID type, internal to drm_edid.c.
+ */
+struct drm_edid {
+	/* Size allocated for edid */
+	size_t size;
+	const struct edid *edid;
+};
+
+static int edid_extension_block_count(const struct edid *edid)
+{
+	return edid->extensions;
+}
+
+static int edid_block_count(const struct edid *edid)
+{
+	return edid_extension_block_count(edid) + 1;
+}
+
+static int edid_size_by_blocks(int num_blocks)
+{
+	return num_blocks * EDID_LENGTH;
+}
+
+static int edid_size(const struct edid *edid)
+{
+	return edid_size_by_blocks(edid_block_count(edid));
+}
+
+static const void *edid_block_data(const struct edid *edid, int index)
+{
+	BUILD_BUG_ON(sizeof(*edid) != EDID_LENGTH);
+
+	return edid + index;
+}
+
+static const void *edid_extension_block_data(const struct edid *edid, int index)
+{
+	return edid_block_data(edid, index + 1);
+}
+
+/*
+ * Initializer helper for legacy interfaces, where we have no choice but to
+ * trust edid size. Not for general purpose use.
+ */
+static const struct drm_edid *drm_edid_legacy_init(struct drm_edid *drm_edid,
+						   const struct edid *edid)
+{
+	if (!edid)
+		return NULL;
+
+	memset(drm_edid, 0, sizeof(*drm_edid));
+
+	drm_edid->edid = edid;
+	drm_edid->size = edid_size(edid);
+
+	return drm_edid;
+}
+
 static const u8 edid_header[] = {
 	0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00
 };
@@ -1631,8 +1690,8 @@ bool drm_edid_are_equal(const struct edid *edid1, const struct edid *edid2)
 		return false;
 
 	if (edid1) {
-		edid1_len = EDID_LENGTH * (1 + edid1->extensions);
-		edid2_len = EDID_LENGTH * (1 + edid2->extensions);
+		edid1_len = edid_size(edid1);
+		edid2_len = edid_size(edid2);
 
 		if (edid1_len != edid2_len)
 			return false;
@@ -1753,14 +1812,16 @@ EXPORT_SYMBOL(drm_edid_block_valid);
 bool drm_edid_is_valid(struct edid *edid)
 {
 	int i;
-	u8 *raw = (u8 *)edid;
 
 	if (!edid)
 		return false;
 
-	for (i = 0; i <= edid->extensions; i++)
-		if (!drm_edid_block_valid(raw + i * EDID_LENGTH, i, true, NULL))
+	for (i = 0; i < edid_block_count(edid); i++) {
+		void *block = (void *)edid_block_data(edid, i);
+
+		if (!drm_edid_block_valid(block, i, true, NULL))
 			return false;
+	}
 
 	return true;
 }
@@ -1884,6 +1945,32 @@ static struct edid *drm_get_override_edid(struct drm_connector *connector)
 	return IS_ERR(override) ? NULL : override;
 }
 
+/* For debugfs edid_override implementation */
+int drm_edid_override_set(struct drm_connector *connector, const void *edid,
+			  size_t size)
+{
+	int ret;
+
+	if (size < EDID_LENGTH || edid_size(edid) > size)
+		return -EINVAL;
+
+	connector->override_edid = false;
+
+	ret = drm_connector_update_edid_property(connector, edid);
+	if (!ret)
+		connector->override_edid = true;
+
+	return ret;
+}
+
+/* For debugfs edid_override implementation */
+int drm_edid_override_reset(struct drm_connector *connector)
+{
+	connector->override_edid = false;
+
+	return drm_connector_update_edid_property(connector, NULL);
+}
+
 /**
  * drm_add_override_edid_modes - add modes from override/firmware EDID
  * @connector: connector we're probing
@@ -1914,30 +2001,11 @@ int drm_add_override_edid_modes(struct drm_connector *connector)
 }
 EXPORT_SYMBOL(drm_add_override_edid_modes);
 
-/**
- * drm_do_get_edid - get EDID data using a custom EDID block read function
- * @connector: connector we're probing
- * @get_edid_block: EDID block read function
- * @data: private data passed to the block read function
- *
- * When the I2C adapter connected to the DDC bus is hidden behind a device that
- * exposes a different interface to read EDID blocks this function can be used
- * to get EDID data using a custom block read function.
- *
- * As in the general case the DDC bus is accessible by the kernel at the I2C
- * level, drivers must make all reasonable efforts to expose it as an I2C
- * adapter and use drm_get_edid() instead of abusing this function.
- *
- * The EDID may be overridden using debugfs override_edid or firmware EDID
- * (drm_load_edid_firmware() and drm.edid_firmware parameter), in this priority
- * order. Having either of them bypasses actual EDID reads.
- *
- * Return: Pointer to valid EDID or NULL if we couldn't find any.
- */
-struct edid *drm_do_get_edid(struct drm_connector *connector,
-	int (*get_edid_block)(void *data, u8 *buf, unsigned int block,
-			      size_t len),
-	void *data)
+typedef int read_block_fn(void *context, u8 *buf, unsigned int block, size_t len);
+
+static struct edid *_drm_do_get_edid(struct drm_connector *connector,
+				     read_block_fn read_block, void *context,
+				     size_t *size)
 {
 	int i, j = 0, valid_extensions = 0;
 	u8 *edid, *new;
@@ -1952,7 +2020,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 
 	/* base block fetch */
 	for (i = 0; i < 4; i++) {
-		if (get_edid_block(data, edid, 0, EDID_LENGTH))
+		if (read_block(context, edid, 0, EDID_LENGTH))
 			goto out;
 		if (drm_edid_block_valid(edid, 0, false,
 					 &connector->edid_corrupt))
@@ -1979,7 +2047,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 		u8 *block = edid + j * EDID_LENGTH;
 
 		for (i = 0; i < 4; i++) {
-			if (get_edid_block(data, block, j, EDID_LENGTH))
+			if (read_block(context, block, j, EDID_LENGTH))
 				goto out;
 			if (drm_edid_block_valid(block, j, false, NULL))
 				break;
@@ -2025,7 +2093,115 @@ out:
 	kfree(edid);
 	return NULL;
 }
+
+/**
+ * drm_do_get_edid - get EDID data using a custom EDID block read function
+ * @connector: connector we're probing
+ * @read_block: EDID block read function
+ * @context: private data passed to the block read function
+ *
+ * When the I2C adapter connected to the DDC bus is hidden behind a device that
+ * exposes a different interface to read EDID blocks this function can be used
+ * to get EDID data using a custom block read function.
+ *
+ * As in the general case the DDC bus is accessible by the kernel at the I2C
+ * level, drivers must make all reasonable efforts to expose it as an I2C
+ * adapter and use drm_get_edid() instead of abusing this function.
+ *
+ * The EDID may be overridden using debugfs override_edid or firmware EDID
+ * (drm_load_edid_firmware() and drm.edid_firmware parameter), in this priority
+ * order. Having either of them bypasses actual EDID reads.
+ *
+ * Return: Pointer to valid EDID or NULL if we couldn't find any.
+ */
+struct edid *drm_do_get_edid(struct drm_connector *connector,
+			     read_block_fn read_block,
+			     void *context)
+{
+	return _drm_do_get_edid(connector, read_block, context, NULL);
+}
 EXPORT_SYMBOL_GPL(drm_do_get_edid);
+
+/* Allocate struct drm_edid container *without* duplicating the edid data */
+static const struct drm_edid *_drm_edid_alloc(const void *edid, size_t size)
+{
+	struct drm_edid *drm_edid;
+
+	if (!edid || !size || size < EDID_LENGTH)
+		return NULL;
+
+	drm_edid = kzalloc(sizeof(*drm_edid), GFP_KERNEL);
+	if (drm_edid) {
+		drm_edid->edid = edid;
+		drm_edid->size = size;
+	}
+
+	return drm_edid;
+}
+
+/**
+ * drm_edid_alloc - Allocate a new drm_edid container
+ * @edid: Pointer to raw EDID data
+ * @size: Size of memory allocated for EDID
+ *
+ * Allocate a new drm_edid container. Do not calculate edid size from edid, pass
+ * the actual size that has been allocated for the data. There is no validation
+ * of the raw EDID data against the size, but at least the EDID base block must
+ * fit in the buffer.
+ *
+ * The returned pointer must be freed using drm_edid_free().
+ *
+ * Return: drm_edid container, or NULL on errors
+ */
+const struct drm_edid *drm_edid_alloc(const void *edid, size_t size)
+{
+	const struct drm_edid *drm_edid;
+
+	if (!edid || !size || size < EDID_LENGTH)
+		return NULL;
+
+	edid = kmemdup(edid, size, GFP_KERNEL);
+	if (!edid)
+		return NULL;
+
+	drm_edid = _drm_edid_alloc(edid, size);
+	if (!drm_edid)
+		kfree(edid);
+
+	return drm_edid;
+}
+EXPORT_SYMBOL(drm_edid_alloc);
+
+/**
+ * drm_edid_dup - Duplicate a drm_edid container
+ * @drm_edid: EDID to duplicate
+ *
+ * The returned pointer must be freed using drm_edid_free().
+ *
+ * Returns: drm_edid container copy, or NULL on errors
+ */
+const struct drm_edid *drm_edid_dup(const struct drm_edid *drm_edid)
+{
+	if (!drm_edid)
+		return NULL;
+
+	return drm_edid_alloc(drm_edid->edid, drm_edid->size);
+}
+EXPORT_SYMBOL(drm_edid_dup);
+
+/**
+ * drm_edid_free - Free the drm_edid container
+ * @drm_edid: EDID to free
+ */
+void drm_edid_free(const struct drm_edid *drm_edid)
+{
+	if (!drm_edid)
+		return;
+
+	kfree(drm_edid->edid);
+	kfree(drm_edid);
+}
+EXPORT_SYMBOL(drm_edid_free);
 
 /**
  * drm_probe_ddc() - probe DDC presence
@@ -2063,11 +2239,117 @@ struct edid *drm_get_edid(struct drm_connector *connector,
 	if (connector->force == DRM_FORCE_UNSPECIFIED && !drm_probe_ddc(adapter))
 		return NULL;
 
-	edid = drm_do_get_edid(connector, drm_do_probe_ddc_edid, adapter);
+	edid = _drm_do_get_edid(connector, drm_do_probe_ddc_edid, adapter, NULL);
 	drm_connector_update_edid_property(connector, edid);
 	return edid;
 }
 EXPORT_SYMBOL(drm_get_edid);
+
+/**
+ * drm_edid_read_custom - Read EDID data using given EDID block read function
+ * @connector: Connector to use
+ * @read_block: EDID block read function
+ * @context: Private data passed to the block read function
+ *
+ * When the I2C adapter connected to the DDC bus is hidden behind a device that
+ * exposes a different interface to read EDID blocks this function can be used
+ * to get EDID data using a custom block read function.
+ *
+ * As in the general case the DDC bus is accessible by the kernel at the I2C
+ * level, drivers must make all reasonable efforts to expose it as an I2C
+ * adapter and use drm_edid_read() or drm_edid_read_ddc() instead of abusing
+ * this function.
+ *
+ * The EDID may be overridden using debugfs override_edid or firmware EDID
+ * (drm_load_edid_firmware() and drm.edid_firmware parameter), in this priority
+ * order. Having either of them bypasses actual EDID reads.
+ *
+ * The returned pointer must be freed using drm_edid_free().
+ *
+ * Return: Pointer to EDID, or NULL if probe/read failed.
+ */
+const struct drm_edid *drm_edid_read_custom(struct drm_connector *connector,
+					    read_block_fn read_block,
+					    void *context)
+{
+	const struct drm_edid *drm_edid;
+	struct edid *edid;
+	size_t size = 0;
+
+	edid = _drm_do_get_edid(connector, read_block, context, &size);
+	if (!edid)
+		return NULL;
+
+	/* Sanity check for now */
+	drm_WARN_ON(connector->dev, !size);
+
+	drm_edid = _drm_edid_alloc(edid, size);
+	if (!drm_edid)
+		kfree(edid);
+
+	return drm_edid;
+}
+EXPORT_SYMBOL(drm_edid_read_custom);
+
+/**
+ * drm_edid_read_ddc - Read EDID data using given I2C adapter
+ * @connector: Connector to use
+ * @adapter: I2C adapter to use for DDC
+ *
+ * Read EDID using the given I2C adapter.
+ *
+ * The EDID may be overridden using debugfs override_edid or firmware EDID
+ * (drm_load_edid_firmware() and drm.edid_firmware parameter), in this priority
+ * order. Having either of them bypasses actual EDID reads.
+ *
+ * Prefer initializing connector->ddc with drm_connector_init_with_ddc() and
+ * using drm_edid_read() instead of this function.
+ *
+ * The returned pointer must be freed using drm_edid_free().
+ *
+ * Return: Pointer to EDID, or NULL if probe/read failed.
+ */
+const struct drm_edid *drm_edid_read_ddc(struct drm_connector *connector,
+					 struct i2c_adapter *adapter)
+{
+	const struct drm_edid *drm_edid;
+
+	if (connector->force == DRM_FORCE_OFF)
+		return NULL;
+
+	if (connector->force == DRM_FORCE_UNSPECIFIED && !drm_probe_ddc(adapter))
+		return NULL;
+
+	drm_edid = drm_edid_read_custom(connector, drm_do_probe_ddc_edid, adapter);
+
+	/* Note: Do *not* call connector updates here. */
+
+	return drm_edid;
+}
+EXPORT_SYMBOL(drm_edid_read_ddc);
+
+/**
+ * drm_edid_read - Read EDID data using connector's I2C adapter
+ * @connector: Connector to use
+ *
+ * Read EDID using the connector's I2C adapter.
+ *
+ * The EDID may be overridden using debugfs override_edid or firmware EDID
+ * (drm_load_edid_firmware() and drm.edid_firmware parameter), in this priority
+ * order. Having either of them bypasses actual EDID reads.
+ *
+ * The returned pointer must be freed using drm_edid_free().
+ *
+ * Return: Pointer to EDID, or NULL if probe/read failed.
+ */
+const struct drm_edid *drm_edid_read(struct drm_connector *connector)
+{
+	if (drm_WARN_ON(connector->dev, !connector->ddc))
+		return NULL;
+
+	return drm_edid_read_ddc(connector, connector->ddc);
+}
+EXPORT_SYMBOL(drm_edid_read);
 
 /**
  * drm_get_edid_switcheroo - get EDID data for a vga_switcheroo output
@@ -2106,7 +2388,7 @@ EXPORT_SYMBOL(drm_get_edid_switcheroo);
  */
 struct edid *drm_edid_duplicate(const struct edid *edid)
 {
-	return kmemdup(edid, (edid->extensions + 1) * EDID_LENGTH, GFP_KERNEL);
+	return kmemdup(edid, edid_size(edid), GFP_KERNEL);
 }
 EXPORT_SYMBOL(drm_edid_duplicate);
 
@@ -2133,14 +2415,15 @@ static bool edid_vendor(const struct edid *edid, const char *vendor)
 
 /**
  * edid_get_quirks - return quirk flags for a given EDID
- * @edid: EDID to process
+ * @drm_edid: EDID to process
  *
  * This tells subsequent routines what fixes they need to apply.
  */
-static u32 edid_get_quirks(const struct edid *edid)
+static u32 edid_get_quirks(const struct drm_edid *drm_edid)
 {
 	const struct edid_quirk *quirk;
 	int i;
+	const struct edid *edid = drm_edid->edid;
 
 	for (i = 0; i < ARRAY_SIZE(edid_quirk_list); i++) {
 		quirk = &edid_quirk_list[i];
@@ -2304,8 +2587,8 @@ drm_for_each_detailed_block(u8 *raw_edid, detailed_cb *cb, void *closure)
 	for (i = 0; i < EDID_DETAILED_TIMINGS; i++)
 		cb(&(edid->detailed_timings[i]), closure);
 
-	for (i = 1; i <= raw_edid[0x7e]; i++) {
-		u8 *ext = raw_edid + (i * EDID_LENGTH);
+	for (i = 0; i < edid_extension_block_count(edid); i++) {
+		const u8 *ext = edid_extension_block_data(edid, i);
 
 		switch (*ext) {
 		case CEA_EXT:
@@ -2938,17 +3221,16 @@ do_inferred_modes(struct detailed_timing *timing, void *c)
 	}
 }
 
-static int
-add_inferred_modes(struct drm_connector *connector, struct edid *edid)
+static int add_inferred_modes(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid)
 {
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 	};
 
-	if (version_greater(edid, 1, 0))
-		drm_for_each_detailed_block((u8 *)edid, do_inferred_modes,
-					    &closure);
+	if (version_greater(drm_edid->edid, 1, 0))
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_inferred_modes, &closure);
 
 	return closure.modes;
 }
@@ -3001,10 +3283,11 @@ do_established_modes(struct detailed_timing *timing, void *c)
  * Each EDID block contains a bitmap of the supported "established modes" list
  * (defined above).  Tease them out and add them to the global modes list.
  */
-static int
-add_established_modes(struct drm_connector *connector, struct edid *edid)
+static int add_established_modes(struct drm_connector *connector,
+				 const struct drm_edid *drm_edid)
 {
 	struct drm_device *dev = connector->dev;
+	const struct edid *edid = drm_edid->edid;
 	unsigned long est_bits = edid->established_timings.t1 |
 		(edid->established_timings.t2 << 8) |
 		((edid->established_timings.mfg_rsvd & 0x80) << 9);
@@ -3027,8 +3310,8 @@ add_established_modes(struct drm_connector *connector, struct edid *edid)
 	}
 
 	if (version_greater(edid, 1, 0))
-		    drm_for_each_detailed_block((u8 *)edid,
-						do_established_modes, &closure);
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_established_modes,
+					    &closure);
 
 	return modes + closure.modes;
 }
@@ -3065,28 +3348,28 @@ do_standard_modes(struct detailed_timing *timing, void *c)
  * Standard modes can be calculated using the appropriate standard (DMT,
  * GTF or CVT. Grab them from @edid and add them to the list.
  */
-static int
-add_standard_modes(struct drm_connector *connector, struct edid *edid)
+static int add_standard_modes(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid)
 {
 	int i, modes = 0;
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 	};
 
 	for (i = 0; i < EDID_STD_TIMINGS; i++) {
 		struct drm_display_mode *newmode;
 
-		newmode = drm_mode_std(connector, edid,
-				       &edid->standard_timings[i]);
+		newmode = drm_mode_std(connector, drm_edid->edid,
+				       &drm_edid->edid->standard_timings[i]);
 		if (newmode) {
 			drm_mode_probed_add(connector, newmode);
 			modes++;
 		}
 	}
 
-	if (version_greater(edid, 1, 0))
-		drm_for_each_detailed_block((u8 *)edid, do_standard_modes,
+	if (version_greater(drm_edid->edid, 1, 0))
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_standard_modes,
 					    &closure);
 
 	/* XXX should also look for standard codes in VTB blocks */
@@ -3158,15 +3441,15 @@ do_cvt_mode(struct detailed_timing *timing, void *c)
 }
 
 static int
-add_cvt_modes(struct drm_connector *connector, struct edid *edid)
+add_cvt_modes(struct drm_connector *connector, const struct drm_edid *drm_edid)
 {
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 	};
 
-	if (version_greater(edid, 1, 2))
-		drm_for_each_detailed_block((u8 *)edid, do_cvt_mode, &closure);
+	if (version_greater(drm_edid->edid, 1, 2))
+		drm_for_each_detailed_block((u8 *)drm_edid->edid, do_cvt_mode, &closure);
 
 	/* XXX should also look for CVT codes in VTB blocks */
 
@@ -3208,25 +3491,24 @@ do_detailed_mode(struct detailed_timing *timing, void *c)
 /*
  * add_detailed_modes - Add modes from detailed timings
  * @connector: attached connector
- * @edid: EDID block to scan
+ * @drm_edid: EDID block to scan
  * @quirks: quirks to apply
  */
-static int
-add_detailed_modes(struct drm_connector *connector, struct edid *edid,
-		   u32 quirks)
+static int add_detailed_modes(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid, u32 quirks)
 {
 	struct detailed_mode_closure closure = {
 		.connector = connector,
-		.edid = edid,
+		.edid = drm_edid->edid,
 		.preferred = true,
 		.quirks = quirks,
 	};
 
-	if (closure.preferred && !version_greater(edid, 1, 3))
+	if (closure.preferred && !version_greater(drm_edid->edid, 1, 3))
 		closure.preferred =
-		    (edid->features & DRM_EDID_FEATURE_PREFERRED_TIMING);
+		    (drm_edid->edid->features & DRM_EDID_FEATURE_PREFERRED_TIMING);
 
-	drm_for_each_detailed_block((u8 *)edid, do_detailed_mode, &closure);
+	drm_for_each_detailed_block((u8 *)drm_edid->edid, do_detailed_mode, &closure);
 
 	return closure.modes;
 }
@@ -3255,17 +3537,17 @@ const u8 *drm_find_edid_extension(const struct edid *edid,
 	int i;
 
 	/* No EDID or EDID extensions */
-	if (edid == NULL || edid->extensions == 0)
+	if (!edid || !edid_extension_block_count(edid))
 		return NULL;
 
 	/* Find CEA extension */
-	for (i = *ext_index; i < edid->extensions; i++) {
-		edid_ext = (const u8 *)edid + EDID_LENGTH * (i + 1);
+	for (i = *ext_index; i < edid_extension_block_count(edid); i++) {
+		edid_ext = edid_extension_block_data(edid, i);
 		if (edid_ext[0] == ext_id)
 			break;
 	}
 
-	if (i >= edid->extensions)
+	if (i >= edid_extension_block_count(edid))
 		return NULL;
 
 	*ext_index = i + 1;
@@ -3557,8 +3839,8 @@ static bool drm_valid_hdmi_vic(u8 vic)
 	return vic > 0 && vic < ARRAY_SIZE(edid_4k_modes);
 }
 
-static int
-add_alternate_cea_modes(struct drm_connector *connector, struct edid *edid)
+static int add_alternate_cea_modes(struct drm_connector *connector,
+				   const struct drm_edid *drm_edid)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_display_mode *mode, *tmp;
@@ -3566,7 +3848,7 @@ add_alternate_cea_modes(struct drm_connector *connector, struct edid *edid)
 	int modes = 0;
 
 	/* Don't add CEA modes if the CEA extension block is missing */
-	if (!drm_find_cea_extension(edid))
+	if (!drm_find_cea_extension(drm_edid->edid))
 		return 0;
 
 	/*
@@ -4235,9 +4517,10 @@ static void drm_parse_y420cmdb_bitmap(struct drm_connector *connector,
 	hdmi->y420_cmdb_map = map;
 }
 
-static int
-add_cea_modes(struct drm_connector *connector, struct edid *edid)
+static int add_cea_modes(struct drm_connector *connector,
+			 const struct drm_edid *drm_edid)
 {
+	struct edid *edid = drm_edid->edid;
 	const u8 *cea = drm_find_cea_extension(edid);
 	const u8 *db, *hdmi = NULL, *video = NULL;
 	u8 dbl, hdmi_len, video_len = 0;
@@ -5135,11 +5418,11 @@ void get_monitor_range(struct detailed_timing *timing,
 	monitor_range->max_vfreq = range->max_vfreq;
 }
 
-static
-void drm_get_monitor_range(struct drm_connector *connector,
-			   const struct edid *edid)
+static void drm_get_monitor_range(struct drm_connector *connector,
+				  const struct drm_edid *drm_edid)
 {
 	struct drm_display_info *info = &connector->display_info;
+	const struct edid *edid = drm_edid->edid;
 
 	if (!version_greater(edid, 1, 1))
 		return;
@@ -5155,8 +5438,7 @@ void drm_get_monitor_range(struct drm_connector *connector,
 /* A connector has no EDID information, so we've got no EDID to compute quirks from. Reset
  * all of the values which would have been set from EDID
  */
-void
-drm_reset_display_info(struct drm_connector *connector)
+static void drm_reset_display_info(struct drm_connector *connector)
 {
 	struct drm_display_info *info = &connector->display_info;
 
@@ -5177,11 +5459,13 @@ drm_reset_display_info(struct drm_connector *connector)
 	memset(&info->monitor_range, 0, sizeof(info->monitor_range));
 }
 
-u32 drm_add_display_info(struct drm_connector *connector, const struct edid *edid)
+static u32 update_display_info(struct drm_connector *connector,
+			       const struct drm_edid *drm_edid)
 {
 	struct drm_display_info *info = &connector->display_info;
+	const struct edid *edid = drm_edid->edid;
 
-	u32 quirks = edid_get_quirks(edid);
+	u32 quirks = edid_get_quirks(drm_edid);
 
 	drm_reset_display_info(connector);
 
@@ -5190,7 +5474,7 @@ u32 drm_add_display_info(struct drm_connector *connector, const struct edid *edi
 
 	info->non_desktop = !!(quirks & EDID_QUIRK_NON_DESKTOP);
 
-	drm_get_monitor_range(connector, edid);
+	drm_get_monitor_range(connector, drm_edid);
 
 	DRM_DEBUG_KMS("non_desktop set to %d\n", info->non_desktop);
 
@@ -5328,13 +5612,13 @@ static int add_displayid_detailed_1_modes(struct drm_connector *connector,
 }
 
 static int add_displayid_detailed_modes(struct drm_connector *connector,
-					struct edid *edid)
+					const struct drm_edid *drm_edid)
 {
 	const struct displayid_block *block;
 	struct displayid_iter iter;
 	int num_modes = 0;
 
-	displayid_iter_edid_begin(edid, &iter);
+	displayid_iter_edid_begin(drm_edid->edid, &iter);
 	displayid_iter_for_each(block, &iter) {
 		if (block->tag == DATA_BLOCK_TYPE_1_DETAILED_TIMING)
 			num_modes += add_displayid_detailed_1_modes(connector, block);
@@ -5344,41 +5628,16 @@ static int add_displayid_detailed_modes(struct drm_connector *connector,
 	return num_modes;
 }
 
-/**
- * drm_add_edid_modes - add modes from EDID data, if available
- * @connector: connector we're probing
- * @edid: EDID data
- *
- * Add the specified modes to the connector's mode list. Also fills out the
- * &drm_display_info structure and ELD in @connector with any information which
- * can be derived from the edid.
- *
- * Return: The number of modes added or 0 if we couldn't find any.
- */
-int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
+static int _drm_edid_connector_add_modes(struct drm_connector *connector,
+					 const struct drm_edid *drm_edid)
 {
 	int num_modes = 0;
 	u32 quirks;
 
-	if (edid == NULL) {
+	if (!drm_edid) {
 		clear_eld(connector);
 		return 0;
 	}
-	if (!drm_edid_is_valid(edid)) {
-		clear_eld(connector);
-		drm_warn(connector->dev, "%s: EDID invalid.\n",
-			 connector->name);
-		return 0;
-	}
-
-	drm_edid_to_eld(connector, edid);
-
-	/*
-	 * CEA-861-F adds ycbcr capability map block, for HDMI 2.0 sinks.
-	 * To avoid multiple parsing of same block, lets parse that map
-	 * from sink info, before parsing CEA modes.
-	 */
-	quirks = drm_add_display_info(connector, edid);
 
 	/*
 	 * EDID spec says modes should be preferred in this order:
@@ -5394,15 +5653,15 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 	 *
 	 * XXX order for additional mode types in extension blocks?
 	 */
-	num_modes += add_detailed_modes(connector, edid, quirks);
-	num_modes += add_cvt_modes(connector, edid);
-	num_modes += add_standard_modes(connector, edid);
-	num_modes += add_established_modes(connector, edid);
-	num_modes += add_cea_modes(connector, edid);
-	num_modes += add_alternate_cea_modes(connector, edid);
-	num_modes += add_displayid_detailed_modes(connector, edid);
-	if (edid->features & DRM_EDID_FEATURE_DEFAULT_GTF)
-		num_modes += add_inferred_modes(connector, edid);
+	num_modes += add_detailed_modes(connector, drm_edid, quirks);
+	num_modes += add_cvt_modes(connector, drm_edid);
+	num_modes += add_standard_modes(connector, drm_edid);
+	num_modes += add_established_modes(connector, drm_edid);
+	num_modes += add_cea_modes(connector, drm_edid);
+	num_modes += add_alternate_cea_modes(connector, drm_edid);
+	num_modes += add_displayid_detailed_modes(connector, drm_edid);
+	if (drm_edid->edid->features & DRM_EDID_FEATURE_DEFAULT_GTF)
+		num_modes += add_inferred_modes(connector, drm_edid);
 
 	if (quirks & (EDID_QUIRK_PREFER_LARGE_60 | EDID_QUIRK_PREFER_LARGE_75))
 		edid_fixup_preferred(connector, quirks);
@@ -5420,6 +5679,196 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 		connector->display_info.bpc = 12;
 
 	return num_modes;
+}
+
+static void _drm_update_tile_info(struct drm_connector *connector,
+				  const struct drm_edid *drm_edid);
+
+static int _drm_edid_connector_property_update(struct drm_connector *connector,
+					       const struct drm_edid *drm_edid)
+{
+	struct drm_device *dev = connector->dev;
+	int ret;
+
+	if (connector->edid_blob_ptr) {
+		const struct edid *old_edid = connector->edid_blob_ptr->data;
+
+		if (old_edid) {
+			if (!drm_edid_are_equal(drm_edid ? drm_edid->edid : NULL, old_edid)) {
+				connector->epoch_counter++;
+				drm_dbg_kms(dev, "[CONNECTOR:%d:%s] EDID changed, epoch counter %llu\n",
+					    connector->base.id, connector->name,
+					    connector->epoch_counter);
+			}
+		}
+	}
+
+	ret = drm_property_replace_global_blob(dev,
+					       &connector->edid_blob_ptr,
+					       drm_edid ? drm_edid->size : 0,
+					       drm_edid ? drm_edid->edid : NULL,
+					       &connector->base,
+					       dev->mode_config.edid_property);
+	if (ret) {
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] EDID property update failed (%d)\n",
+			    connector->base.id, connector->name, ret);
+		goto out;
+	}
+
+	ret = drm_object_property_set_value(&connector->base,
+					    dev->mode_config.non_desktop_property,
+					    connector->display_info.non_desktop);
+	if (ret) {
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] Non-desktop property update failed (%d)\n",
+			    connector->base.id, connector->name, ret);
+		goto out;
+	}
+
+	ret = drm_connector_set_tile_property(connector);
+	if (ret) {
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] Tile property update failed (%d)\n",
+			    connector->base.id, connector->name, ret);
+		goto out;
+	}
+
+out:
+	return ret;
+}
+
+/**
+ * drm_edid_connector_update - Update connector information from EDID
+ * @connector: Connector
+ * @drm_edid: EDID
+ *
+ * Update the connector display info, ELD, HDR metadata, relevant properties,
+ * etc. from the passed in EDID.
+ *
+ * If EDID is NULL, reset the information.
+ *
+ * Must be called before calling drm_edid_connector_add_modes().
+ *
+ * Return: 0 on success, negative error on errors.
+ */
+int drm_edid_connector_update(struct drm_connector *connector,
+			      const struct drm_edid *drm_edid)
+{
+	update_display_info(connector, drm_edid);
+
+	_drm_update_tile_info(connector, drm_edid);
+
+	return _drm_edid_connector_property_update(connector, drm_edid);
+}
+EXPORT_SYMBOL(drm_edid_connector_update);
+
+/**
+ * drm_edid_connector_add_modes - Update probed modes from the EDID property
+ * @connector: Connector
+ *
+ * Add the modes from the previously updated EDID property to the connector
+ * probed modes list.
+ *
+ * drm_edid_connector_update() must have been called before this to update the
+ * EDID property.
+ *
+ * Return: The number of modes added, or 0 if we couldn't find any.
+ */
+int drm_edid_connector_add_modes(struct drm_connector *connector)
+{
+	const struct drm_edid *drm_edid = NULL;
+	int count;
+
+	if (connector->edid_blob_ptr)
+		drm_edid = drm_edid_alloc(connector->edid_blob_ptr->data,
+					  connector->edid_blob_ptr->length);
+
+	count = _drm_edid_connector_add_modes(connector, drm_edid);
+
+	drm_edid_free(drm_edid);
+
+	return count;
+}
+EXPORT_SYMBOL(drm_edid_connector_add_modes);
+
+static int _drm_connector_update_edid_property(struct drm_connector *connector,
+					       const struct drm_edid *drm_edid)
+{
+	/* ignore requests to set edid when overridden */
+	if (connector->override_edid)
+		return 0;
+
+	/*
+	 * Set the display info, using edid if available, otherwise resetting
+	 * the values to defaults. This duplicates the work done in
+	 * drm_add_edid_modes, but that function is not consistently called
+	 * before this one in all drivers and the computation is cheap enough
+	 * that it seems better to duplicate it rather than attempt to ensure
+	 * some arbitrary ordering of calls.
+	 */
+	if (drm_edid)
+		update_display_info(connector, drm_edid);
+	else
+		drm_reset_display_info(connector);
+
+	_drm_update_tile_info(connector, drm_edid);
+
+	return _drm_edid_connector_property_update(connector, drm_edid);
+}
+
+/**
+ * drm_connector_update_edid_property - update the edid property of a connector
+ * @connector: drm connector
+ * @edid: new value of the edid property
+ *
+ * This function creates a new blob modeset object and assigns its id to the
+ * connector's edid property.
+ * Since we also parse tile information from EDID's displayID block, we also
+ * set the connector's tile property here. See drm_connector_set_tile_property()
+ * for more details.
+ *
+ * This function is deprecated. Use drm_edid_connector_update() instead.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ */
+int drm_connector_update_edid_property(struct drm_connector *connector,
+				       const struct edid *edid)
+{
+	struct drm_edid drm_edid;
+
+	return _drm_connector_update_edid_property(connector,
+						   drm_edid_legacy_init(&drm_edid, edid));
+}
+EXPORT_SYMBOL(drm_connector_update_edid_property);
+
+/**
+ * drm_add_edid_modes - add modes from EDID data, if available
+ * @connector: connector we're probing
+ * @edid: EDID data
+ *
+ * Add the specified modes to the connector's mode list. Also fills out the
+ * &drm_display_info structure and ELD in @connector with any information which
+ * can be derived from the edid.
+ *
+ * This function is deprecated. Use drm_edid_connector_add_modes() instead.
+ *
+ * Return: The number of modes added or 0 if we couldn't find any.
+ */
+int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
+{
+	struct drm_edid _drm_edid;
+	const struct drm_edid *drm_edid;
+
+	if (edid && !drm_edid_is_valid(edid)) {
+		drm_warn(connector->dev, "%s: EDID invalid.\n",
+			 connector->name);
+		edid = NULL;
+	}
+
+	drm_edid = drm_edid_legacy_init(&_drm_edid, edid);
+
+	update_display_info(connector, drm_edid);
+
+	return _drm_edid_connector_add_modes(connector, drm_edid);
 }
 EXPORT_SYMBOL(drm_add_edid_modes);
 
@@ -5976,15 +6425,15 @@ static void drm_parse_tiled_block(struct drm_connector *connector,
 	}
 }
 
-void drm_update_tile_info(struct drm_connector *connector,
-			  const struct edid *edid)
+static void _drm_update_tile_info(struct drm_connector *connector,
+				  const struct drm_edid *drm_edid)
 {
 	const struct displayid_block *block;
 	struct displayid_iter iter;
 
 	connector->has_tile = false;
 
-	displayid_iter_edid_begin(edid, &iter);
+	displayid_iter_edid_begin(drm_edid ? drm_edid->edid : NULL, &iter);
 	displayid_iter_for_each(block, &iter) {
 		if (block->tag == DATA_BLOCK_TILED_DISPLAY)
 			drm_parse_tiled_block(connector, block);

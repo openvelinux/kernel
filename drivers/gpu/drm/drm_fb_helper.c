@@ -2088,10 +2088,7 @@ static int drm_fbdev_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	struct drm_fb_helper *fb_helper = info->par;
 
-	if (fb_helper->dev->driver->gem_prime_mmap)
-		return fb_helper->dev->driver->gem_prime_mmap(fb_helper->buffer->gem, vma);
-	else
-		return -ENODEV;
+	return drm_gem_prime_mmap(fb_helper->buffer->gem, vma);
 }
 
 static bool drm_fbdev_use_iomem(struct fb_info *info)

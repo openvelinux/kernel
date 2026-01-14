@@ -461,9 +461,29 @@ static void hisi_i2c_configure_bus(struct hisi_i2c_controller *ctlr)
 
 #ifdef CONFIG_ACPI
 #define HISI_I2C_PIN_MUX_METHOD	"PMUX"
+#define HISI_I2C_SOFT_RESET_METHOD	"SRST"
 
 /**
- * i2c_dw_acpi_pin_mux_change - Change the I2C controller's pin mux through ACPI
+ * i2c_hisi_soft_reset - Do I2C master soft reset method through ACPI
+ * @dev: device need to be reset
+ *
+ * The function invokes the specific ACPI method "SRST" for trigger a soft
+ * reset of I2C controller in order to help on I2C controller recover from
+ * the abnormal state after bus recovery process.
+ */
+static void i2c_hisi_soft_reset(struct device *dev)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	acpi_status status;
+	unsigned long long data;
+
+	status = acpi_evaluate_integer(handle, HISI_I2C_SOFT_RESET_METHOD, NULL, &data);
+	dev_info(dev, "I2C controller reset %s", ACPI_FAILURE(status) ? "failed" :
+		 "succeed");
+}
+
+/**
+ * i2c_hisi_pin_mux_change - Change the I2C controller's pin mux through ACPI
  * @dev: device owns the SCL/SDA pin
  * @to_gpio: true to switch to GPIO, false to switch to SCL/SDA
  *
@@ -498,6 +518,13 @@ static void i2c_hisi_unprepare_recovery(struct i2c_adapter *adap)
 	struct hisi_i2c_controller *ctlr = i2c_get_adapdata(adap);
 
 	i2c_hisi_pin_mux_change(ctlr->dev, false);
+	i2c_hisi_soft_reset(ctlr->dev);
+
+	/*
+	 * After a soft reset, the device configuration return to default
+	 * values and require reinitialization.
+	 */
+	hisi_i2c_configure_bus(ctlr);
 }
 
 static void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr)
@@ -509,7 +536,8 @@ static void hisi_i2c_init_recovery_info(struct hisi_i2c_controller *ctlr)
 	if (acpi_disabled)
 		return;
 
-	if (!adev || !acpi_has_method(adev->handle, HISI_I2C_PIN_MUX_METHOD))
+	if (!adev || !acpi_has_method(adev->handle, HISI_I2C_PIN_MUX_METHOD) ||
+	    !acpi_has_method(adev->handle, HISI_I2C_SOFT_RESET_METHOD))
 		return;
 
 	gpio = devm_gpiod_get_optional(ctlr->dev, "scl", GPIOD_OUT_HIGH);
@@ -613,3 +641,4 @@ module_platform_driver(hisi_i2c_driver);
 MODULE_AUTHOR("Yicong Yang <yangyicong@hisilicon.com>");
 MODULE_DESCRIPTION("HiSilicon I2C Controller Driver");
 MODULE_LICENSE("GPL");
+MODULE_SOFTDEP("pre: gpio-hisi");

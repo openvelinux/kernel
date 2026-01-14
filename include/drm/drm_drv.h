@@ -347,17 +347,6 @@ struct drm_driver {
 				struct drm_device *dev,
 				struct dma_buf_attachment *attach,
 				struct sg_table *sgt);
-	/**
-	 * @gem_prime_mmap:
-	 *
-	 * mmap hook for GEM drivers, used to implement dma-buf mmap in the
-	 * PRIME helpers.
-	 *
-	 * FIXME: There's way too much duplication going on here, and also moved
-	 * to &drm_gem_object_funcs.
-	 */
-	int (*gem_prime_mmap)(struct drm_gem_object *obj,
-				struct vm_area_struct *vma);
 
 	/**
 	 * @dumb_create:
@@ -606,5 +595,10 @@ static inline bool drm_drv_uses_atomic_modeset(struct drm_device *dev)
 
 int drm_dev_set_unique(struct drm_device *dev, const char *name);
 
+#ifdef CONFIG_VGA_CONSOLE
+extern bool drm_firmware_drivers_only(void);
+#else
+static inline bool drm_firmware_drivers_only(void) { return false; }
+#endif
 
 #endif

@@ -41,6 +41,18 @@
 	},								\
 }
 
+/*
+ * Maximum branch record entries which could be processed
+ * for core perf branch stack sampling support, regardless
+ * of the hardware support available on a given ARM PMU.
+ */
+#define MAX_BRANCH_RECORDS 64
+
+struct branch_records {
+	struct perf_branch_stack	branch_stack;
+	struct perf_branch_entry	branch_entries[MAX_BRANCH_RECORDS];
+};
+
 /* The events for a given PMU register set. */
 struct pmu_hw_events {
 	/*
@@ -67,6 +79,11 @@ struct pmu_hw_events {
 	struct arm_pmu		*percpu_pmu;
 
 	int irq;
+
+	struct branch_records	*branches;
+	void			*brbe_context;
+	unsigned int		brbe_users;
+	unsigned long		brbe_sample_type;
 };
 
 enum armpmu_attr_groups {
@@ -97,8 +114,12 @@ struct arm_pmu {
 	void		(*stop)(struct arm_pmu *);
 	void		(*reset)(void *);
 	int		(*map_event)(struct perf_event *event);
+	void		(*sched_task)(struct perf_event_pmu_context *ctx, bool sched_in);
+	void		(*branch_reset)(void);
 	int		num_events;
-	bool		secure_access; /* 32-bit ARM only */
+	unsigned int	secure_access:1, /* 32-bit ARM only */
+			has_branch_stack:1, /* 64-bit ARM only */
+			reserved:30;
 #define ARMV8_PMUV3_MAX_COMMON_EVENTS		0x40
 	DECLARE_BITMAP(pmceid_bitmap, ARMV8_PMUV3_MAX_COMMON_EVENTS);
 #define ARMV8_PMUV3_EXT_COMMON_EVENT_BASE	0x4000
@@ -111,6 +132,11 @@ struct arm_pmu {
 	const struct attribute_group *attr_groups[ARMPMU_NR_ATTR_GROUPS + 1];
 	/* store the PMMIR_EL1 to expose slots */
 	u64		reg_pmmir;
+
+#ifdef CONFIG_ARM64_BRBE
+	/* store the BRBIDR0_EL1 capturing attributes */
+	u64		reg_brbidr;
+#endif
 
 	/* Only to be used by ACPI probing code */
 	unsigned long acpi_cpuid;

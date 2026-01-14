@@ -1090,6 +1090,13 @@ struct drm_connector_funcs {
 	 */
 	void (*atomic_print_state)(struct drm_printer *p,
 				   const struct drm_connector_state *state);
+	
+	/**
+	 * @debugfs_init:
+	 *
+	 * Allows connectors to create connector-specific debugfs files.
+	 */
+	void (*debugfs_init)(struct drm_connector *connector, struct dentry *root);
 };
 
 /**
@@ -1433,7 +1440,11 @@ struct drm_connector {
 	struct drm_cmdline_mode cmdline_mode;
 	/** @force: a DRM_FORCE_<foo> state for forced mode sets */
 	enum drm_connector_force force;
-	/** @override_edid: has the EDID been overwritten through debugfs for testing? */
+	/**
+	 * @override_edid: has the EDID been overwritten through debugfs for
+	 * testing? Do not modify outside of drm_edid_override_set() and
+	 * drm_edid_override_reset().
+	 */
 	bool override_edid;
 	/** @epoch_counter: used to detect any other changes in connector, besides status */
 	u64 epoch_counter;

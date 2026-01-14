@@ -150,7 +150,7 @@ struct acpi_hotplug_context {
  */
 
 typedef int (*acpi_op_add) (struct acpi_device * device);
-typedef int (*acpi_op_remove) (struct acpi_device * device);
+typedef void (*acpi_op_remove) (struct acpi_device *device);
 typedef void (*acpi_op_notify) (struct acpi_device * device, u32 event);
 
 struct acpi_device_ops {
@@ -727,15 +727,21 @@ static inline void acpi_dev_put(struct acpi_device *adev)
 }
 
 struct acpi_device *acpi_bus_get_acpi_device(acpi_handle handle);
+struct acpi_device *acpi_fetch_acpi_dev(acpi_handle handle);
 
 static inline void acpi_bus_put_acpi_device(struct acpi_device *adev)
 {
 	acpi_dev_put(adev);
 }
+
+int acpi_wait_for_acpi_ipmi(void);
+
 #else	/* CONFIG_ACPI */
 
 static inline int register_acpi_bus_type(void *bus) { return 0; }
 static inline int unregister_acpi_bus_type(void *bus) { return 0; }
+
+static inline int acpi_wait_for_acpi_ipmi(void) { return 0; }
 
 #endif				/* CONFIG_ACPI */
 

@@ -81,6 +81,7 @@ static void cpufreq_governor_limits(struct cpufreq_policy *policy);
 static int cpufreq_set_policy(struct cpufreq_policy *policy,
 			      struct cpufreq_governor *new_gov,
 			      unsigned int new_pol);
+static bool cpufreq_boost_supported(void);
 
 /*
  * Two notifier lists: the "policy" list is involved in the
@@ -618,6 +619,42 @@ static ssize_t store_boost(struct kobject *kobj, struct kobj_attribute *attr,
 }
 define_one_global_rw(boost);
 
+static ssize_t show_local_boost(struct cpufreq_policy *policy, char *buf)
+{
+	return sysfs_emit(buf, "%d\n", policy->boost_enabled);
+}
+
+static ssize_t store_local_boost(struct cpufreq_policy *policy,
+				 const char *buf, size_t count)
+{
+	int ret, enable;
+
+	ret = kstrtoint(buf, 10, &enable);
+	if (ret || enable < 0 || enable > 1)
+		return -EINVAL;
+
+	if (!cpufreq_driver->boost_enabled)
+		return -EINVAL;
+
+	if (policy->boost_enabled == enable)
+		return count;
+
+	policy->boost_enabled = enable;
+
+	cpus_read_lock();
+	ret = cpufreq_driver->set_boost(policy, enable);
+	cpus_read_unlock();
+
+	if (ret) {
+		policy->boost_enabled = !policy->boost_enabled;
+		return ret;
+	}
+
+	return count;
+}
+
+static struct freq_attr local_boost = __ATTR(boost, 0644, show_local_boost, store_local_boost);
+
 static struct cpufreq_governor *find_governor(const char *str_governor)
 {
 	struct cpufreq_governor *t;
@@ -1057,6 +1094,12 @@ static int cpufreq_add_dev_interface(struct cpufreq_policy *policy)
 			return ret;
 	}
 
+	if (cpufreq_boost_supported()) {
+		ret = sysfs_create_file(&policy->kobj, &local_boost.attr);
+		if (ret)
+			return ret;
+	}
+
 	return 0;
 }
 
@@ -1433,6 +1476,10 @@ static int cpufreq_online(unsigned int cpu)
 
 		blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 				CPUFREQ_CREATE_POLICY, policy);
+	} else {
+		ret = freq_qos_update_request(policy->max_freq_req, policy->max);
+		if (ret < 0)
+			goto out_destroy_policy;
 	}
 
 	if (cpufreq_driver->get && has_target()) {
@@ -1521,6 +1568,19 @@ static int cpufreq_online(unsigned int cpu)
 
 	if (cpufreq_thermal_control_enabled(cpufreq_driver))
 		policy->cdev = of_cpufreq_cooling_register(policy);
+
+	/* Let the per-policy boost flag mirror the cpufreq_driver boost during init */
+	if (cpufreq_driver->set_boost &&
+	    policy->boost_enabled != cpufreq_boost_enabled()) {
+		policy->boost_enabled = cpufreq_boost_enabled();
+		ret = cpufreq_driver->set_boost(policy, policy->boost_enabled);
+		if (ret) {
+			/* If the set_boost fails, the online operation is not affected */
+			pr_info("%s: CPU%d: Cannot %s BOOST\n", __func__, policy->cpu,
+				policy->boost_enabled ? "enable" : "disable");
+			policy->boost_enabled = !policy->boost_enabled;
+		}
+	}
 
 	pr_debug("initialization complete\n");
 
@@ -2684,9 +2744,12 @@ int cpufreq_boost_trigger_state(int state)
 
 	cpus_read_lock();
 	for_each_active_policy(policy) {
+		policy->boost_enabled = state;
 		ret = cpufreq_driver->set_boost(policy, state);
-		if (ret)
+		if (ret) {
+			policy->boost_enabled = !policy->boost_enabled;
 			goto err_reset_state;
+		}
 	}
 	cpus_read_unlock();
 
