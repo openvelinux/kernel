@@ -24,8 +24,7 @@ struct guestmem_hugetlb_private {
 	struct hugetlb_cgroup *h_cg_rsvd;
 	bool spool_active;
 
-	/* The below fields are protected by finalize_lock */
-	struct mutex finalize_lock;
+	atomic_t teardown_count;
 	bool teardown_started;
 	bool kvm_finalized;
 	size_t inode_size;
@@ -487,7 +486,7 @@ static void *guestmem_hugetlb_setup(size_t size, u64 flags)
 	private->h_cg_rsvd = h_cg_rsvd;
 	private->spool_active = true;
 
-	mutex_init(&private->finalize_lock);
+	atomic_set(&private->teardown_count, 0);
 
 	return private;
 
@@ -504,7 +503,13 @@ static void teardown_finalize(struct guestmem_hugetlb_private *private)
 	unsigned long nr_pages;
 	int idx;
 
-	pr_debug("%s: waiting to subpool pages to be freed for instance %px inode_size %ld\n",
+	if (atomic_inc_return(&private->teardown_count) != 1) {
+		pr_debug("%s: already waiting for subpool pages to be freed for instance %px inode_size %ld\n",
+			 __func__, private, private->inode_size);
+		return;
+	}
+
+	pr_debug("%s: waiting for subpool pages to be freed for instance %px inode_size %ld\n",
 		 __func__, private, private->inode_size);
 
 	while (private->spool_active)
@@ -526,15 +531,21 @@ static void guestmem_hugetlb_finalize(void *priv)
 	pr_debug("%s: finalize callback for priv %px teardown_started %d\n",
 		 __func__, private, private->teardown_started);
 
-	mutex_lock(&private->finalize_lock);
-
 	private->kvm_finalized = true;
+	/*
+	 * pairs with the smp_mb() in guestmem_hugetlb_teardown to
+	 * synchronize 'kvm_finalized'/'teardown_started' and maintain
+	 * ordering relative to each other as well.
+	 */
+	smp_mb();
 
-	/* inode teardown path will handle finalizing later. */
+	/*
+	 * inode teardown path has been reached, so either it, or this
+	 * thread, can now finalize. teardown_finalize() itself will check
+	 * for cases where it gets called by multiple tasks.
+	 */
 	if (private->teardown_started)
 		teardown_finalize(private);
-
-	mutex_unlock(&private->finalize_lock);
 }
 
 static void guestmem_hugetlb_teardown(void *priv, size_t inode_size)
@@ -543,21 +554,24 @@ static void guestmem_hugetlb_teardown(void *priv, size_t inode_size)
 
 	hugepage_put_subpool(private->spool);
 
-	mutex_lock(&private->finalize_lock);
-
-	private->teardown_started = true;
 	private->inode_size = inode_size;
+	private->teardown_started = true;
+	/*
+	 * pairs with the smp_mb() in guestmem_hugetlb_finalize to
+	 * synchronize 'kvm_finalized'/'teardown_started' and maintain
+	 * ordering relative to each other as well.
+	 */
+	smp_mb();
 
 	/*
 	 * If KVM is finalized, it should be possible to reclaim all the
-	 * subpool pages and finalize here. Otherwise, defer to KVM to
-	 * call the guestmem_hugetlb_finalize() callback later since it
-	 * way not be possible to reclaim all subpool pages until then.
+	 * subpool pages and finalize here. It's possible KVM is already
+	 * trying to finalize, but the teardown_count will be used to
+	 * pick the winning task since it doesn't matter which one at
+	 * this point.
 	 */
 	if (private->kvm_finalized)
 		teardown_finalize(private);
-
-	mutex_unlock(&private->finalize_lock);
 }
 
 static struct folio *guestmem_hugetlb_alloc_folio(void *priv, struct mempolicy *mpol)
