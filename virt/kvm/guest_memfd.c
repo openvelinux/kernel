@@ -1773,18 +1773,18 @@ static void kvm_gmem_free_inode(struct inode *inode)
 		kvm_gmem_allocator_ops(inode)->inode_teardown(p, inode->i_size);
 	}
 
-	/*
-	 * mtree_destroy() can't be used within rcu callback, hence can't be
-	 * done in ->free_inode().
-	 */
-	mtree_destroy(&info->shareability);
-
 	kmem_cache_free(kvm_gmem_inode_cachep, info);
 }
 
 static void kvm_gmem_destroy_inode(struct inode *inode)
 {
 	mpol_free_shared_policy(&KVM_GMEM_I(inode)->policy);
+
+	/*
+	 * mtree_destroy() can't be used within rcu callback, hence can't be
+	 * done in ->free_inode().
+	 */
+	mtree_destroy(&KVM_GMEM_I(inode)->shareability);
 }
 
 static void kvm_gmem_evict_inode(struct inode *inode)
