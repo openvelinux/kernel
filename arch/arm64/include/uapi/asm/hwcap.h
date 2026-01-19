@@ -108,5 +108,7 @@
 /*
  * HWCAP3 flags - for AT_HWCAP3
  */
+#define HWCAP3_LS64		(1UL << 0)
+#define HWCAP3_LS64_V		(1UL << 1)
 
 #endif /* _UAPI__ASM_HWCAP_H */
