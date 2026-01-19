@@ -1000,9 +1000,9 @@ static int __kvm_gmem_filemap_add_folio(struct address_space *mapping,
 
 	gfp = mapping_gfp_mask(mapping);
 
-	__folio_set_locked(folio);
+	folio_lock(folio);
 	ret = __filemap_add_folio(mapping, folio, index, gfp, &shadow);
-	__folio_clear_locked(folio);
+	folio_unlock(folio);
 
 	return ret;
 }
