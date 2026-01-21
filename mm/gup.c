@@ -673,6 +673,10 @@ retry:
 		if (page)
 			return page;
 	}
+
+	if (unlikely(pmd_special(pmdval)))
+		return no_page_table(vma, flags);
+
 	if (likely(!pmd_trans_huge(pmdval)))
 		return follow_page_pte(vma, address, pmd, flags, &ctx->pgmap);
 
@@ -729,7 +733,7 @@ static struct page *follow_pud_mask(struct vm_area_struct *vma,
 		if (page)
 			return page;
 	}
-	if (unlikely(pud_bad(*pud)))
+	if (unlikely(pud_bad(*pud) || pud_special(*pud)))
 		return no_page_table(vma, flags);
 
 	return follow_pmd_mask(vma, address, pud, flags, ctx);
