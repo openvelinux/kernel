@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+comment "Synopsys DesignWare Core I2C driver"
+
+config I2C_DWC_CORE
+	tristate
+	select REGMAP
+
+config I2C_DWC_PLATFORM
+	tristate "Synopsys DesignWare Core I2C platform driver"
+	depends on (ACPI && COMMON_CLK) || !ACPI
+	select I2C_DWC_CORE
+	help
+	  This is the platform driver glue module for Synopsys DesignWare Core
+	  I2C adapter.
+
+	  This driver can also be built as a module.  If so, the module will be
+	  called i2c-dwc-platform.
