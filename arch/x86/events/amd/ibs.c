@@ -33,6 +33,8 @@ static u32 ibs_caps;
 
 /* attr.config1 */
 #define IBS_OP_CONFIG1_LDLAT_MASK		(0xFFFULL <<  0)
+#define IBS_OP_CONFIG1_STRMST_MASK		    (1ULL << 12)
+#define IBS_OP_CONFIG1_STRMST_SHIFT			    (12)
 
 #define IBS_FETCH_CONFIG1_FETCHLAT_MASK		(0x7FFULL <<  0)
 
@@ -291,6 +293,14 @@ static bool perf_ibs_fetch_lat_event(struct perf_ibs *perf_ibs,
 	       (event->attr.config1 & IBS_FETCH_CONFIG1_FETCHLAT_MASK);
 }
 
+static bool perf_ibs_strmst_event(struct perf_ibs *perf_ibs,
+				  struct perf_event *event)
+{
+	return perf_ibs == &perf_ibs_op &&
+	       (ibs_caps & IBS_CAPS_STRMST_RMTSOCKET) &&
+	       (event->attr.config1 & IBS_OP_CONFIG1_STRMST_MASK);
+}
+
 static int perf_ibs_init(struct perf_event *event)
 {
 	struct hw_perf_event *hwc = &event->hw;
@@ -413,6 +423,15 @@ static int perf_ibs_init(struct perf_event *event)
 
 		hwc->extra_reg.reg = perf_ibs->msr2;
 		hwc->extra_reg.config |= fetchlat << IBS_FETCH_2_FETCHLAT_FILTER_SHIFT;
+	}
+
+	if (perf_ibs_strmst_event(perf_ibs, event)) {
+		u64 strmst = event->attr.config1 & IBS_OP_CONFIG1_STRMST_MASK;
+
+		strmst >>= IBS_OP_CONFIG1_STRMST_SHIFT;
+
+		hwc->extra_reg.reg = perf_ibs->msr2;
+		hwc->extra_reg.config |= strmst << IBS_OP_2_STRM_ST_FILTER_SHIFT;
 	}
 
 	/*
@@ -705,6 +724,8 @@ PMU_EVENT_ATTR_STRING(ldlat, ibs_op_ldlat_cap, "1");
 PMU_EVENT_ATTR_STRING(dtlb_pgsize, ibs_op_dtlb_pgsize_cap, "1");
 PMU_EVENT_ATTR_STRING(fetchlat, ibs_fetch_lat_format, "config1:0-10");
 PMU_EVENT_ATTR_STRING(fetchlat, ibs_fetch_lat_cap, "1");
+PMU_EVENT_ATTR_STRING(strmst, ibs_op_strmst_format, "config1:12");
+PMU_EVENT_ATTR_STRING(strmst, ibs_op_strmst_cap, "1");
 
 static umode_t
 zen4_ibs_extensions_is_visible(struct kobject *kobj, struct attribute *attr, int i)
@@ -716,6 +737,12 @@ static umode_t
 ibs_fetch_lat_is_visible(struct kobject *kobj, struct attribute *attr, int i)
 {
 	return ibs_caps & IBS_CAPS_FETCHLAT ? attr->mode : 0;
+}
+
+static umode_t
+ibs_op_strmst_is_visible(struct kobject *kobj, struct attribute *attr, int i)
+{
+	return ibs_caps & IBS_CAPS_STRMST_RMTSOCKET ? attr->mode : 0;
 }
 
 static umode_t
@@ -766,6 +793,11 @@ static struct attribute *ibs_op_dtlb_pgsize_cap_attrs[] = {
 	NULL,
 };
 
+static struct attribute *ibs_op_strmst_cap_attrs[] = {
+	&ibs_op_strmst_cap.attr.attr,
+	NULL,
+};
+
 static struct attribute_group group_fetch_formats = {
 	.name = "format",
 	.attrs = fetch_attrs,
@@ -805,6 +837,12 @@ static struct attribute_group group_ibs_op_dtlb_pgsize_cap = {
 	.name = "caps",
 	.attrs = ibs_op_dtlb_pgsize_cap_attrs,
 	.is_visible = ibs_op_dtlb_pgsize_is_visible,
+};
+
+static struct attribute_group group_ibs_op_strmst_cap = {
+	.name = "caps",
+	.attrs = ibs_op_strmst_cap_attrs,
+	.is_visible = ibs_op_strmst_is_visible,
 };
 
 static const struct attribute_group *fetch_attr_groups[] = {
@@ -852,6 +890,11 @@ static struct attribute *ibs_op_ldlat_format_attrs[] = {
 	NULL,
 };
 
+static struct attribute *ibs_op_strmst_format_attrs[] = {
+	&ibs_op_strmst_format.attr.attr,
+	NULL,
+};
+
 static struct attribute_group group_cnt_ctl = {
 	.name = "format",
 	.attrs = cnt_ctl_attrs,
@@ -876,6 +919,12 @@ static struct attribute_group group_ibs_op_ldlat_format = {
 	.is_visible = ibs_op_ldlat_is_visible,
 };
 
+static struct attribute_group group_ibs_op_strmst_format = {
+	.name = "format",
+	.attrs = ibs_op_strmst_format_attrs,
+	.is_visible = ibs_op_strmst_is_visible,
+};
+
 static const struct attribute_group *op_attr_update[] = {
 	&group_cnt_ctl,
 	&group_op_l3missonly,
@@ -883,6 +932,8 @@ static const struct attribute_group *op_attr_update[] = {
 	&group_ibs_op_ldlat_cap,
 	&group_ibs_op_ldlat_format,
 	&group_ibs_op_dtlb_pgsize_cap,
+	&group_ibs_op_strmst_cap,
+	&group_ibs_op_strmst_format,
 	NULL,
 };
 
