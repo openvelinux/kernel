@@ -31,6 +31,9 @@ static u32 ibs_caps;
 /* attr.config2 */
 #define IBS_SW_FILTER_MASK	1
 
+/* attr.config1 */
+#define IBS_OP_CONFIG1_LDLAT_MASK		(0xFFFULL <<  0)
+
 /*
  * IBS states:
  *
@@ -273,7 +276,7 @@ static bool perf_ibs_ldlat_event(struct perf_ibs *perf_ibs,
 {
 	return perf_ibs == &perf_ibs_op &&
 	       (ibs_caps & IBS_CAPS_OPLDLAT) &&
-	       (event->attr.config1 & 0xFFF);
+	       (event->attr.config1 & IBS_OP_CONFIG1_LDLAT_MASK);
 }
 
 static int perf_ibs_init(struct perf_event *event)
@@ -351,13 +354,13 @@ static int perf_ibs_init(struct perf_event *event)
 	}
 
 	if (perf_ibs_ldlat_event(perf_ibs, event)) {
-		u64 ldlat = event->attr.config1 & 0xFFF;
+		u64 ldlat = event->attr.config1 & IBS_OP_CONFIG1_LDLAT_MASK;
 
 		if (ldlat < 128 || ldlat > 2048)
 			return -EINVAL;
 		ldlat >>= 7;
 
-		config |= (ldlat - 1) << 59;
+		config |= (ldlat - 1) << IBS_OP_LDLAT_THRSH_SHIFT;
 		config |= IBS_OP_L3MISSONLY | IBS_OP_LDLAT_EN;
 	}
 
@@ -1301,7 +1304,7 @@ fail:
 		 * within [128, 2048] range.
 		 */
 		if (!op_data3.ld_op || !op_data3.dc_miss ||
-		    op_data3.dc_miss_lat <= (event->attr.config1 & 0xFFF)) {
+		    op_data3.dc_miss_lat <= (event->attr.config1 & IBS_OP_CONFIG1_LDLAT_MASK)) {
 			throttle = perf_event_account_interrupt(event);
 			goto out;
 		}
