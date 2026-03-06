@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (c) 2024, ByteDance Ltd. and/or its affiliates. All rights reserved. */
 #include <linux/sched/task.h>
 #include <linux/miscdevice.h>
 #include <linux/kallsyms.h>
