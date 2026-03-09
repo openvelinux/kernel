@@ -4868,13 +4868,14 @@ static int scx_enable(struct sched_ext_ops *ops)
 	if (!READ_ONCE(helper)) {
 		mutex_lock(&helper_mutex);
 		if (!helper) {
-			helper = kthread_create_worker(0, "scx_enable_helper");
-			if (IS_ERR_OR_NULL(helper)) {
-				helper = NULL;
+			struct kthread_worker *w =
+				kthread_create_worker(0, "scx_enable_helper");
+			if (IS_ERR_OR_NULL(w)) {
 				mutex_unlock(&helper_mutex);
 				return -ENOMEM;
 			}
 			sched_set_fifo(w->task);
+			WRITE_ONCE(helper, w);
 		}
 		mutex_unlock(&helper_mutex);
 	}
