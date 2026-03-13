@@ -91,6 +91,43 @@ bool resctrl_arch_mon_capable(void)
 	return l3->mon_capable;
 }
 
+bool resctrl_arch_is_llc_occupancy_enabled(void)
+{
+	return mpam_resctrl_counters[QOS_L3_OCCUP_EVENT_ID].class;
+}
+
+bool resctrl_arch_is_mbm_local_enabled(void)
+{
+	return mpam_resctrl_counters[QOS_L3_MBM_LOCAL_EVENT_ID].class;
+}
+
+bool resctrl_arch_is_mbm_total_enabled(void)
+{
+	return mpam_resctrl_counters[QOS_L3_MBM_TOTAL_EVENT_ID].class;
+}
+
+__init bool resctrl_arch_is_evt_configurable(enum resctrl_event_id evt)
+{
+	return false;
+}
+
+void resctrl_arch_mon_event_config_read(void *info)
+{
+}
+
+void resctrl_arch_mon_event_config_write(void *info)
+{
+}
+
+void resctrl_arch_reset_rmid_all(struct rdt_resource *r, struct rdt_mon_domain *d)
+{
+}
+
+void resctrl_arch_reset_rmid(struct rdt_resource *r, struct rdt_mon_domain *d,
+			     u32 closid, u32 rmid, enum resctrl_event_id eventid)
+{
+}
+
 bool resctrl_arch_get_cdp_enabled(enum resctrl_res_level rid)
 {
 	return mpam_resctrl_controls[rid].cdp_enabled;
