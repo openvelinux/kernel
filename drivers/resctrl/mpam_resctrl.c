@@ -1084,3 +1084,7 @@ static int __init __cacheinfo_ready(void)
 	return 0;
 }
 device_initcall_sync(__cacheinfo_ready);
+
+#ifdef CONFIG_MPAM_KUNIT_TEST
+#include "test_mpam_resctrl.c"
+#endif
