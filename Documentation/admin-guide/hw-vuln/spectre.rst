@@ -500,18 +500,11 @@ Spectre variant 2
 
    Systems which support enhanced IBRS (eIBRS) enable IBRS protection once at
    boot, by setting the IBRS bit, and they're automatically protected against
-   some Spectre v2 variant attacks. The BHB can still influence the choice of
-   indirect branch predictor entry, and although branch predictor entries are
-   isolated between modes when eIBRS is enabled, the BHB itself is not isolated
-   between modes. Systems which support BHI_DIS_S will set it to protect against
-   BHI attacks.
+   Spectre v2 variant attacks, including cross-thread branch target injections
+   on SMT systems (STIBP). In other words, eIBRS enables STIBP too.
 
-   On Intel's enhanced IBRS systems, this includes cross-thread branch target
-   injections on SMT systems (STIBP). In other words, Intel eIBRS enables
-   STIBP, too.
-
-   AMD Automatic IBRS does not protect userspace, and Legacy IBRS systems clear
-   the IBRS bit on exit to userspace, therefore both explicitly enable STIBP.
+   Legacy IBRS systems clear the IBRS bit on exit to userspace and
+   therefore explicitly enable STIBP for that
 
    The retpoline mitigation is turned on by default on vulnerable
    CPUs. It can be forced on or off by the administrator
