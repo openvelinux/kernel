@@ -441,7 +441,7 @@ __hw_perf_event_init(struct perf_event *event)
 {
 	struct arm_pmu *armpmu = to_arm_pmu(event->pmu);
 	struct hw_perf_event *hwc = &event->hw;
-	int mapping;
+	int mapping, ret;
 
 	hwc->flags = 0;
 	mapping = armpmu->map_event(event);
@@ -466,11 +466,10 @@ __hw_perf_event_init(struct perf_event *event)
 	/*
 	 * Check whether we need to exclude the counter from certain modes.
 	 */
-	if (armpmu->set_event_filter &&
-	    armpmu->set_event_filter(hwc, &event->attr)) {
-		pr_debug("ARM performance counters do not support "
-			 "mode exclusion\n");
-		return -EOPNOTSUPP;
+	if (armpmu->set_event_filter) {
+		ret = armpmu->set_event_filter(hwc, &event->attr);
+		if (ret)
+			return ret;
 	}
 
 	/*
@@ -935,6 +934,12 @@ int armpmu_register(struct arm_pmu *pmu)
 	ret = cpu_pmu_init(pmu);
 	if (ret)
 		return ret;
+
+	/*
+	 * By this stage we know our supported CPUs on either DT/ACPI platforms,
+	 * detect the SMT implementation.
+	 */
+	pmu->has_smt = topology_core_has_smt(cpumask_first(&pmu->supported_cpus));
 
 	if (!pmu->set_event_filter)
 		pmu->pmu.capabilities |= PERF_PMU_CAP_NO_EXCLUDE;

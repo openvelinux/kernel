@@ -11,6 +11,10 @@
 void topology_normalize_cpu_scale(void);
 int topology_update_cpu_topology(void);
 
+#ifdef CONFIG_ACPI_CPPC_LIB
+void topology_init_cpu_capacity_cppc(void);
+#endif
+
 struct device_node;
 bool topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu);
 
@@ -22,6 +26,13 @@ static inline unsigned long topology_get_cpu_scale(int cpu)
 }
 
 void topology_set_cpu_scale(unsigned int cpu, unsigned long capacity);
+
+DECLARE_PER_CPU(unsigned long, capacity_freq_ref);
+
+static inline unsigned long topology_get_freq_ref(int cpu)
+{
+	return per_cpu(capacity_freq_ref, cpu);
+}
 
 DECLARE_PER_CPU(unsigned long, arch_freq_scale);
 
@@ -59,6 +70,9 @@ static inline unsigned long topology_get_thermal_pressure(int cpu)
 void topology_set_thermal_pressure(const struct cpumask *cpus,
 				   unsigned long th_pressure);
 
+void topology_update_thermal_pressure(const struct cpumask *cpus,
+				      unsigned long capped_freq);
+
 struct cpu_topology {
 	int thread_id;
 	int core_id;
@@ -89,6 +103,18 @@ void update_siblings_masks(unsigned int cpu);
 void remove_cpu_topology(unsigned int cpuid);
 void reset_cpu_topology(void);
 int parse_acpi_topology(void);
+void freq_inv_set_max_ratio(int cpu, u64 max_rate);
+
+/*
+ * Architectures like ARM64 don't have reliable architectural way to get SMT
+ * information and depend on the firmware (ACPI/OF) report. Non-SMT core won't
+ * initialize thread_id so we can use this to detect the SMT implementation.
+ */
+static inline bool topology_core_has_smt(int cpu)
+{
+	return cpu_topology[cpu].thread_id != -1;
+}
+
 #endif
 
 #endif /* _LINUX_ARCH_TOPOLOGY_H_ */

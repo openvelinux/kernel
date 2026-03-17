@@ -11,7 +11,7 @@
 #include <asm/hwcap.h>
 #include <asm/sysreg.h>
 
-#define MAX_CPU_FEATURES	64
+#define MAX_CPU_FEATURES	128
 #define cpu_feature(x)		KERNEL_HWCAP_ ## x
 
 #ifndef __ASSEMBLY__
@@ -806,6 +806,12 @@ static inline bool system_supports_tlb_range(void)
 {
 	return IS_ENABLED(CONFIG_ARM64_TLB_RANGE) &&
 		cpus_have_const_cap(ARM64_HAS_TLB_RANGE);
+}
+
+static inline bool system_supports_haft(void)
+{
+	return IS_ENABLED(CONFIG_ARM64_HAFT) &&
+		cpus_have_final_cap(ARM64_HAFT);
 }
 
 int do_emulate_mrs(struct pt_regs *regs, u32 sys_reg, u32 rt);

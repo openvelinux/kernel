@@ -24,4 +24,9 @@ void drm_kms_helper_poll_disable(struct drm_device *dev);
 void drm_kms_helper_poll_enable(struct drm_device *dev);
 bool drm_kms_helper_is_poll_worker(void);
 
+
+int drm_connector_helper_detect_from_ddc(struct drm_connector *connector,
+					 struct drm_modeset_acquire_ctx *ctx,
+					 bool force);
+
 #endif

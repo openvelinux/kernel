@@ -22,6 +22,15 @@
 	isb
 .endm
 
+.macro __init_el2_hcrx
+	mrs	x0, id_aa64mmfr1_el1
+	ubfx	x0, x0, #ID_AA64MMFR1_EL1_HCX_SHIFT, #4
+	cbz	x0, .Lskip_hcrx_\@
+	mov_q	x0, HCRX_HOST_FLAGS
+	msr_s	SYS_HCRX_EL2, x0
+.Lskip_hcrx_\@:
+.endm
+
 /*
  * Allow Non-secure EL1 and EL0 to access physical timer and counter.
  * This is not necessary for VHE, since the host kernel runs in EL2,
@@ -40,13 +49,14 @@
 
 .macro __init_el2_debug
 	mrs	x1, id_aa64dfr0_el1
-	sbfx	x0, x1, #ID_AA64DFR0_PMUVER_SHIFT, #4
-	cmp	x0, #1
-	b.lt	.Lskip_pmu_\@			// Skip if no PMU present
+	ubfx	x0, x1, #ID_AA64DFR0_EL1_PMUVer_SHIFT, #4
+	cmp	x0, #ID_AA64DFR0_EL1_PMUVer_NI
+	ccmp	x0, #ID_AA64DFR0_EL1_PMUVer_IMP_DEF, #4, ne
+	b.eq	.Lskip_pmu_\@			// Skip if no PMU present or IMP_DEF
 	mrs	x0, pmcr_el0			// Disable debug access traps
 	ubfx	x0, x0, #11, #5			// to EL2 and allow access to
 .Lskip_pmu_\@:
-	csel	x2, xzr, x0, lt			// all PMU counters from EL1
+	csel	x2, xzr, x0, eq			// all PMU counters from EL1
 
 	/* Statistical profiling */
 	ubfx	x0, x1, #ID_AA64DFR0_PMSVER_SHIFT, #4
@@ -187,6 +197,7 @@
  */
 .macro init_el2_state
 	__init_el2_sctlr
+	__init_el2_hcrx
 	__init_el2_timers
 	__init_el2_debug
 	__init_el2_lor

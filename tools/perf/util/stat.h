@@ -8,6 +8,7 @@
 #include <sys/resource.h>
 #include "cpumap.h"
 #include "rblist.h"
+#include "counts.h"
 
 struct perf_cpu_map;
 struct perf_stat_config;
@@ -42,9 +43,25 @@ enum perf_stat_evsel_id {
 	PERF_STAT_EVSEL_ID__MAX,
 };
 
+/* hold aggregated event info */
+struct perf_stat_aggr {
+	/* aggregated values */
+	struct perf_counts_values	counts;
+	/* number of entries (CPUs) aggregated */
+	int				nr;
+	/* whether any entry has failed to read/process event */
+	bool				failed;
+};
+
+/* per-evsel event stats */
 struct perf_stat_evsel {
 	struct stats		 res_stats[3];
 	enum perf_stat_evsel_id	 id;
+	/* number of allocated 'aggr' */
+	int			 nr_aggr;
+	/* aggregated event values */
+	struct perf_stat_aggr	*aggr;
+	/* used for group read */
 	u64			*group_data;
 };
 

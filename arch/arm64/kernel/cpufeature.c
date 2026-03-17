@@ -92,7 +92,7 @@
 #include <asm/virt.h>
 
 /* Kernel representation of AT_HWCAP and AT_HWCAP2 */
-static unsigned long elf_hwcap __read_mostly;
+static DECLARE_BITMAP(elf_hwcap, MAX_CPU_FEATURES) __read_mostly;
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_ELF_HWCAP_DEFAULT	\
@@ -232,7 +232,7 @@ static const struct arm64_ftr_bits ftr_id_aa64isar1[] = {
 };
 
 static const struct arm64_ftr_bits ftr_id_aa64isar2[] = {
-	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_HIGHER_SAFE, ID_AA64ISAR2_CLEARBHB_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_VISIBLE, FTR_STRICT, FTR_HIGHER_SAFE, ID_AA64ISAR2_EL1_BC_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_VISIBLE, FTR_NONSTRICT, FTR_LOWER_SAFE, ID_AA64ISAR2_RPRES_SHIFT, 4, 0),
 	ARM64_FTR_END,
 };
@@ -337,6 +337,7 @@ static const struct arm64_ftr_bits ftr_id_aa64mmfr0[] = {
 };
 
 static const struct arm64_ftr_bits ftr_id_aa64mmfr1[] = {
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE, ID_AA64MMFR1_TIDCP1_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_VISIBLE, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64MMFR1_AFP_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64MMFR1_ETS_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64MMFR1_TWED_SHIFT, 4, 0),
@@ -1943,6 +1944,11 @@ static bool is_kvm_protected_mode(const struct arm64_cpu_capabilities *entry, in
 }
 #endif /* CONFIG_KVM */
 
+static void cpu_trap_el0_impdef(const struct arm64_cpu_capabilities *__unused)
+{
+	sysreg_clear_set(sctlr_el1, 0, SCTLR_EL1_TIDCP);
+}
+
 /* Internal helper functions to match cpu capability type */
 static bool
 cpucap_late_cpu_optional(const struct arm64_cpu_capabilities *cap)
@@ -2211,6 +2217,24 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.cpu_enable = cpu_enable_hw_dbm,
 	},
 #endif
+#ifdef CONFIG_ARM64_HAFT
+	{
+		.desc = "Hardware managed Access Flag for Table Descriptors",
+		/*
+		 * Contrary to the page/block access flag, the table access flag
+		 * cannot be emulated in software (no access fault will occur).
+		 * Therefore this should be used only if it's supported system
+		 * wide.
+		 */
+		.capability = ARM64_HAFT,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_cpuid_feature,
+		.sys_reg = SYS_ID_AA64MMFR1_EL1,
+		.sign = FTR_UNSIGNED,
+		.field_pos = ID_AA64MMFR1_EL1_HAFDBS_SHIFT,
+		.min_field_value = ID_AA64MMFR1_EL1_HAFDBS_HAFT,
+	},
+#endif
 	{
 		.desc = "CRC32 instructions",
 		.capability = ARM64_HAS_CRC32,
@@ -2385,6 +2409,27 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.matches = has_cpuid_feature,
 		.min_field_value = 1,
 	},
+	{
+		.desc = "Fine Grained Traps",
+		.capability = ARM64_HAS_FGT,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.sys_reg = SYS_ID_AA64MMFR0_EL1,
+		.sign = FTR_UNSIGNED,
+		.field_pos = ID_AA64MMFR0_EL1_FGT_SHIFT,
+		.matches = has_cpuid_feature,
+		.min_field_value = 1,
+	},
+	{
+		.desc = "Trap EL0 IMPLEMENTATION DEFINED functionality",
+		.capability = ARM64_HAS_TIDCP1,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.sys_reg = SYS_ID_AA64MMFR1_EL1,
+		.sign = FTR_UNSIGNED,
+		.field_pos = ID_AA64MMFR1_TIDCP1_SHIFT,
+		.min_field_value = ID_AA64MMFR1_TIDCP1_IMP,
+		.matches = has_cpuid_feature,
+		.cpu_enable = cpu_trap_el0_impdef,
+	},
 	{},
 };
 
@@ -2507,6 +2552,7 @@ static const struct arm64_cpu_capabilities arm64_elf_hwcaps[] = {
 	HWCAP_CAP(SYS_ID_AA64MMFR0_EL1, ID_AA64MMFR0_ECV_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, KERNEL_HWCAP_ECV),
 	HWCAP_CAP(SYS_ID_AA64MMFR1_EL1, ID_AA64MMFR1_AFP_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, KERNEL_HWCAP_AFP),
 	HWCAP_CAP(SYS_ID_AA64ISAR2_EL1, ID_AA64ISAR2_RPRES_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, KERNEL_HWCAP_RPRES),
+	HWCAP_CAP(SYS_ID_AA64ISAR2_EL1, ID_AA64ISAR2_EL1_BC_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, KERNEL_HWCAP_HBC),
 	{},
 };
 
@@ -2919,15 +2965,13 @@ static bool __maybe_unused __system_matches_cap(unsigned int n)
 
 void cpu_set_feature(unsigned int num)
 {
-	WARN_ON(num >= MAX_CPU_FEATURES);
-	elf_hwcap |= BIT(num);
+	set_bit(num, elf_hwcap);
 }
 EXPORT_SYMBOL_GPL(cpu_set_feature);
 
 bool cpu_have_feature(unsigned int num)
 {
-	WARN_ON(num >= MAX_CPU_FEATURES);
-	return elf_hwcap & BIT(num);
+	return test_bit(num, elf_hwcap);
 }
 EXPORT_SYMBOL_GPL(cpu_have_feature);
 
@@ -2938,12 +2982,12 @@ unsigned long cpu_get_elf_hwcap(void)
 	 * note that for userspace compatibility we guarantee that bits 62
 	 * and 63 will always be returned as 0.
 	 */
-	return lower_32_bits(elf_hwcap);
+	return elf_hwcap[0];
 }
 
 unsigned long cpu_get_elf_hwcap2(void)
 {
-	return upper_32_bits(elf_hwcap);
+	return elf_hwcap[1];
 }
 
 static void __init setup_system_capabilities(void)
