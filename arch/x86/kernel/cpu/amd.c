@@ -1107,17 +1107,6 @@ static void init_amd(struct cpuinfo_x86 *c)
 
 	check_null_seg_clears_base(c);
 
-	/*
-	 * Make sure EFER[AIBRSE - Automatic IBRS Enable] is set. The APs are brought up
-	 * using the trampoline code and as part of it, MSR_EFER gets prepared there in
-	 * order to be replicated onto them. Regardless, set it here again, if not set,
-	 * to protect against any future refactoring/code reorganization which might
-	 * miss setting this important bit.
-	 */
-	if (spectre_v2_in_eibrs_mode(spectre_v2_enabled) &&
-	    cpu_has(c, X86_FEATURE_AUTOIBRS))
-		WARN_ON_ONCE(msr_set_bit(MSR_EFER, _EFER_AUTOIBRS) < 0);
-
 	/* AMD CPUs don't need fencing after x2APIC/TSC_DEADLINE MSR writes. */
 	clear_cpu_cap(c, X86_FEATURE_APIC_MSRS_FENCE);
 
