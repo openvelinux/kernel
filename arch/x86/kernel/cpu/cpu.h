@@ -89,4 +89,5 @@ void cpu_select_mitigations(void);
 extern void x86_spec_ctrl_setup_ap(void);
 extern void update_srbds_msr(void);
 extern void update_gds_msr(void);
+
 #endif /* ARCH_X86_CPU_H */

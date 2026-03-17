@@ -3034,8 +3034,7 @@ void cpu_bugs_smt_update(void)
 		if (!sched_smt_active() ||
 		    spectre_v2_user_stibp == SPECTRE_V2_USER_STRICT ||
 		    spectre_v2_user_stibp == SPECTRE_V2_USER_STRICT_PREFERRED ||
-		    (spectre_v2_in_eibrs_mode(spectre_v2_enabled) &&
-		     !boot_cpu_has(X86_FEATURE_AUTOIBRS)))
+		    spectre_v2_in_eibrs_mode(spectre_v2_enabled))
 			break;
 		pr_warn_once(VMSCAPE_MSG_SMT);
 		break;
