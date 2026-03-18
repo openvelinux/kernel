@@ -105,4 +105,10 @@
 #define HWCAP2_MOPS		(1UL << 43)
 #define HWCAP2_HBC		(1UL << 44)
 
+/*
+ * HWCAP3 flags - for AT_HWCAP3
+ */
+#define HWCAP3_LS64		(1UL << 0)
+#define HWCAP3_LS64_V		(1UL << 1)
+
 #endif /* _UAPI__ASM_HWCAP_H */
