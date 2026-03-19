@@ -61,7 +61,7 @@ struct pm_nl_pernet {
 #define ADD_ADDR_RETRANS_MAX	3
 
 static bool addresses_equal(const struct mptcp_addr_info *a,
-			    struct mptcp_addr_info *b, bool use_port)
+			   const struct mptcp_addr_info *b, bool use_port)
 {
 	bool addr_equals = false;
 
