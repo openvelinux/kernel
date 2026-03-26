@@ -882,7 +882,8 @@ unsigned int reclaim_clean_pages_from_list(struct zone *zone,
 #define ALLOC_WMARK_MIN		WMARK_MIN
 #define ALLOC_WMARK_LOW		WMARK_LOW
 #define ALLOC_WMARK_HIGH	WMARK_HIGH
-#define ALLOC_NO_WATERMARKS	0x04 /* don't check watermarks at all */
+#define ALLOC_WMARK_LP_MIN  WMARK_LP_MIN
+#define ALLOC_NO_WATERMARKS	0x08 /* don't check watermarks at all */
 
 /* Mask to get the watermark bits */
 #define ALLOC_WMARK_MASK	(ALLOC_NO_WATERMARKS-1)
@@ -893,7 +894,7 @@ unsigned int reclaim_clean_pages_from_list(struct zone *zone,
  * !MMU
  */
 #ifdef CONFIG_MMU
-#define ALLOC_OOM		0x08
+#define ALLOC_OOM		0x1000
 #else
 #define ALLOC_OOM		ALLOC_NO_WATERMARKS
 #endif

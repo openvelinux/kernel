@@ -317,6 +317,12 @@ int user_min_free_kbytes = -1;
 static int watermark_boost_factor __read_mostly = 15000;
 static int watermark_scale_factor = 10;
 
+/*
+ * The min watermark of low prioriy memory cgroup comes from the global
+ * low watermark based on this ratio.
+ */
+int memcg_oom_priority_watermark_ratio = 50;
+
 /* movable_zone is the "real" zone pages in ZONE_MOVABLE are taken from */
 int movable_zone;
 EXPORT_SYMBOL(movable_zone);
@@ -3884,6 +3890,9 @@ gfp_to_alloc_flags(gfp_t gfp_mask, unsigned int order)
 {
 	unsigned int alloc_flags = ALLOC_WMARK_MIN | ALLOC_CPUSET;
 
+	if (get_task_oom_priority(current) == OOM_PRIORITY_LOW)
+		alloc_flags = ALLOC_WMARK_LP_MIN | ALLOC_CPUSET;
+
 	/*
 	 * __GFP_HIGH is assumed to be the same as ALLOC_MIN_RESERVE
 	 * and __GFP_KSWAPD_RECLAIM is assumed to be the same as ALLOC_KSWAPD
@@ -5943,6 +5952,13 @@ static void __setup_per_zone_wmarks(void)
 		zone->_watermark[WMARK_HIGH] = low_wmark_pages(zone) + tmp;
 		zone->_watermark[WMARK_PROMO] = high_wmark_pages(zone) + tmp;
 
+		/*
+		 * Set the low priority min watermark to the ratio of
+		 * global low watermark which can be set in userspace.
+		 */
+		zone->_watermark[WMARK_LP_MIN] = min_wmark_pages(zone) +
+			low_wmark_pages(zone) * memcg_oom_priority_watermark_ratio / 100;
+
 		spin_unlock_irqrestore(&zone->lock, flags);
 	}
 
@@ -6242,6 +6258,15 @@ static struct ctl_table page_alloc_sysctl_table[] = {
 		.extra2		= SYSCTL_ONE_HUNDRED,
 	},
 #endif
+	{
+		.procname       = "memcg_oom_priority_watermark_ratio",
+		.data           = &memcg_oom_priority_watermark_ratio,
+		.maxlen         = sizeof(memcg_oom_priority_watermark_ratio),
+		.mode           = 0644,
+		.proc_handler   = watermark_scale_factor_sysctl_handler,
+		.extra1         = SYSCTL_ZERO,
+		.extra2         = SYSCTL_ONE_HUNDRED,
+	},
 	{
 		.procname	= "percpu_pagelist_high_fraction",
 		.data		= &percpu_pagelist_high_fraction,
