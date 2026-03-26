@@ -3482,6 +3482,9 @@ static bool low_priority_memcg_oom(gfp_t gfp_mask, unsigned int order,
 	if (mem_cgroup_disabled())
 		return ret;
 
+	if (!memcg_oom_priority_enabled())
+		return ret;
+
 	/* The OOM killer will not help higher order allocs */
 	if (order > PAGE_ALLOC_COSTLY_ORDER)
 		return ret;
@@ -3946,7 +3949,8 @@ gfp_to_alloc_flags(gfp_t gfp_mask, unsigned int order)
 {
 	unsigned int alloc_flags = ALLOC_WMARK_MIN | ALLOC_CPUSET;
 
-	if (get_task_oom_priority(current) == OOM_PRIORITY_LOW)
+	if (memcg_oom_priority_enabled() &&
+		get_task_oom_priority(current) == OOM_PRIORITY_LOW)
 		alloc_flags = ALLOC_WMARK_LP_MIN | ALLOC_CPUSET;
 
 	/*
@@ -4085,6 +4089,9 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
 			(alloc_flags & ALLOC_CPUSET) &&
 			!__cpuset_zone_allowed(zone, gfp_mask))
 				continue;
+
+		if (memcg_oom_priority_enabled())
+			min_wmark = wmark_pages(zone, alloc_flags & ALLOC_WMARK_MASK);
 
 		available = reclaimable = zone_reclaimable_pages(zone);
 		available += zone_page_state_snapshot(zone, NR_FREE_PAGES);
@@ -6319,6 +6326,7 @@ static struct ctl_table page_alloc_sysctl_table[] = {
 		.extra2		= SYSCTL_ONE_HUNDRED,
 	},
 #endif
+#ifdef CONFIG_MEMCG
 	{
 		.procname       = "memcg_oom_priority_watermark_ratio",
 		.data           = &memcg_oom_priority_watermark_ratio,
@@ -6328,6 +6336,15 @@ static struct ctl_table page_alloc_sysctl_table[] = {
 		.extra1         = SYSCTL_ZERO,
 		.extra2         = SYSCTL_ONE_HUNDRED,
 	},
+
+	{
+		.procname       = "memcg_oom_priority_enable",
+		.data           = &memcg_oom_priority_enable,
+		.maxlen         = sizeof(bool),
+		.mode           = 0644,
+		.proc_handler   = proc_dobool,
+	},
+#endif
 	{
 		.procname	= "percpu_pagelist_high_fraction",
 		.data		= &percpu_pagelist_high_fraction,

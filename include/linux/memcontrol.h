@@ -1206,6 +1206,12 @@ static inline void memcg_memory_event_mm(struct mm_struct *mm,
 	rcu_read_unlock();
 }
 
+extern bool memcg_oom_priority_enable;
+static inline bool memcg_oom_priority_enabled(void)
+{
+	return memcg_oom_priority_enable;
+}
+
 static inline enum oom_priority get_task_oom_priority(struct task_struct *task)
 {
 	struct mem_cgroup *memcg;
@@ -1445,6 +1451,11 @@ static inline void mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 static inline unsigned short mem_cgroup_id(struct mem_cgroup *memcg)
 {
 	return 0;
+}
+
+static inline bool memcg_oom_priority_enabled(void)
+{
+	return false;
 }
 
 static inline enum oom_priority get_task_oom_priority(struct task_struct *task)
