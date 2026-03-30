@@ -23987,6 +23987,11 @@ L:	linux-mm@kvack.org
 S:	Maintained
 F:	mm/zswap.c
 
+BYTEDANCE CMA MEMORY RESERVE DRIVER
+M:	Yicong Shen <shenyicong.1023@bytedance.com>
+S:	Maintained
+F:	drivers/bytedance/
+
 THE REST
 M:	Linus Torvalds <torvalds@linux-foundation.org>
 L:	linux-kernel@vger.kernel.org

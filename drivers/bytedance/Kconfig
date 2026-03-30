@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+#
+# ByteDance drivers configurations
+#
+menu "ByteDance drivers support"
+
+config BYTEDANCE
+	bool "ByteDance private kernel drivers"
+	default n
+	help
+	  If you want some module which belong to ByteDance say Y.
+
+	  Note that the answer to this question does not directly affect the
+	  kernel: saying N will just cause the configurator to skip all the
+	  questions about ByteDance modules. If you say Y, you will be asked
+	  for your specific modules in the following questions.
+
+config BYTEDANCE_CMA_MEMORY_RESERVE_DRIVER
+	tristate "CMA memory reserve char device (per NUMA node)"
+	depends on BYTEDANCE && HAS_DMA && MMU
+	default n
+	help
+	  Reserve a chunk of DMA-able memory per online NUMA node and expose it
+	  via a character device /dev/cmr_char<N>.
+
+	  Userspace can read/write and mmap the memory to validate DMA mapping
+	  behaviors.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called cma_memory_reserve.
+
+endmenu

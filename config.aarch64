@@ -2575,6 +2575,13 @@ CONFIG_PVPANIC_PCI=m
 # end of Misc devices
 
 #
+# ByteDance drivers
+#
+CONFIG_BYTEDANCE=y
+CONFIG_BYTEDANCE_CMA_MEMORY_RESERVE_DRIVER=m
+# end of ByteDance drivers
+
+#
 # SCSI device support
 #
 CONFIG_SCSI_MOD=m
