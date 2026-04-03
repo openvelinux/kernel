@@ -403,7 +403,7 @@ static void set_domain_id(int id,  int num_resources,
 
 	/* Unlikely but cdie_mask may have holes, so take range */
 	cdie_range = fls(plat_info->cdie_mask) - ffs(plat_info->cdie_mask) + 1;
-	max_dies = topology_max_die_per_package();
+	max_dies = topology_max_dies_per_package();
 
 	/*
 	 * If the CPU doesn't enumerate dies, then use current cdie range
@@ -710,7 +710,7 @@ static int uncore_probe(struct auxiliary_device *auxdev, const struct auxiliary_
 
 	auxiliary_set_drvdata(auxdev, tpmi_uncore);
 
-	if (topology_max_die_per_package() > 1 || plat_info->partition)
+	if (topology_max_dies_per_package() > 1 || plat_info->partition)
 		return 0;
 
 	tpmi_uncore->root_cluster.root_domain = true;

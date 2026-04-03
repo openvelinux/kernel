@@ -208,7 +208,7 @@ static int create_attr_group(struct uncore_data *data, char *name)
 			init_attribute_ro(agent_types);
 			data->uncore_attrs[index++] = &data->agent_types_kobj_attr.attr;
 		}
-		if (topology_max_die_per_package() > 1 &&
+		if (topology_max_dies_per_package() > 1 &&
 		    data->agent_type_mask & AGENT_TYPE_CORE) {
 			init_attribute_ro(die_id);
 			data->uncore_attrs[index++] = &data->die_id_kobj_attr.attr;
