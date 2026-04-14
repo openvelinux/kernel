@@ -28,6 +28,7 @@
 #include <asm/apic.h>
 #include <asm/intel-family.h>
 #include <asm/i8259.h>
+#include <asm/topology.h>
 #include <asm/uv/uv.h>
 
 unsigned int __read_mostly cpu_khz;	/* TSC clocks / usec, not used here */
@@ -1250,15 +1251,12 @@ static void __init check_system_tsc_reliable(void)
 	 *  - TSC which does not stop in C-States
 	 *  - the TSC_ADJUST register which allows to detect even minimal
 	 *    modifications
-	 *  - not more than two sockets. As the number of sockets cannot be
-	 *    evaluated at the early boot stage where this has to be
-	 *    invoked, check the number of online memory nodes as a
-	 *    fallback solution which is an reasonable estimate.
+	 *  - not more than four packages
 	 */
 	if (boot_cpu_has(X86_FEATURE_CONSTANT_TSC) &&
 	    boot_cpu_has(X86_FEATURE_NONSTOP_TSC) &&
 	    boot_cpu_has(X86_FEATURE_TSC_ADJUST) &&
-	    nr_online_nodes <= 4)
+	    topology_max_packages() <= 4)
 		tsc_disable_clocksource_watchdog();
 }
 
@@ -1474,38 +1472,6 @@ static int __init init_tsc_clocksource(void)
 
 	if (boot_cpu_has(X86_FEATURE_NONSTOP_TSC_S3))
 		clocksource_tsc.flags |= CLOCK_SOURCE_SUSPEND_NONSTOP;
-
-	/*
-	 * Disable the clocksource watchdog when the system has:
-	 *  - TSC running at constant frequency
-	 *  - TSC which does not stop in C-States
-	 *  - the TSC_ADJUST register which allows to detect even minimal
-	 *    modifications
-	 *  - not more than four sockets.  During tsc_init() time,
-	 *    logical_packages is not available yet so nr_online_nodes
-	 *    is used instead but due to reasons like SNC, fake nodes etc
-	 *    that node number can be > 4 even in a 2 sockets system. Detect
-	 *    this condition here when logical_packages is available now.
-	 *
-	 * This helps for systems which incorrectly detect TSC as unreliable
-	 * during runtime because of reasons like SMI, delayed watchdog timer
-	 * handling etc. This kind of achieved upstream commit b4bac279319d("
-	 * x86/tsc: Use topology_max_packages() to get package number").
-	 */
-	if (nr_online_nodes > 4 && logical_packages <= 4) {
-		if (boot_cpu_has(X86_FEATURE_CONSTANT_TSC) &&
-		    boot_cpu_has(X86_FEATURE_NONSTOP_TSC) &&
-		    boot_cpu_has(X86_FEATURE_TSC_ADJUST))
-			/*
-			 * tsc_disable_clocksource_watchdog() will clear
-			 * MUST_VERIFY for both tsc_early and tsc but since
-			 * tsc_early is already registered with MUST_VERIFY
-			 * set and thus is already on that watchdog list, keep
-			 * its MUST_VERIFY flag so when it's unregistered
-			 * below, it will be removed from watchdog_list.
-			 */
-			clocksource_tsc.flags &= ~CLOCK_SOURCE_MUST_VERIFY;
-	}
 
 	/*
 	 * When TSC frequency is known (retrieved via MSR or CPUID), we skip
