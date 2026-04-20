@@ -39,18 +39,6 @@
 /* max length of lines in /proc/self/maps - anything longer is skipped here */
 #define MAPS_LINE_LEN 128
 
-static void sethandler(int sig, void (*handler)(int, siginfo_t *, void *),
-		       int flags)
-{
-	struct sigaction sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.sa_sigaction = handler;
-	sa.sa_flags = SA_SIGINFO | flags;
-	sigemptyset(&sa.sa_mask);
-	if (sigaction(sig, &sa, 0))
-		err(1, "sigaction");
-}
-
 /* vsyscalls and vDSO */
 bool vsyscall_map_r = false, vsyscall_map_x = false;
 
@@ -158,11 +146,6 @@ static int init_vsys(void)
 static inline long sys_gtod(struct timeval *tv, struct timezone *tz)
 {
 	return syscall(SYS_gettimeofday, tv, tz);
-}
-
-static inline int sys_clock_gettime(clockid_t id, struct timespec *ts)
-{
-	return syscall(SYS_clock_gettime, id, ts);
 }
 
 static inline long sys_time(time_t *t)
