@@ -273,6 +273,7 @@ enum resctrl_schema_fmt {
  * @num_mbm_cntrs:	Number of assignable bandwidth counters per domain
  * @mbm_cfg_mask:	Memory transactions supported by assigned counters
  * @mbm_assign_on_mkdir:	Automatically assign MBM counters to new groups
+ * @mbm_cntr_assign_fixed:	True if counter assignment mode cannot be changed
  * @ctrl_scope:		Scope of this resource for control functions
  * @mon_scope:		Scope of this resource for monitor functions
  * @cache:		Cache allocation related data
@@ -295,6 +296,7 @@ struct rdt_resource {
 	int			num_mbm_cntrs;
 	unsigned int		mbm_cfg_mask;
 	bool			mbm_assign_on_mkdir;
+	bool			mbm_cntr_assign_fixed;
 	enum resctrl_scope	ctrl_scope;
 	enum resctrl_scope	mon_scope;
 	struct resctrl_cache	cache;
