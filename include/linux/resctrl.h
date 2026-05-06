@@ -274,6 +274,7 @@ enum resctrl_schema_fmt {
  * @mbm_cfg_mask:	Memory transactions supported by assigned counters
  * @mbm_assign_on_mkdir:	Automatically assign MBM counters to new groups
  * @mbm_cntr_assign_fixed:	True if counter assignment mode cannot be changed
+ * @mbm_cntr_configurable:	True if counter event filters can be changed
  * @ctrl_scope:		Scope of this resource for control functions
  * @mon_scope:		Scope of this resource for monitor functions
  * @cache:		Cache allocation related data
@@ -297,6 +298,7 @@ struct rdt_resource {
 	unsigned int		mbm_cfg_mask;
 	bool			mbm_assign_on_mkdir;
 	bool			mbm_cntr_assign_fixed;
+	bool			mbm_cntr_configurable;
 	enum resctrl_scope	ctrl_scope;
 	enum resctrl_scope	mon_scope;
 	struct resctrl_cache	cache;
