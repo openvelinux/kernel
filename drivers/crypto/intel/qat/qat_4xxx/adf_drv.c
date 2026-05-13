@@ -143,8 +143,6 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		bar->virt_addr = pcim_iomap_table(pdev)[bar_nr];
 	}
 
-	pci_set_master(pdev);
-
 	if (pci_save_state(pdev)) {
 		dev_err(&pdev->dev, "Failed to save pci state.\n");
 		ret = -ENOMEM;

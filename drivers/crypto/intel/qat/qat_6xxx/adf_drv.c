@@ -161,8 +161,6 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 			return dev_err_probe(dev, -ENOMEM, "Failed to ioremap PCI region.\n");
 	}
 
-	pci_set_master(pdev);
-
 	/*
 	 * The PCI config space is saved at this point and will be restored
 	 * after a Function Level Reset (FLR) as the FLR does not completely
