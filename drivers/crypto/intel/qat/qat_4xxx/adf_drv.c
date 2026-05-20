@@ -103,7 +103,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* Enable PCI device */
 	ret = pcim_enable_device(pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "Can't enable PCI device.\n");
+		pci_err(pdev, "Can't enable PCI device.\n");
 		goto out_err;
 	}
 
@@ -133,7 +133,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	ret = pcim_iomap_regions_request_all(pdev, bar_mask, pci_name(pdev));
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to map pci regions.\n");
+		pci_err(pdev, "Failed to map pci regions.\n");
 		goto out_err;
 	}
 
@@ -144,7 +144,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	if (pci_save_state(pdev)) {
-		dev_err(&pdev->dev, "Failed to save pci state.\n");
+		pci_err(pdev, "Failed to save pci state.\n");
 		ret = -ENOMEM;
 		goto out_err;
 	}
