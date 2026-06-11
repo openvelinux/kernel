@@ -31,44 +31,46 @@
 
 #include "core.h"
 
-static u32
-dwc_i2c_calculate_scl_padding(u32 fscl, u32 thigh, u32 tlow, u32 trcl, u32 tfcl)
+static u32 dwc_i2c_scl_lcnt_duration(u32 fscl, u32 thigh, u32 tlow,
+				      u32 trcl, u32 tfcl)
 {
 	u32 scl_min_ns = DIV_ROUND_UP(NSEC_PER_SEC, fscl);
-	u32 scl_ns = trcl + thigh + tfcl + tlow;
+	u32 low_min_ns = tfcl + tlow;
+	u32 low_ns = 0;
 
-	return scl_min_ns > scl_ns ? scl_min_ns - scl_ns : 0;
+	if (scl_min_ns > trcl + thigh)
+		low_ns = scl_min_ns - trcl - thigh;
+
+	return max_t(u32, low_ns, low_min_ns);
 }
 
 static int dwc_i2c_set_timings_controller(struct dwc_i2c_dev *dev)
 {
 	struct i2c_timings *t = &dev->timings;
-	u32 ic_clk, padding;
+	u32 ic_clk;
+	u32 duration_ns;
 	int ret;
 
 	if (!dev->spklen_cnt) {
 		u32 tsp = min_t(u32, t->digital_filter_width_ns, 50);
 
-		ic_clk = dev->clk ? dwc_i2c_clk_rate(dev) : 0;
-		dev->spklen_cnt = DIV_ROUND_UP_ULL((u64)ic_clk * tsp, MICRO) ?:
-									       1;
+		ic_clk = dwc_i2c_clk_rate(dev);
+		dev->spklen_cnt = DIV_ROUND_UP_ULL((u64)ic_clk * tsp, MICRO) ?: 1;
 	}
 	dev_dbg(dev->dev, "tSP CNT (SS, FS, FS+) = %u\n", dev->spklen_cnt);
 
 	/* Calculate SCL timing parameters for standard mode if not set */
 	if (!dev->ss_hcnt || !dev->ss_lcnt) {
 		ic_clk = dwc_i2c_clk_rate(dev);
-		padding = dwc_i2c_calculate_scl_padding(
-				I2C_MAX_STANDARD_MODE_FREQ, 4000, 4700,
-				t->scl_rise_ns, t->scl_fall_ns);
+		duration_ns = 4000 + t->scl_fall_ns; /* tHIGH + tFall */
 		dev->ss_hcnt = dwc_i2c_scl_hcnt(
-			ic_clk, 4000, /* tHD;STA = tHIGH = 4.0 us */
-			t->sda_fall_ns,
-			padding,
+			ic_clk, duration_ns,
 			-dev->spklen_cnt);
+		duration_ns = dwc_i2c_scl_lcnt_duration(
+				I2C_MAX_STANDARD_MODE_FREQ, duration_ns, 4700,
+				t->scl_rise_ns, t->scl_fall_ns);
 		dev->ss_lcnt =
-			dwc_i2c_scl_lcnt(ic_clk, 4700, /* tLOW = 4.7 us */
-					 t->scl_fall_ns, 0, 0, 0); /* No offset */
+			dwc_i2c_scl_lcnt(ic_clk, duration_ns, 0); /* No offset */
 	}
 	dev_dbg(dev->dev, "Standard Mode HCNT:LCNT = %d:%d\n", dev->ss_hcnt,
 		dev->ss_lcnt);
@@ -76,17 +78,15 @@ static int dwc_i2c_set_timings_controller(struct dwc_i2c_dev *dev)
 	/* Calculate SCL timing parameters for fast mode if not set. */
 	if (!dev->fs_hcnt || !dev->fs_lcnt) {
 		ic_clk = dwc_i2c_clk_rate(dev);
-		padding = dwc_i2c_calculate_scl_padding(
-				I2C_MAX_FAST_MODE_FREQ, 600, 1300,
-				t->scl_rise_ns, t->scl_fall_ns);
+		duration_ns = 600 + t->scl_fall_ns; /* tHIGH + tFall */
 		dev->fs_hcnt = dwc_i2c_scl_hcnt(
-			ic_clk, 600, /* tHD;STA = tHIGH = 0.6 us */
-			t->sda_fall_ns,
-			padding,
+			ic_clk, duration_ns,
 			-dev->spklen_cnt);
+		duration_ns = dwc_i2c_scl_lcnt_duration(
+				I2C_MAX_FAST_MODE_FREQ, duration_ns, 1300,
+				t->scl_rise_ns, t->scl_fall_ns);
 		dev->fs_lcnt =
-			dwc_i2c_scl_lcnt(ic_clk, 1300, /* tLOW = 1.3 us */
-					 t->scl_fall_ns, 0, 0, 0); /* No offset */
+			dwc_i2c_scl_lcnt(ic_clk, duration_ns, 0); /* No offset */
 	}
 	dev_dbg(dev->dev, "Fast Mode HCNT:LCNT = %d:%d\n", dev->fs_hcnt,
 		dev->fs_lcnt);
@@ -94,18 +94,15 @@ static int dwc_i2c_set_timings_controller(struct dwc_i2c_dev *dev)
 	/* Calculate SCL timing parameters for fast mode plus if not set. */
 	if (!dev->fp_hcnt || !dev->fp_lcnt) {
 		ic_clk = dwc_i2c_clk_rate(dev);
-		padding = dwc_i2c_calculate_scl_padding(
-				I2C_MAX_FAST_MODE_PLUS_FREQ, 260, 500,
-				t->scl_rise_ns, t->scl_fall_ns);
+		/* tHIGH = 260 ns + tFall */
+		duration_ns = 260 + t->scl_fall_ns;
 		dev->fp_hcnt = dwc_i2c_scl_hcnt(ic_clk,
-						260, /* tHD;STA = tHIGH = 260 ns */
-						t->sda_fall_ns,
-						padding,
+						duration_ns,
 						-dev->spklen_cnt);
-		dev->fp_lcnt = dwc_i2c_scl_lcnt(ic_clk, 500, /* tLOW = 500 ns */
-						t->scl_fall_ns,
-						0,
-						0,
+		duration_ns = dwc_i2c_scl_lcnt_duration(
+				I2C_MAX_FAST_MODE_PLUS_FREQ, duration_ns, 500,
+				t->scl_rise_ns, t->scl_fall_ns);
+		dev->fp_lcnt = dwc_i2c_scl_lcnt(ic_clk, duration_ns,
 						0); /* No offset */
 	}
 	dev_dbg(dev->dev, "Fast Mode Plus HCNT:LCNT = %d:%d\n", dev->fp_hcnt,
@@ -116,10 +113,7 @@ static int dwc_i2c_set_timings_controller(struct dwc_i2c_dev *dev)
 		if (!dev->hs_spklen_cnt) {
 			u32 tsp = min_t(u32, t->digital_filter_width_ns, 10);
 
-			ic_clk = dev->clk ? dwc_i2c_clk_rate(dev) : 0;
-			padding = dwc_i2c_calculate_scl_padding(
-					I2C_MAX_HIGH_SPEED_MODE_FREQ, 60, 160,
-					t->scl_rise_ns, t->scl_fall_ns);
+			ic_clk = dwc_i2c_clk_rate(dev);
 			dev->hs_spklen_cnt =
 				DIV_ROUND_UP_ULL((u64)ic_clk * tsp, MICRO) ?: 1;
 		}
@@ -127,16 +121,17 @@ static int dwc_i2c_set_timings_controller(struct dwc_i2c_dev *dev)
 
 		if (!dev->hs_hcnt || !dev->hs_lcnt) {
 			ic_clk = dwc_i2c_clk_rate(dev);
+			/* tHIGH = 60 ns + tFall */
+			duration_ns = 60 + t->scl_fall_ns;
 			dev->hs_hcnt = dwc_i2c_scl_hcnt(ic_clk,
-							60, /* tHIGH = 60 ns */
-							0,
-							0,
+							duration_ns,
 							-dev->hs_spklen_cnt);
+			duration_ns = dwc_i2c_scl_lcnt_duration(
+					I2C_MAX_HIGH_SPEED_MODE_FREQ,
+					duration_ns, 160, t->scl_rise_ns,
+					t->scl_fall_ns);
 			dev->hs_lcnt = dwc_i2c_scl_lcnt(ic_clk,
-							160, /* tHD;STA = tLOW = 160 ns */
-							t->scl_fall_ns,
-							t->sda_fall_ns,
-							padding,
+							duration_ns,
 							0); /* No offset */
 		}
 		dev_dbg(dev->dev, "High Speed Mode HCNT:LCNT = %d:%d\n",

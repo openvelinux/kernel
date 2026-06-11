@@ -307,16 +307,16 @@ static int dwc_i2c_adjust_bus_speed(struct dwc_i2c_dev *dev)
 	return 0;
 }
 
-u32 dwc_i2c_scl_hcnt(u32 ic_clk, u32 tSYMBOL, u32 tfda, u32 padding, int offset)
+u32 dwc_i2c_scl_hcnt(u32 ic_clk, u32 tSYMBOL, int offset)
 {
-	u32 duration = tSYMBOL + max(tfda, padding);
+	u32 duration = tSYMBOL;
 
 	return DIV_ROUND_UP_ULL((u64)ic_clk * duration, MICRO) - 3 + offset;
 }
 
-u32 dwc_i2c_scl_lcnt(u32 ic_clk, u32 tLOW, u32 tfcl, u32 tfda, u32 padding, int offset)
+u32 dwc_i2c_scl_lcnt(u32 ic_clk, u32 tLOW, int offset)
 {
-	u32 duration = tLOW + max(tfcl + padding, tfda);
+	u32 duration = tLOW;
 
 	return DIV_ROUND_UP_ULL((u64)ic_clk * duration, MICRO) + offset;
 }

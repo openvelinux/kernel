@@ -431,8 +431,8 @@ struct dwc_i2c_dev {
 #define SMBUS_LOW_CEXT_MS		10
 #define SMBUS_THIGH_MAX_US		50
 
-u32 dwc_i2c_scl_hcnt(u32 ic_clk, u32 tSYMBOL, u32 tfda, u32 padding, int offset);
-u32 dwc_i2c_scl_lcnt(u32 ic_clk, u32 tLOW, u32 tfcl, u32 tfda, u32 padding, int offset);
+u32 dwc_i2c_scl_hcnt(u32 ic_clk, u32 tSYMBOL, int offset);
+u32 dwc_i2c_scl_lcnt(u32 ic_clk, u32 tLOW, int offset);
 int dwc_i2c_set_sda_hold(struct dwc_i2c_dev *dev);
 int dwc_i2c_set_sda_setup(struct dwc_i2c_dev *dev);
 u32 dwc_i2c_clk_rate(struct dwc_i2c_dev *dev);
