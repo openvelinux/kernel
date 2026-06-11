@@ -334,14 +334,18 @@ int dwc_i2c_set_sda_hold(struct dwc_i2c_dev *dev)
 	}
 
 	/*
-	 * Workaround for avoiding TX arbitration lost in case I2C
-	 * slave pulls SDA down "too quickly" after falling edge of
-	 * SCL by enabling non-zero SDA RX hold. Specification says it
-	 * extends incoming SDA low to high transition while SCL is
-	 * high but it appears to help also above issue.
+	 * Set RX hold time to the same value as TX hold time. This avoids TX
+	 * arbitration lost in case an I2C slave pulls SDA down too quickly
+	 * after the falling edge of SCL. If TX hold is zero, fall back to 1
+	 * as a minimal non-zero RX hold.
 	 */
-	if (!(dev->sda_hold_time & DWC_IC_SDA_HOLD_RX_MASK))
-		dev->sda_hold_time |= FIELD_PREP(DWC_IC_SDA_HOLD_RX_MASK, 1);
+	if (!(dev->sda_hold_time & DWC_IC_SDA_HOLD_RX_MASK)) {
+		u32 tx_hold = FIELD_GET(DWC_IC_SDA_HOLD_TX_MASK,
+					dev->sda_hold_time);
+
+		dev->sda_hold_time |= FIELD_PREP(DWC_IC_SDA_HOLD_RX_MASK,
+						  tx_hold ? tx_hold : 1);
+	}
 
 	dev_dbg(dev->dev, "SDA Hold Time TX:RX = %lu:%lu\n",
 		FIELD_GET(DWC_IC_SDA_HOLD_TX_MASK, dev->sda_hold_time),
