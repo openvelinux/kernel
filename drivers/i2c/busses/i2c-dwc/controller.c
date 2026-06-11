@@ -142,6 +142,10 @@ static int dwc_i2c_set_timings_controller(struct dwc_i2c_dev *dev)
 	if (ret)
 		return ret;
 
+	ret = dwc_i2c_set_sda_setup(dev);
+	if (ret)
+		return ret;
+
 	dev_dbg(dev->dev, "Bus speed: %s\n",
 		i2c_freq_mode_string(t->bus_freq_hz));
 	return 0;
@@ -187,6 +191,9 @@ static int dwc_i2c_init_controller(struct dwc_i2c_dev *dev)
 
 	/* Write SDA hold time */
 	regmap_write(dev->map, DWC_IC_SDA_HOLD(dev), dev->sda_hold_time);
+
+	/* Write SDA setup time */
+	regmap_write(dev->map, DWC_IC_SDA_SETUP(dev), dev->sda_setup_time);
 
 	/* write the spike length to be suppressed */
 	regmap_write(dev->map, DWC_IC_SPKLEN(dev), dev->spklen_cnt);

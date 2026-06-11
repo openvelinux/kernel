@@ -359,6 +359,8 @@ int dwc_i2c_set_sda_setup(struct dwc_i2c_dev *dev)
 	u32 bus_freq = dev->timings.bus_freq_hz;
 	u32 ic_clk;
 	u32 data_setup_ns;
+	u32 sda_setup;
+	int ret;
 
 	if (bus_freq == I2C_MAX_STANDARD_MODE_FREQ)
 		data_setup_ns = 250;
@@ -368,8 +370,18 @@ int dwc_i2c_set_sda_setup(struct dwc_i2c_dev *dev)
 		data_setup_ns = 100;
 
 	ic_clk = dwc_i2c_clk_rate(dev);
-	dev->sda_setup_time =
-		DIV_ROUND_UP_ULL((u64)ic_clk * data_setup_ns, MICRO) - 1;
+	if (!ic_clk) {
+		ret = regmap_read(dev->map, DWC_IC_SDA_SETUP(dev),
+				  &dev->sda_setup_time);
+		if (ret)
+			return ret;
+
+		dev->sda_setup_time &= DWC_IC_SDA_SETUP_MASK;
+		return 0;
+	}
+
+	sda_setup = DIV_ROUND_UP_ULL((u64)ic_clk * data_setup_ns, MICRO);
+	dev->sda_setup_time = min_t(u32, sda_setup - 1, DWC_IC_SDA_SETUP_MASK);
 
 	return 0;
 }
