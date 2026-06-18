@@ -29,7 +29,7 @@ struct ssam_tmp_profile_info {
 
 struct ssam_tmp_profile_device {
 	struct ssam_device *sdev;
-	struct platform_profile_handler handler;
+	struct device *ppdev;
 };
 
 SSAM_DEFINE_SYNC_REQUEST_CL_R(__ssam_tmp_profile_get, struct ssam_tmp_profile_info, {
@@ -105,14 +105,14 @@ static int convert_profile_to_ssam(struct ssam_device *sdev, enum platform_profi
 	}
 }
 
-static int ssam_platform_profile_get(struct platform_profile_handler *pprof,
+static int ssam_platform_profile_get(struct device *dev,
 				     enum platform_profile_option *profile)
 {
 	struct ssam_tmp_profile_device *tpd;
 	enum ssam_tmp_profile tp;
 	int status;
 
-	tpd = container_of(pprof, struct ssam_tmp_profile_device, handler);
+	tpd = dev_get_drvdata(dev);
 
 	status = ssam_tmp_profile_get(tpd->sdev, &tp);
 	if (status)
@@ -126,13 +126,13 @@ static int ssam_platform_profile_get(struct platform_profile_handler *pprof,
 	return 0;
 }
 
-static int ssam_platform_profile_set(struct platform_profile_handler *pprof,
+static int ssam_platform_profile_set(struct device *dev,
 				     enum platform_profile_option profile)
 {
 	struct ssam_tmp_profile_device *tpd;
 	int tp;
 
-	tpd = container_of(pprof, struct ssam_tmp_profile_device, handler);
+	tpd = dev_get_drvdata(dev);
 
 	tp = convert_profile_to_ssam(tpd->sdev, profile);
 	if (tp < 0)
@@ -140,6 +140,22 @@ static int ssam_platform_profile_set(struct platform_profile_handler *pprof,
 
 	return ssam_tmp_profile_set(tpd->sdev, tp);
 }
+
+static int ssam_platform_profile_probe(void *drvdata, unsigned long *choices)
+{
+	set_bit(PLATFORM_PROFILE_LOW_POWER, choices);
+	set_bit(PLATFORM_PROFILE_BALANCED, choices);
+	set_bit(PLATFORM_PROFILE_BALANCED_PERFORMANCE, choices);
+	set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
+
+	return 0;
+}
+
+static const struct platform_profile_ops ssam_platform_profile_ops = {
+	.probe = ssam_platform_profile_probe,
+	.profile_get = ssam_platform_profile_get,
+	.profile_set = ssam_platform_profile_set,
+};
 
 static int surface_platform_profile_probe(struct ssam_device *sdev)
 {
@@ -150,21 +166,12 @@ static int surface_platform_profile_probe(struct ssam_device *sdev)
 		return -ENOMEM;
 
 	tpd->sdev = sdev;
+	ssam_device_set_drvdata(sdev, tpd);
 
-	tpd->handler.profile_get = ssam_platform_profile_get;
-	tpd->handler.profile_set = ssam_platform_profile_set;
+	tpd->ppdev = devm_platform_profile_register(&sdev->dev, "Surface Platform Profile",
+						    tpd, &ssam_platform_profile_ops);
 
-	set_bit(PLATFORM_PROFILE_LOW_POWER, tpd->handler.choices);
-	set_bit(PLATFORM_PROFILE_BALANCED, tpd->handler.choices);
-	set_bit(PLATFORM_PROFILE_BALANCED_PERFORMANCE, tpd->handler.choices);
-	set_bit(PLATFORM_PROFILE_PERFORMANCE, tpd->handler.choices);
-
-	return platform_profile_register(&tpd->handler);
-}
-
-static void surface_platform_profile_remove(struct ssam_device *sdev)
-{
-	platform_profile_remove();
+	return PTR_ERR_OR_ZERO(tpd->ppdev);
 }
 
 static const struct ssam_device_id ssam_platform_profile_match[] = {
@@ -175,7 +182,6 @@ MODULE_DEVICE_TABLE(ssam, ssam_platform_profile_match);
 
 static struct ssam_device_driver surface_platform_profile = {
 	.probe = surface_platform_profile_probe,
-	.remove = surface_platform_profile_remove,
 	.match_table = ssam_platform_profile_match,
 	.driver = {
 		.name = "surface_platform_profile",
