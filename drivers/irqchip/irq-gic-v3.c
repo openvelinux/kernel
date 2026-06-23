@@ -2080,6 +2080,19 @@ static int gic_irq_spi_domain_chip_alloc(struct irq_domain *domain, unsigned int
 			return ret;
 		irq_data_update_effective_affinity(d, cpumask_of(target_cpu));
 		irq_set_affinity_locked(d, &chip_data->affinity, true);
+		/*
+                 * Phoenix A0 silicon has GIC-700 multi-chip routing disabled,
+                 * so this wired SPI can only be delivered to a CPU on its
+                 * owning chiplet; routing it elsewhere silently drops the
+                 * interrupt. Mark it NO_BALANCING so neither the in-kernel
+                 * affinity balancer nor irqbalance can move it off the chiplet:
+                 * a userspace /proc/irq/N/smp_affinity write now returns
+                 * -EPERM. The effective/affinity seed above keeps it on a
+                 * chiplet-local CPU. Note this only blocks *balancing*; an
+                 * explicit in-kernel irq_set_affinity() is intentionally still
+                 * allowed so PMU and similar drivers continue to probe.
+                 */
+                irq_set_status_flags(d->irq, IRQ_NO_BALANCING);
 		pr_debug("irq %u CPUs %*pbl\n", d->irq, cpumask_pr_args(&chip_data->affinity));
 	}
 
