@@ -80,6 +80,7 @@ struct cxl_rcrb_info;
 resource_size_t __rcrb_to_component(struct device *dev,
 				    struct cxl_rcrb_info *ri,
 				    enum cxl_rcrb which);
+u16 cxl_rcrb_to_aer(struct device *dev, resource_size_t rcrb);
 
 extern struct rw_semaphore cxl_dpa_rwsem;
 extern struct rw_semaphore cxl_region_rwsem;
@@ -93,5 +94,10 @@ enum cxl_poison_trace_type {
 	CXL_POISON_TRACE_INJECT,
 	CXL_POISON_TRACE_CLEAR,
 };
+
+long cxl_pci_get_latency(struct pci_dev *pdev);
+
+int cxl_update_hmat_access_coordinates(int nid, struct cxl_region *cxlr,
+				       enum access_coordinate_class access);
 
 #endif /* __CXL_CORE_H__ */
