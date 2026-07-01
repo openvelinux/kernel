@@ -798,8 +798,8 @@ static bool mpam_ris_hw_probe_csu_nrdy(struct mpam_msc_ris *ris)
 	bool can_set, can_clear;
 	struct mpam_msc *msc = ris->vmsc->msc;
 
-	ACQUIRE(mon_sel_lock, guard)(msc);
-	if (ACQUIRE_ERR(mon_sel_lock, &guard))
+	CLASS(mon_sel_lock, guard)(msc);
+	if (!guard)
 		return false;
 
 	mon_sel = FIELD_PREP(MSMON_CFG_MON_SEL_MON_SEL, 0) |
@@ -1353,8 +1353,8 @@ static void __ris_msmon_read(void *arg)
 	struct mpam_msc *msc = m->ris->vmsc->msc;
 	u32 mon_sel, ctl_val, flt_val, cur_ctl, cur_flt;
 
-	ACQUIRE(mon_sel_lock, guard)(msc);
-	if (ACQUIRE_ERR(mon_sel_lock, &guard)) {
+	CLASS(mon_sel_lock, guard)(msc);
+	if (!guard) {
 		m->err = -EIO;
 		return;
 	}
@@ -1884,8 +1884,8 @@ static int mpam_save_mbwu_state(void *arg)
 		mbwu_state = &ris->mbwu_state[i];
 		cfg = &mbwu_state->cfg;
 
-		ACQUIRE(mon_sel_lock, guard)(msc);
-		if (ACQUIRE_ERR(mon_sel_lock, &guard))
+		CLASS(mon_sel_lock, guard)(msc);
+		if (!guard)
 			return -EIO;
 
 		mon_sel = FIELD_PREP(MSMON_CFG_MON_SEL_MON_SEL, i) |
@@ -2285,7 +2285,6 @@ static struct mpam_msc *do_mpam_msc_drv_probe(struct platform_device *pdev)
 	if (err)
 		return ERR_PTR(err);
 
-	mpam_mon_sel_lock_init(msc);
 	msc->id = pdev->id;
 	msc->pdev = pdev;
 	INIT_LIST_HEAD_RCU(&msc->all_msc_list);
@@ -2305,6 +2304,11 @@ static struct mpam_msc *do_mpam_msc_drv_probe(struct platform_device *pdev)
 		msc->iface = MPAM_IFACE_MMIO;
 	else
 		msc->iface = MPAM_IFACE_PCC;
+
+	/* Lock type depends on MSC interface used */
+	err = mpam_mon_sel_lock_init(dev, msc);
+	if (err)
+		return ERR_PTR(err);
 
 	if (msc->iface == MPAM_IFACE_MMIO) {
 		void __iomem *io;
