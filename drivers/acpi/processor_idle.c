@@ -1142,9 +1142,6 @@ static int acpi_processor_get_lpi_info(struct acpi_processor *pr)
 	if (!osc_pc_lpi_support_confirmed)
 		return -EOPNOTSUPP;
 
-	if (!acpi_has_method(handle, "_LPI"))
-		return -EINVAL;
-
 	curr = &info[0];
 	curr->composite_states_size = 0;
 
@@ -1199,10 +1196,6 @@ static int acpi_processor_get_lpi_info(struct acpi_processor *pr)
 			break;
 
 		if (strcmp(acpi_device_hid(d), ACPI_PROCESSOR_CONTAINER_HID))
-			break;
-
-		/* can be optional ? */
-		if (!acpi_has_method(handle, "_LPI"))
 			break;
 
 		ret = acpi_processor_evaluate_lpi(handle, curr);
