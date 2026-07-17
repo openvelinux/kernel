@@ -3641,8 +3641,6 @@ static void intel_pmu_reset(void)
 		wrmsrl_safe(x86_pmu_event_addr(idx),  0ull);
 	}
 	for_each_set_bit(idx, fixed_cntr_mask, INTEL_PMC_MAX_FIXED) {
-		if (fixed_counter_disabled(idx, cpuc->pmu))
-			continue;
 		wrmsrl_safe(x86_pmu_fixed_ctr_addr(idx), 0ull);
 	}
 
@@ -6227,7 +6225,7 @@ static bool init_hybrid_pmu(int cpu)
 
 	intel_pmu_check_hybrid_pmus(pmu);
 
-	if (!check_hw_exists(&pmu->pmu, pmu->cntr_mask, pmu->fixed_cntr_mask)) {
+	if (!check_hw_exists(pmu->cntr_mask, pmu->fixed_cntr_mask)) {
 		cpuc->pmu = NULL;
 		return false;
 	}

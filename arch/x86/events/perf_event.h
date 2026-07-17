@@ -1252,7 +1252,7 @@ static inline int x86_pmu_rdpmc_index(int index)
 	return x86_pmu.rdpmc_index ? x86_pmu.rdpmc_index(index) : index;
 }
 
-bool check_hw_exists(struct pmu *pmu, unsigned long *cntr_mask,
+bool check_hw_exists(unsigned long *cntr_mask,
 		     unsigned long *fixed_cntr_mask);
 
 int x86_add_exclusive(unsigned int what);
@@ -1464,13 +1464,6 @@ ssize_t events_ht_sysfs_show(struct device *dev, struct device_attribute *attr,
 ssize_t events_hybrid_sysfs_show(struct device *dev,
 				 struct device_attribute *attr,
 				 char *page);
-
-static inline bool fixed_counter_disabled(int i, struct pmu *pmu)
-{
-	u64 intel_ctrl = hybrid(pmu, intel_ctrl);
-
-	return !(intel_ctrl >> (i + INTEL_PMC_IDX_FIXED));
-}
 
 #ifdef CONFIG_CPU_SUP_AMD
 
