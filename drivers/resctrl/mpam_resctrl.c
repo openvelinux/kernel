@@ -165,6 +165,26 @@ static void resctrl_reset_task_closids(void)
 	read_unlock(&tasklist_lock);
 }
 
+static void mpam_resctrl_monitor_sync_abmc_vals(struct rdt_resource *l3)
+{
+	struct mpam_resctrl_mon *mon = &mpam_resctrl_counters[QOS_L3_MBM_TOTAL_EVENT_ID];
+
+	if (!mon->class)
+		return;
+
+	if (!mon->assigned_counters)
+		return;
+
+	l3->num_mbm_cntrs = mon->class->props.num_mbwu_mon;
+	if (cdp_enabled)
+		l3->num_mbm_cntrs /= 2;
+
+	/*
+	 * Continue as normal even if enabling cdp causes there to be
+	 * zero counters. This avoids giving resctrl mixed messages.
+	 */
+}
+
 int resctrl_arch_set_cdp_enabled(enum resctrl_res_level rid, bool enable)
 {
 	u32 partid_i = RESCTRL_RESERVED_CLOSID, partid_d = RESCTRL_RESERVED_CLOSID;
@@ -224,6 +244,7 @@ int resctrl_arch_set_cdp_enabled(enum resctrl_res_level rid, bool enable)
 	WRITE_ONCE(arm64_mpam_global_default, mpam_get_regval(current));
 
 	resctrl_reset_task_closids();
+	mpam_resctrl_monitor_sync_abmc_vals(l3);
 
 	for_each_possible_cpu(cpu)
 		mpam_set_cpu_defaults(cpu, partid_d, partid_i, 0, 0);
@@ -622,7 +643,10 @@ static bool class_has_usable_mbwu(struct mpam_class *class)
 	if (!mpam_has_feature(mpam_feat_msmon_mbwu, cprops))
 		return false;
 
-	return mpam_monitors_free_running(cprops->num_mbwu_mon);
+	if (!cprops->num_mbwu_mon)
+		return false;
+
+	return true;
 }
 
 /*
@@ -1158,6 +1182,46 @@ static int mpam_resctrl_pick_domain_id(int cpu, struct mpam_component *comp)
 	return comp->comp_id;
 }
 
+/*
+ * This must run after all event counters have been picked so that any free
+ * running counters have already been allocated.
+ */
+static int mpam_resctrl_monitor_init_abmc(struct mpam_resctrl_mon *mon)
+{
+	struct mpam_resctrl_res *res = &mpam_resctrl_controls[RDT_RESOURCE_L3];
+	size_t num_rmid = resctrl_arch_system_num_rmid_idx();
+	struct rdt_resource *l3 = &res->resctrl_res;
+	struct mpam_class *class = mon->class;
+	int *rmid_array;
+	u16 num_mbwu_mon;
+	int *cntrs;
+
+	rmid_array = kmalloc_array(num_rmid, sizeof(*rmid_array), GFP_KERNEL);
+	if (!rmid_array) {
+		pr_debug("Failed to allocate RMID array\n");
+		return -ENOMEM;
+	}
+	memset(rmid_array, -1, num_rmid * sizeof(*rmid_array));
+
+	num_mbwu_mon = class->props.num_mbwu_mon;
+	cntrs = alloc_mbwu_monitor_array(class, num_mbwu_mon);
+	if (IS_ERR(cntrs)) {
+		kfree(rmid_array);
+		return PTR_ERR(cntrs);
+	}
+	mon->assigned_counters = cntrs;
+	mon->mbwu_idx_to_mon = rmid_array;
+
+	l3->mbm_cntr_assignable = true;
+	l3->mbm_assign_on_mkdir = true;
+	l3->mbm_cntr_configurable = false;
+	l3->mbm_cntr_assign_fixed = true;
+
+	mpam_resctrl_monitor_sync_abmc_vals(l3);
+
+	return 0;
+}
+
 static int mpam_resctrl_monitor_init(struct mpam_resctrl_mon *mon,
 				     enum resctrl_event_id type)
 {
@@ -1201,6 +1265,17 @@ static int mpam_resctrl_monitor_init(struct mpam_resctrl_mon *mon,
 	 * interpret this value.
 	 */
 	l3->num_rmid = resctrl_arch_system_num_rmid_idx();
+
+	if (type == QOS_L3_MBM_TOTAL_EVENT_ID && !mon->mbwu_idx_to_mon) {
+		int err;
+
+		err = mpam_resctrl_monitor_init_abmc(mon);
+		if (err)
+			return err;
+
+		static_assert(MAX_EVT_CONFIG_BITS == 0x7f);
+		l3->mbm_cfg_mask = MAX_EVT_CONFIG_BITS;
+	}
 
 	resctrl_enable_mon_event(type);
 	l3->mon_capable = true;
@@ -1764,6 +1839,25 @@ void mpam_resctrl_exit(void)
 	resctrl_exit();
 }
 
+static void mpam_resctrl_teardown_mon(struct mpam_resctrl_mon *mon, struct mpam_class *class)
+{
+	if (!mon->mbwu_idx_to_mon)
+		return;
+
+	if (mon->assigned_counters) {
+		free_mbwu_monitors(class, mon->assigned_counters,
+				   class->props.num_mbwu_mon);
+		kfree(mon->assigned_counters);
+		mon->assigned_counters = NULL;
+	} else {
+		free_mbwu_monitors(class, mon->mbwu_idx_to_mon,
+				   resctrl_arch_system_num_rmid_idx());
+	}
+
+	kfree(mon->mbwu_idx_to_mon);
+	mon->mbwu_idx_to_mon = NULL;
+}
+
 /*
  * The driver is detaching an MSC from this class, if resctrl was using it,
  * pull on resctrl_exit().
@@ -1785,12 +1879,7 @@ void mpam_resctrl_teardown_class(struct mpam_class *class)
 	}
 	for_each_mpam_resctrl_mon(mon, eventid) {
 		if (mon->class == class) {
-			if (mon->mbwu_idx_to_mon) {
-				free_mbwu_monitors(class, mon->mbwu_idx_to_mon,
-						   resctrl_arch_system_num_rmid_idx());
-				kfree(mon->mbwu_idx_to_mon);
-				mon->mbwu_idx_to_mon = NULL;
-			}
+			mpam_resctrl_teardown_mon(mon, class);
 			mon->class = NULL;
 			break;
 		}
