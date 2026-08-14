@@ -482,8 +482,10 @@ static int pcc_startup(struct mbox_chan *chan)
 	if (pchan->plat_irq > 0) {
 		irqflags = pcc_chan_plat_irq_can_be_shared(pchan) ?
 						IRQF_SHARED : 0;
-		rc = devm_request_irq(chan->mbox->dev, pchan->plat_irq, pcc_mbox_irq,
-				      irqflags, MBOX_IRQ_NAME, chan);
+		irqflags |= IRQF_ONESHOT;
+		rc = devm_request_threaded_irq(chan->mbox->dev, pchan->plat_irq,
+					       NULL, pcc_mbox_irq, irqflags,
+					       MBOX_IRQ_NAME, chan);
 		if (unlikely(rc)) {
 			dev_err(chan->mbox->dev, "failed to register PCC interrupt %d\n",
 				pchan->plat_irq);
