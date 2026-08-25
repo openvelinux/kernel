@@ -9,6 +9,7 @@ config I2C_DWC_CORE
 config I2C_DWC_PLATFORM
 	tristate "Synopsys DesignWare Core I2C platform driver"
 	depends on (ACPI && COMMON_CLK) || !ACPI
+	default y
 	select I2C_DWC_CORE
 	help
 	  This is the platform driver glue module for Synopsys DesignWare Core
