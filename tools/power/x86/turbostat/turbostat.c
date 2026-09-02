@@ -8662,6 +8662,8 @@ void rapl_perf_init(void)
 {
 	const unsigned int num_domains = get_rapl_num_domains();
 	bool *domain_visited = calloc(num_domains, sizeof(bool));
+	if (!domain_visited)
+		err(-1, "calloc domain_visited");
 
 	rapl_counter_info_perdomain = calloc(num_domains, sizeof(*rapl_counter_info_perdomain));
 	if (rapl_counter_info_perdomain == NULL)
@@ -10008,6 +10010,8 @@ int added_perf_counters_init_(struct perf_counter_info *pinfo)
 	const size_t max_num_domains = MAX(topo.max_cpu_num + 1, MAX(topo.max_core_id + 1, topo.max_package_id + 1));
 
 	domain_visited = calloc(max_num_domains, sizeof(*domain_visited));
+	if (!domain_visited)
+		errx(1, "%s: alloc %s", __func__, "domain_visited");
 
 	while (pinfo) {
 		switch (pinfo->scope) {
@@ -10399,6 +10403,8 @@ int pmt_add_counter(unsigned int guid, unsigned int seq, const char *name, enum 
 	pcounter = pmt_find_counter(*pmt_root, name);
 	if (!pcounter) {
 		pcounter = calloc(1, sizeof(*pcounter));
+		if (!pcounter)
+			return 1;
 		new_counter = true;
 	}
 
