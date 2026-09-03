@@ -990,6 +990,7 @@ static int mpam_resctrl_control_init(struct mpam_resctrl_res *res)
 	case RDT_RESOURCE_L2:
 	case RDT_RESOURCE_L3:
 		r->schema_fmt = RESCTRL_SCHEMA_BITMAP;
+		r->format_str = "%d=%0*x";
 		r->cache.arch_has_sparse_bitmasks = true;
 
 		r->cache.cbm_len = class->props.cpbm_wd;
@@ -1017,6 +1018,7 @@ static int mpam_resctrl_control_init(struct mpam_resctrl_res *res)
 		break;
 	case RDT_RESOURCE_MBA:
 		r->schema_fmt = RESCTRL_SCHEMA_RANGE;
+		r->format_str = "%d=%*u";
 		r->ctrl_scope = RESCTRL_L3_CACHE;
 
 		r->membw.delay_linear = true;
