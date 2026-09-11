@@ -53,6 +53,14 @@ static struct mpam_resctrl_mon mpam_resctrl_counters[MPAM_MAX_EVENT + 1];
 	     eventid <= MPAM_MAX_EVENT;						\
 	     eventid++, mon = &mpam_resctrl_counters[eventid])
 
+/* Whether this number of MBWU monitors supports free-running counters. */
+static u32 mpam_monitors_free_running(u16 num_mbwu_mon)
+{
+	u32 num_rmid_idx = resctrl_arch_system_num_rmid_idx();
+
+	return num_mbwu_mon >= num_rmid_idx ? num_rmid_idx : 0;
+}
+
 /* The lock for modifying resctrl's domain lists from cpuhp callbacks. */
 static DEFINE_MUTEX(domain_list_lock);
 
@@ -426,6 +434,17 @@ static int __read_mon(struct mpam_resctrl_mon *mon, struct mpam_component *mon_c
 	/* Shift closid to account for CDP */
 	closid = resctrl_get_config_index(closid, cdp_type);
 
+	if (mon_idx == USE_PRE_ALLOCATED) {
+		u32 mbwu_idx = resctrl_arch_rmid_idx_encode(closid, rmid);
+
+		if (!mon->mbwu_idx_to_mon)
+			return -EINVAL;
+
+		mon_idx = mon->mbwu_idx_to_mon[mbwu_idx];
+		if (mon_idx < 0)
+			return -ENOENT;
+	}
+
 	if (irqs_disabled()) {
 		/* Check if we can access this domain without an IPI */
 		return -EIO;
@@ -467,7 +486,7 @@ static int read_mon_cdp_safe(struct mpam_resctrl_mon *mon, struct mpam_component
 			  CDP_NONE, closid, rmid, val);
 }
 
-/* MBWU when not in ABMC mode (not supported), and CSU counters. */
+/* MBWU when not in ABMC mode, and CSU counters. */
 int resctrl_arch_rmid_read(struct rdt_resource *r, struct rdt_mon_domain *d,
 			   u32 closid, u32 rmid, enum resctrl_event_id eventid,
 			   u64 *val, void *arch_mon_ctx)
@@ -489,10 +508,17 @@ int resctrl_arch_rmid_read(struct rdt_resource *r, struct rdt_mon_domain *d,
 	l3_dom = container_of(d, struct mpam_resctrl_dom, resctrl_mon_dom);
 	mon_comp = l3_dom->mon_comp[eventid];
 
-	if (eventid != QOS_L3_OCCUP_EVENT_ID)
+	switch (eventid) {
+	case QOS_L3_OCCUP_EVENT_ID:
+		mon_type = mpam_feat_msmon_csu;
+		break;
+	case QOS_L3_MBM_LOCAL_EVENT_ID:
+	case QOS_L3_MBM_TOTAL_EVENT_ID:
+		mon_type = mpam_feat_msmon_mbwu;
+		break;
+	default:
 		return -EINVAL;
-
-	mon_type = mpam_feat_msmon_csu;
+	}
 
 	return read_mon_cdp_safe(mon, mon_comp, mon_type, mon_idx,
 				 closid, rmid, val);
@@ -585,7 +611,7 @@ static bool class_has_usable_mbwu(struct mpam_class *class)
 	if (!mpam_has_feature(mpam_feat_msmon_mbwu, cprops))
 		return false;
 
-	return true;
+	return mpam_monitors_free_running(cprops->num_mbwu_mon);
 }
 
 /*
@@ -901,10 +927,52 @@ static void mpam_resctrl_pick_mba(void)
 	}
 }
 
+static void free_mbwu_monitors(struct mpam_class *class, int *monitors,
+			       u32 num_monitors)
+{
+	int monitor_index;
+
+	for (monitor_index = 0; monitor_index < num_monitors; monitor_index++) {
+		if (monitors[monitor_index] < 0)
+			continue;
+
+		mpam_free_mbwu_mon(class, monitors[monitor_index]);
+		monitors[monitor_index] = -1;
+	}
+}
+
+static int *alloc_mbwu_monitor_array(struct mpam_class *class,
+				     u32 num_monitors)
+{
+	int monitor_index;
+	int *monitors;
+
+	monitors = kmalloc_array(num_monitors, sizeof(*monitors), GFP_KERNEL);
+	if (!monitors)
+		return ERR_PTR(-ENOMEM);
+
+	for (monitor_index = 0; monitor_index < num_monitors; monitor_index++) {
+		int monitor = mpam_alloc_mbwu_mon(class);
+
+		if (monitor < 0) {
+			free_mbwu_monitors(class, monitors, monitor_index);
+			kfree(monitors);
+			return ERR_PTR(monitor);
+		}
+
+		monitors[monitor_index] = monitor;
+	}
+
+	return monitors;
+}
+
 static void counter_update_class(enum resctrl_event_id evt_id,
 				 struct mpam_class *class)
 {
-	struct mpam_class *existing_class = mpam_resctrl_counters[evt_id].class;
+	struct mpam_resctrl_mon *mon = &mpam_resctrl_counters[evt_id];
+	struct mpam_class *existing_class = mon->class;
+	u32 num_monitors;
+	int *monitors;
 
 	if (existing_class) {
 		if (class->level == 3) {
@@ -919,7 +987,27 @@ static void counter_update_class(enum resctrl_event_id evt_id,
 		}
 	}
 
-	mpam_resctrl_counters[evt_id].class = class;
+	if (evt_id == QOS_L3_OCCUP_EVENT_ID) {
+		mon->class = class;
+		return;
+	}
+
+	num_monitors = mpam_monitors_free_running(class->props.num_mbwu_mon);
+	if (!num_monitors)
+		return;
+
+	monitors = alloc_mbwu_monitor_array(class, num_monitors);
+	if (IS_ERR(monitors))
+		return;
+
+	if (mon->mbwu_idx_to_mon) {
+		free_mbwu_monitors(existing_class, mon->mbwu_idx_to_mon,
+				   num_monitors);
+		kfree(mon->mbwu_idx_to_mon);
+	}
+
+	mon->mbwu_idx_to_mon = monitors;
+	mon->class = class;
 }
 
 static void mpam_resctrl_pick_counters(void)
@@ -1686,6 +1774,12 @@ void mpam_resctrl_teardown_class(struct mpam_class *class)
 	}
 	for_each_mpam_resctrl_mon(mon, eventid) {
 		if (mon->class == class) {
+			if (mon->mbwu_idx_to_mon) {
+				free_mbwu_monitors(class, mon->mbwu_idx_to_mon,
+						   resctrl_arch_system_num_rmid_idx());
+				kfree(mon->mbwu_idx_to_mon);
+				mon->mbwu_idx_to_mon = NULL;
+			}
 			mon->class = NULL;
 			break;
 		}
