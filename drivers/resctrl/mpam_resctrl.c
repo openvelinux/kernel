@@ -112,7 +112,7 @@ bool resctrl_arch_is_llc_occupancy_enabled(void)
 
 bool resctrl_arch_is_mbm_local_enabled(void)
 {
-	return mpam_resctrl_counters[QOS_L3_MBM_LOCAL_EVENT_ID].class;
+	return false;
 }
 
 bool resctrl_arch_is_mbm_total_enabled(void)
@@ -352,11 +352,15 @@ struct rdt_resource *resctrl_arch_get_resource(enum resctrl_res_level l)
 
 static int resctrl_arch_mon_ctx_alloc_no_wait(enum resctrl_event_id evtid)
 {
-	struct mpam_resctrl_mon *mon = &mpam_resctrl_counters[evtid];
+	struct mpam_resctrl_mon *mon;
 
 	if (!mpam_is_enabled())
 		return -EINVAL;
 
+	if (evtid < QOS_FIRST_EVENT || evtid > MPAM_MAX_EVENT)
+		return -EOPNOTSUPP;
+
+	mon = &mpam_resctrl_counters[evtid];
 	if (!mon->class)
 		return -EINVAL;
 
@@ -364,7 +368,6 @@ static int resctrl_arch_mon_ctx_alloc_no_wait(enum resctrl_event_id evtid)
 	case QOS_L3_OCCUP_EVENT_ID:
 		/* With CDP, one monitor gets used for both code/data reads */
 		return mpam_alloc_csu_mon(mon->class);
-	case QOS_L3_MBM_LOCAL_EVENT_ID:
 	case QOS_L3_MBM_TOTAL_EVENT_ID:
 		return USE_PRE_ALLOCATED;
 	default:
@@ -397,11 +400,15 @@ void *resctrl_arch_mon_ctx_alloc(struct rdt_resource *r,
 static void resctrl_arch_mon_ctx_free_no_wait(enum resctrl_event_id evtid,
 					      u32 mon_idx)
 {
-	struct mpam_resctrl_mon *mon = &mpam_resctrl_counters[evtid];
+	struct mpam_resctrl_mon *mon;
 
 	if (!mpam_is_enabled())
 		return;
 
+	if (evtid < QOS_FIRST_EVENT || evtid > MPAM_MAX_EVENT)
+		return;
+
+	mon = &mpam_resctrl_counters[evtid];
 	if (!mon->class)
 		return;
 
@@ -493,18 +500,23 @@ int resctrl_arch_rmid_read(struct rdt_resource *r, struct rdt_mon_domain *d,
 {
 	struct mpam_resctrl_dom *l3_dom;
 	struct mpam_component *mon_comp;
-	u32 mon_idx = *(u32 *)arch_mon_ctx;
+	struct mpam_resctrl_mon *mon;
+	u32 mon_idx;
 	enum mpam_device_features mon_type;
-	struct mpam_resctrl_mon *mon = &mpam_resctrl_counters[eventid];
 
 	resctrl_arch_rmid_read_context_check();
 
 	if (!mpam_is_enabled())
 		return -EINVAL;
 
-	if (eventid >= QOS_NUM_EVENTS || !mon->class)
+	if (eventid < QOS_FIRST_EVENT || eventid > MPAM_MAX_EVENT)
 		return -EINVAL;
 
+	mon = &mpam_resctrl_counters[eventid];
+	if (!mon->class)
+		return -EINVAL;
+
+	mon_idx = *(u32 *)arch_mon_ctx;
 	l3_dom = container_of(d, struct mpam_resctrl_dom, resctrl_mon_dom);
 	mon_comp = l3_dom->mon_comp[eventid];
 
@@ -512,7 +524,6 @@ int resctrl_arch_rmid_read(struct rdt_resource *r, struct rdt_mon_domain *d,
 	case QOS_L3_OCCUP_EVENT_ID:
 		mon_type = mpam_feat_msmon_csu;
 		break;
-	case QOS_L3_MBM_LOCAL_EVENT_ID:
 	case QOS_L3_MBM_TOTAL_EVENT_ID:
 		mon_type = mpam_feat_msmon_mbwu;
 		break;
