@@ -42,9 +42,6 @@ struct thread_info {
 	void			*scs_base;
 	void			*scs_sp;
 #endif
-#ifdef CONFIG_ARM64_MPAM
-	u64			mpam_partid_pmg;
-#endif
 	u32			cpu;
 };
 

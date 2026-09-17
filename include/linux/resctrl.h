@@ -2,12 +2,6 @@
 #ifndef _RESCTRL_H
 #define _RESCTRL_H
 
-#ifdef CONFIG_ARM_CPU_RESCTRL
-
-#include <linux/resctrl_mpam.h>
-
-#else
-
 #include <linux/cacheinfo.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -349,5 +343,4 @@ void resctrl_arch_reset_rmid_all(struct rdt_resource *r, struct rdt_mon_domain *
 extern unsigned int resctrl_rmid_realloc_threshold;
 extern unsigned int resctrl_rmid_realloc_limit;
 
-#endif /* ARM_CPU_RESCTRL */
 #endif /* _RESCTRL_H */
