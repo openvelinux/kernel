@@ -632,14 +632,10 @@ static const struct arm64_ftr_bits ftr_smcr[] = {
 };
 
 static const struct arm64_ftr_bits ftr_mpamidr[] = {
-	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE,
-		MPAMIDR_PMG_MAX_SHIFT, MPAMIDR_PMG_MAX_LEN, 0),        /* PMG_MAX */
-	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE,
-		MPAMIDR_VPMR_MAX_SHIFT, MPAMIDR_VPMR_MAX_LEN, 0),      /* VPMR_MAX */
-	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE,
-		MPAMIDR_HAS_HCR_SHIFT, 1, 0), /* HAS_HCR */
-	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE,
-		MPAMIDR_PARTID_MAX_SHIFT, MPAMIDR_PARTID_MAX_LEN, 0),  /* PARTID_MAX */
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE, MPAMIDR_EL1_PMG_MAX_SHIFT, MPAMIDR_EL1_PMG_MAX_WIDTH, 0),
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE, MPAMIDR_EL1_VPMR_MAX_SHIFT, MPAMIDR_EL1_VPMR_MAX_WIDTH, 0),
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, MPAMIDR_EL1_HAS_HCR_SHIFT, 1, 0),
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_NONSTRICT, FTR_LOWER_SAFE, MPAMIDR_EL1_PARTID_MAX_SHIFT, MPAMIDR_EL1_PARTID_MAX_WIDTH, 0),
 	ARM64_FTR_END,
 };
 
@@ -1089,9 +1085,7 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 		cpacr_restore(cpacr);
 	}
 
-	if (mpam_detect_is_enabled() &&
-	   (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
-	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1)))
+	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0))
 		init_cpu_ftr_reg(SYS_MPAMIDR_EL1, info->reg_mpamidr);
 
 	if (id_aa64pfr1_mte(info->reg_id_aa64pfr1))
@@ -1361,9 +1355,7 @@ void update_cpu_features(int cpu,
 		cpacr_restore(cpacr);
 	}
 
-	if (mpam_detect_is_enabled() &&
-	   (id_aa64pfr0_mpam(info->reg_id_aa64pfr0) ||
-	    id_aa64pfr1_mpamfrac(info->reg_id_aa64pfr1))) {
+	if (id_aa64pfr0_mpam(info->reg_id_aa64pfr0)) {
 		taint |= check_update_ftr_reg(SYS_MPAMIDR_EL1, cpu,
 					info->reg_mpamidr, boot->reg_mpamidr);
 	}
@@ -2431,76 +2423,40 @@ cpucap_panic_on_conflict(const struct arm64_cpu_capabilities *cap)
 	return !!(cap->type & ARM64_CPUCAP_PANIC_ON_CONFLICT);
 }
 
-static bool __read_mostly mpam_force_enabled;
-bool mpam_detect_is_enabled(void)
-{
-	return mpam_force_enabled;
-}
-
-static int __init mpam_setup(char *str)
-{
-	mpam_force_enabled = true;
-	return 0;
-}
-early_param("arm64.mpam", mpam_setup);
-
-static bool __maybe_unused
+static bool
 test_has_mpam(const struct arm64_cpu_capabilities *entry, int scope)
 {
-	u64 pfr0 = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
-	u64 pfr1 = read_sanitised_ftr_reg(SYS_ID_AA64PFR1_EL1);
-
-	if (!id_aa64pfr0_mpam(pfr0) &&
-	    !id_aa64pfr1_mpamfrac(pfr1))
-		return false;
-
-	if (is_kdump_kernel())
-		return false;
-
-	if (!mpam_detect_is_enabled())
+	if (!has_cpuid_feature(entry, scope))
 		return false;
 
 	/* Check firmware actually enabled MPAM on this cpu. */
-	return (read_sysreg_s(SYS_MPAM1_EL1) & MPAM_SYSREG_EN);
+	return (read_sysreg_s(SYS_MPAM1_EL1) & MPAM1_EL1_MPAMEN);
 }
 
-static void __maybe_unused
+static void
 cpu_enable_mpam(const struct arm64_cpu_capabilities *entry)
 {
-	u64 idr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
 	int cpu = smp_processor_id();
 	u64 regval = 0;
 
-	if (IS_ENABLED(CONFIG_ARM64_MPAM))
+	if (IS_ENABLED(CONFIG_ARM64_MPAM) && static_branch_likely(&mpam_enabled))
 		regval = READ_ONCE(per_cpu(arm64_mpam_current, cpu));
 
-	/*
-	 * Initialise MPAM EL2 registers and disable EL2 traps.
-	 */
-	write_sysreg_s(0, SYS_MPAM2_EL2);
+	write_sysreg_s(regval | MPAM1_EL1_MPAMEN, SYS_MPAM1_EL1);
+	if (cpus_have_cap(ARM64_SME))
+		write_sysreg_s(regval & (MPAMSM_EL1_PARTID_D | MPAMSM_EL1_PMG_D), SYS_MPAMSM_EL1);
+	isb();
 
-	if (idr & MPAMIDR_HAS_HCR)
-		write_sysreg_s(0, SYS_MPAMHCR_EL2);
-
-	/*
-	 * Access by the kernel (at EL1) should use the reserved PARTID
-	 * which is configured unrestricted. This avoids priority-inversion
-	 * where latency sensitive tasks have to wait for a task that has
-	 * been throttled to release the lock.
-	 */
-	write_sysreg_s(0, SYS_MPAM1_EL1);
+	/* Synchronising the EL0 write is left until the ERET to EL0 */
 	write_sysreg_s(regval, SYS_MPAM0_EL1);
 }
 
-static void mpam_extra_caps(void)
+static bool
+test_has_mpam_hcr(const struct arm64_cpu_capabilities *entry, int scope)
 {
 	u64 idr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
 
-	if (!IS_ENABLED(CONFIG_ARM64_MPAM))
-		return;
-
-	if (idr & MPAMIDR_HAS_HCR)
-		__enable_mpam_hcr();
+	return idr & MPAMIDR_EL1_HAS_HCR;
 }
 
 static const struct arm64_cpu_capabilities arm64_features[] = {
@@ -3023,6 +2979,20 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 	},
 #endif
 	{
+		.desc = "Memory Partitioning And Monitoring",
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.capability = ARM64_MPAM,
+		.matches = test_has_mpam,
+		.cpu_enable = cpu_enable_mpam,
+		ARM64_CPUID_FIELDS(ID_AA64PFR0_EL1, MPAM, 1)
+	},
+	{
+		.desc = "Memory Partitioning And Monitoring Virtualisation",
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.capability = ARM64_MPAM_HCR,
+		.matches = test_has_mpam_hcr,
+	},
+	{
 		.desc = "Non-maskable Interrupts present",
 		.capability = ARM64_HAS_NMI,
 		.type = ARM64_CPUCAP_BOOT_CPU_FEATURE,
@@ -3054,15 +3024,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_cpuid_feature,
 		ARM64_CPUID_FIELDS(ID_AA64MMFR1_EL1, TWED, IMP)
-	},
-#endif
-#ifdef CONFIG_ARM64_MPAM
-	{
-		.desc = "Memory Partitioning And Monitoring",
-		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.capability = ARM64_MPAM,
-		.matches = test_has_mpam,
-		.cpu_enable = cpu_enable_mpam,
 	},
 #endif
 	{},
@@ -3645,6 +3606,36 @@ static void verify_hyp_capabilities(void)
 	}
 }
 
+static void verify_mpam_capabilities(void)
+{
+	u64 cpu_idr = read_cpuid(ID_AA64PFR0_EL1);
+	u64 sys_idr = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
+	u16 cpu_partid_max, cpu_pmg_max, sys_partid_max, sys_pmg_max;
+
+	if (FIELD_GET(ID_AA64PFR0_EL1_MPAM_MASK, cpu_idr) !=
+	    FIELD_GET(ID_AA64PFR0_EL1_MPAM_MASK, sys_idr)) {
+		pr_crit("CPU%d: MPAM version mismatch\n", smp_processor_id());
+		cpu_die_early();
+	}
+
+	cpu_idr = read_cpuid(MPAMIDR_EL1);
+	sys_idr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
+	if (FIELD_GET(MPAMIDR_EL1_HAS_HCR, cpu_idr) !=
+	    FIELD_GET(MPAMIDR_EL1_HAS_HCR, sys_idr)) {
+		pr_crit("CPU%d: Missing MPAM HCR\n", smp_processor_id());
+		cpu_die_early();
+	}
+
+	cpu_partid_max = FIELD_GET(MPAMIDR_EL1_PARTID_MAX, cpu_idr);
+	cpu_pmg_max = FIELD_GET(MPAMIDR_EL1_PMG_MAX, cpu_idr);
+	sys_partid_max = FIELD_GET(MPAMIDR_EL1_PARTID_MAX, sys_idr);
+	sys_pmg_max = FIELD_GET(MPAMIDR_EL1_PMG_MAX, sys_idr);
+	if (cpu_partid_max < sys_partid_max || cpu_pmg_max < sys_pmg_max) {
+		pr_crit("CPU%d: MPAM PARTID/PMG max values are mismatched\n", smp_processor_id());
+		cpu_die_early();
+	}
+}
+
 /*
  * Run through the enabled system capabilities and enable() it on this CPU.
  * The capabilities were decided based on the available CPUs at the boot time.
@@ -3671,6 +3662,9 @@ static void verify_local_cpu_capabilities(void)
 
 	if (is_hyp_mode_available())
 		verify_hyp_capabilities();
+
+	if (system_supports_mpam())
+		verify_mpam_capabilities();
 }
 
 void check_local_cpu_capabilities(void)
@@ -3782,7 +3776,6 @@ void __init setup_system_features(void)
 
 	sve_setup();
 	sme_setup();
-	mpam_extra_caps();
 
 	/*
 	 * Check for sane CTR_EL0.CWG value.
