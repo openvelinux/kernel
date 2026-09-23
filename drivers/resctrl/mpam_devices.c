@@ -74,6 +74,7 @@ static struct mpam_pcc_chan *mpam_pcc_chan_get(struct device *dev,
 					       int subspace_id)
 {
 	struct mpam_pcc_chan *cur;
+	int err;
 
 	guard(mutex)(&pcc_chan_list_lock);
 
@@ -93,8 +94,19 @@ static struct mpam_pcc_chan *mpam_pcc_chan_get(struct device *dev,
 
 	cur->pcc_chan = pcc_mbox_request_channel(&cur->pcc_cl, subspace_id);
 	if (IS_ERR(cur->pcc_chan)) {
-		long err = PTR_ERR(cur->pcc_chan);
+		err = PTR_ERR(cur->pcc_chan);
 
+		kfree(cur);
+		return ERR_PTR(err);
+	}
+
+	/*
+	 * Velinux 6.6 leaves PCC shared memory mapping to the client.
+	 * Newer kernels map it as part of pcc_mbox_request_channel().
+	 */
+	err = pcc_mbox_ioremap(cur->pcc_chan->mchan);
+	if (err) {
+		pcc_mbox_free_channel(cur->pcc_chan);
 		kfree(cur);
 		return ERR_PTR(err);
 	}

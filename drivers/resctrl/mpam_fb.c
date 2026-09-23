@@ -145,6 +145,8 @@ static int mpam_fb_send_request(struct mpam_msc *msc, u32 msc_id,
 		return -ENODEV;
 
 	chan = pcc_chan->pcc_chan;
+	if (!chan || !chan->mchan || !chan->shmem)
+		return -ENODEV;
 
 	/* prune token to fit into the 10 bits inside the command register */
 	token = FIELD_GET(MPAM_MSC_TOKEN_MASK,
