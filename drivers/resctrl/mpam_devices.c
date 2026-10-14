@@ -3274,8 +3274,8 @@ void mpam_disable(struct work_struct *ignored)
 	list_for_each_entry_srcu(class, &mpam_classes, classes_list,
 				 srcu_read_lock_held(&mpam_srcu)) {
 		mpam_reset_class(class);
-		if (do_resctrl_exit)
-			mpam_resctrl_teardown_class(class);
+		/* Failed resctrl setup may already have allocated MBWU monitors. */
+		mpam_resctrl_teardown_class(class);
 	}
 	srcu_read_unlock(&mpam_srcu, idx);
 

@@ -2004,14 +2004,12 @@ void mpam_resctrl_teardown_class(struct mpam_class *class)
 	for_each_mpam_resctrl_control(res, rid) {
 		if (res->class == class) {
 			res->class = NULL;
-			break;
 		}
 	}
 	for_each_mpam_resctrl_mon(mon, eventid) {
 		if (mon->class == class) {
 			mpam_resctrl_teardown_mon(mon, class);
 			mon->class = NULL;
-			break;
 		}
 	}
 }
