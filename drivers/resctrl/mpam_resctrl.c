@@ -1028,16 +1028,17 @@ static void counter_update_class(enum resctrl_event_id evt_id,
 	}
 
 	num_monitors = mpam_monitors_free_running(class->props.num_mbwu_mon);
-	if (!num_monitors)
-		return;
-
-	monitors = alloc_mbwu_monitor_array(class, num_monitors);
-	if (IS_ERR(monitors))
-		return;
+	if (num_monitors) {
+		monitors = alloc_mbwu_monitor_array(class, num_monitors);
+		if (IS_ERR(monitors))
+			return;
+	} else {
+		monitors = NULL;
+	}
 
 	if (mon->mbwu_idx_to_mon) {
 		free_mbwu_monitors(existing_class, mon->mbwu_idx_to_mon,
-				   num_monitors);
+				   resctrl_arch_system_num_rmid_idx());
 		kfree(mon->mbwu_idx_to_mon);
 	}
 
