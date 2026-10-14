@@ -1616,6 +1616,10 @@ static int resctrl_parse_mbm_assignment(struct rdt_resource *r, struct rdtgroup 
 		rdt_last_cmd_printf("Invalid event %s\n", event);
 		return -ENOENT;
 	}
+	if (!tok || !*tok) {
+		rdt_last_cmd_puts("Missing MBM assignment\n");
+		return -EINVAL;
+	}
 
 next:
 	if (!tok || tok[0] == '\0')
@@ -1625,16 +1629,22 @@ next:
 	dom_str = strim(strsep(&tok, ";"));
 
 	id_str = strsep(&dom_str, "=");
+	if (!dom_str || !*dom_str) {
+		rdt_last_cmd_puts("Missing assignment state\n");
+		return -EINVAL;
+	}
 
 	/* Check for domain id '*' which means all domains */
-	if (id_str && *id_str == '*') {
+	if (id_str && !strcmp(id_str, "*")) {
 		ret = rdtgroup_modify_assign_state(dom_str, NULL, rdtgrp, mevt);
 		if (ret)
 			rdt_last_cmd_printf("Assign operation '%s:*=%s' failed\n",
 					    event, dom_str);
-		return ret;
+		if (ret)
+			return ret;
+		goto next;
 	} else if (!id_str || kstrtoul(id_str, 10, &dom_id)) {
-		rdt_last_cmd_puts("Missing domain id\n");
+		rdt_last_cmd_puts("Invalid domain id\n");
 		return -EINVAL;
 	}
 
