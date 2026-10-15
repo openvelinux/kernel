@@ -23,28 +23,25 @@
 	.align	11
 
 SYM_CODE_START(__kvm_hyp_init)
-	ventry	__invalid		// Synchronous EL2t
-	ventry	__invalid		// IRQ EL2t
-	ventry	__invalid		// FIQ EL2t
-	ventry	__invalid		// Error EL2t
+	ventry	.			// Synchronous EL2t
+	ventry	.			// IRQ EL2t
+	ventry	.			// FIQ EL2t
+	ventry	.			// Error EL2t
 
-	ventry	__invalid		// Synchronous EL2h
-	ventry	__invalid		// IRQ EL2h
-	ventry	__invalid		// FIQ EL2h
-	ventry	__invalid		// Error EL2h
+	ventry	.			// Synchronous EL2h
+	ventry	.			// IRQ EL2h
+	ventry	.			// FIQ EL2h
+	ventry	.			// Error EL2h
 
 	ventry	__do_hyp_init		// Synchronous 64-bit EL1
-	ventry	__invalid		// IRQ 64-bit EL1
-	ventry	__invalid		// FIQ 64-bit EL1
-	ventry	__invalid		// Error 64-bit EL1
+	ventry	.			// IRQ 64-bit EL1
+	ventry	.			// FIQ 64-bit EL1
+	ventry	.			// Error 64-bit EL1
 
-	ventry	__invalid		// Synchronous 32-bit EL1
-	ventry	__invalid		// IRQ 32-bit EL1
-	ventry	__invalid		// FIQ 32-bit EL1
-	ventry	__invalid		// Error 32-bit EL1
-
-__invalid:
-	b	.
+	ventry	.			// Synchronous 32-bit EL1
+	ventry	.			// IRQ 32-bit EL1
+	ventry	.			// FIQ 32-bit EL1
+	ventry	.			// Error 32-bit EL1
 
 	/*
 	 * Only uses x0..x3 so as to not clobber callee-saved SMCCC registers.
@@ -75,6 +72,13 @@ __do_hyp_init:
 	eret
 SYM_CODE_END(__kvm_hyp_init)
 
+SYM_CODE_START_LOCAL(__kvm_init_el2_state)
+	/* Initialize EL2 CPU state to sane values. */
+	init_el2_state				// Clobbers x0..x2
+	finalise_el2_state
+	ret
+SYM_CODE_END(__kvm_init_el2_state)
+
 /*
  * Initialize the hypervisor in EL2.
  *
@@ -97,12 +101,18 @@ SYM_CODE_START_LOCAL(___kvm_hyp_init)
 	and	x2, x1, x2
 	cbz	x2, 1f
 
-	// hVHE: Replay the EL2 setup to account for the E2H bit
-	// TPIDR_EL2 is used to preserve x0 across the macro maze...
+	/*
+	 * hVHE: Replay the EL2 setup to account for the E2H bit
+	 * TPIDR_EL2 and FAR_EL2 are used to preserve x0 and LR across
+	 * the macro maze...
+	 */
 	isb
 	msr	tpidr_el2, x0
-	init_el2_state
-	finalise_el2_state
+	msr	far_el2, lr
+
+	bl	__kvm_init_el2_state
+
+	mrs	lr, far_el2
 	mrs	x0, tpidr_el2
 
 1:
@@ -200,9 +210,7 @@ SYM_CODE_START_LOCAL(__kvm_hyp_init_cpu)
 
 	init_el2_hcr	0
 
-	/* Initialize EL2 CPU state to sane values. */
-	init_el2_state				// Clobbers x0..x2
-	finalise_el2_state
+	bl	__kvm_init_el2_state
 
 	/* Enable MMU, set vectors and stack. */
 	mov	x0, x28

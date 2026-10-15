@@ -20,7 +20,6 @@
 #include <asm/fpsimd.h>
 #include <asm/cpufeature.h>
 #include <clocksource/arm_arch_timer.h>
-#include <asm/mpam.h>
 
 DEFINE_STATIC_KEY_FALSE(kvm_protected_mode_initialized);
 EXPORT_SYMBOL(kvm_protected_mode_initialized);
@@ -100,7 +99,6 @@ EXPORT_SYMBOL(mte_clear_page_tags);
 #endif
 
 EXPORT_SYMBOL(cpu_logical_map);
-EXPORT_SYMBOL(arm64_mpam_has_hcr);
 
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 EXPORT_SYMBOL(vtimer_mbigen_set_auto_clr);

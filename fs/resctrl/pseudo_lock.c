@@ -17,14 +17,10 @@
 #include <linux/debugfs.h>
 #include <linux/kthread.h>
 #include <linux/mman.h>
-#include <linux/perf_event.h>
 #include <linux/pm_qos.h>
+#include <linux/resctrl.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-
-#include <asm/cacheflush.h>
-#include <asm/resctrl.h>
-#include <asm/perf_event.h>
 
 #include "internal.h"
 
@@ -33,6 +29,7 @@
  * pseudo-locked regions.
  */
 static unsigned int pseudo_lock_major;
+
 static unsigned long pseudo_lock_minor_avail = GENMASK(MINORBITS, 0);
 
 static char *pseudo_lock_devnode(const struct device *dev, umode_t *mode)
@@ -42,7 +39,8 @@ static char *pseudo_lock_devnode(const struct device *dev, umode_t *mode)
 	rdtgrp = dev_get_drvdata(dev);
 	if (mode)
 		*mode = 0600;
-	return kasprintf(GFP_KERNEL, "pseudo_lock/%s", rdtgrp->kn->name);
+	guard(mutex)(&rdtgroup_mutex);
+	return kasprintf(GFP_KERNEL, "pseudo_lock/%s", rdt_kn_name(rdtgrp->kn));
 }
 
 static const struct class pseudo_lock_class = {
@@ -155,7 +153,7 @@ static int pseudo_lock_cstates_constrain(struct pseudo_lock_region *plr)
 	int cpu;
 	int ret;
 
-	for_each_cpu(cpu, &plr->d->cpu_mask) {
+	for_each_cpu(cpu, &plr->d->hdr.cpu_mask) {
 		pm_req = kzalloc(sizeof(*pm_req), GFP_KERNEL);
 		if (!pm_req) {
 			rdt_last_cmd_puts("Failure to allocate memory for PM QoS\n");
@@ -226,12 +224,15 @@ static void pseudo_lock_region_clear(struct pseudo_lock_region *plr)
  */
 static int pseudo_lock_region_init(struct pseudo_lock_region *plr)
 {
-	struct cpu_cacheinfo *ci;
+	enum resctrl_scope scope = plr->s->res->ctrl_scope;
+	struct cacheinfo *ci;
 	int ret;
-	int i;
+
+	if (WARN_ON_ONCE(scope != RESCTRL_L2_CACHE && scope != RESCTRL_L3_CACHE))
+		return -ENODEV;
 
 	/* Pick the first cpu we find that is associated with the cache. */
-	plr->cpu = cpumask_first(&plr->d->cpu_mask);
+	plr->cpu = cpumask_first(&plr->d->hdr.cpu_mask);
 
 	if (!cpu_online(plr->cpu)) {
 		rdt_last_cmd_printf("CPU %u associated with cache not online\n",
@@ -240,15 +241,11 @@ static int pseudo_lock_region_init(struct pseudo_lock_region *plr)
 		goto out_region;
 	}
 
-	ci = get_cpu_cacheinfo(plr->cpu);
-
-	plr->size = rdtgroup_cbm_to_size(plr->s->res, plr->d, plr->cbm);
-
-	for (i = 0; i < ci->num_leaves; i++) {
-		if (ci->info_list[i].level == plr->s->res->cache_level) {
-			plr->line_size = ci->info_list[i].coherency_line_size;
-			return 0;
-		}
+	ci = get_cpu_cacheinfo_level(plr->cpu, scope);
+	if (ci) {
+		plr->line_size = ci->coherency_line_size;
+		plr->size = rdtgroup_cbm_to_size(plr->s->res, plr->d, plr->cbm);
+		return 0;
 	}
 
 	ret = -1;
@@ -580,9 +577,6 @@ int rdtgroup_locksetup_exit(struct rdtgroup *rdtgrp)
 {
 	int ret;
 
-	if (!IS_ENABLED(CONFIG_RESCTRL_FS_PSEUDO_LOCK))
-		return -EOPNOTSUPP;
-
 	if (resctrl_arch_mon_capable()) {
 		ret = alloc_rmid(rdtgrp->closid);
 		if (ret < 0) {
@@ -617,7 +611,7 @@ int rdtgroup_locksetup_exit(struct rdtgroup *rdtgrp)
  * Return: true if @cbm overlaps with pseudo-locked region on @d, false
  * otherwise.
  */
-bool rdtgroup_cbm_overlaps_pseudo_locked(struct rdt_domain *d, unsigned long cbm)
+bool rdtgroup_cbm_overlaps_pseudo_locked(struct rdt_ctrl_domain *d, unsigned long cbm)
 {
 	unsigned int cbm_len;
 	unsigned long cbm_b;
@@ -644,19 +638,15 @@ bool rdtgroup_cbm_overlaps_pseudo_locked(struct rdt_domain *d, unsigned long cbm
  *         if it is not possible to test due to memory allocation issue,
  *         false otherwise.
  */
-bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_domain *d)
+bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_ctrl_domain *d)
 {
+	struct rdt_ctrl_domain *d_i;
 	cpumask_var_t cpu_with_psl;
-	enum resctrl_res_level i;
 	struct rdt_resource *r;
-	struct rdt_domain *d_i;
 	bool ret = false;
 
 	/* Walking r->domains, ensure it can't race with cpuhp */
 	lockdep_assert_cpus_held();
-
-	if (!IS_ENABLED(CONFIG_RESCTRL_FS_PSEUDO_LOCK))
-		return false;
 
 	if (!zalloc_cpumask_var(&cpu_with_psl, GFP_KERNEL))
 		return true;
@@ -665,15 +655,11 @@ bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_domain *d)
 	 * First determine which cpus have pseudo-locked regions
 	 * associated with them.
 	 */
-	for (i = 0; i < RDT_NUM_RESOURCES; i++) {
-		r = resctrl_arch_get_resource(i);
-		if (!r->alloc_capable)
-			continue;
-
-		list_for_each_entry(d_i, &r->domains, list) {
+	for_each_alloc_capable_rdt_resource(r) {
+		list_for_each_entry(d_i, &r->ctrl_domains, hdr.list) {
 			if (d_i->plr)
 				cpumask_or(cpu_with_psl, cpu_with_psl,
-					   &d_i->cpu_mask);
+					   &d_i->hdr.cpu_mask);
 		}
 	}
 
@@ -681,7 +667,7 @@ bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_domain *d)
 	 * Next test if new pseudo-locked region would intersect with
 	 * existing region.
 	 */
-	if (cpumask_intersects(&d->cpu_mask, cpu_with_psl))
+	if (cpumask_intersects(&d->hdr.cpu_mask, cpu_with_psl))
 		ret = true;
 
 	free_cpumask_var(cpu_with_psl);
@@ -721,7 +707,7 @@ static int pseudo_lock_measure_cycles(struct rdtgroup *rdtgrp, int sel)
 	}
 
 	plr->thread_done = 0;
-	cpu = cpumask_first(&plr->d->cpu_mask);
+	cpu = cpumask_first(&plr->d->hdr.cpu_mask);
 	if (!cpu_online(cpu)) {
 		ret = -ENODEV;
 		goto out;
@@ -730,20 +716,14 @@ static int pseudo_lock_measure_cycles(struct rdtgroup *rdtgrp, int sel)
 	plr->cpu = cpu;
 
 	if (sel == 1)
-		thread = kthread_create_on_node(resctrl_arch_measure_cycles_lat_fn,
-						plr, cpu_to_node(cpu),
-						"pseudo_lock_measure/%u",
-						cpu);
+		thread = kthread_run_on_cpu(resctrl_arch_measure_cycles_lat_fn,
+					    plr, cpu, "pseudo_lock_measure/%u");
 	else if (sel == 2)
-		thread = kthread_create_on_node(resctrl_arch_measure_l2_residency,
-						plr, cpu_to_node(cpu),
-						"pseudo_lock_measure/%u",
-						cpu);
+		thread = kthread_run_on_cpu(resctrl_arch_measure_l2_residency,
+					    plr, cpu, "pseudo_lock_measure/%u");
 	else if (sel == 3)
-		thread = kthread_create_on_node(resctrl_arch_measure_l3_residency,
-						plr, cpu_to_node(cpu),
-						"pseudo_lock_measure/%u",
-						cpu);
+		thread = kthread_run_on_cpu(resctrl_arch_measure_l3_residency,
+					    plr, cpu, "pseudo_lock_measure/%u");
 	else
 		goto out;
 
@@ -751,8 +731,6 @@ static int pseudo_lock_measure_cycles(struct rdtgroup *rdtgrp, int sel)
 		ret = PTR_ERR(thread);
 		goto out;
 	}
-	kthread_bind(thread, cpu);
-	wake_up_process(thread);
 
 	ret = wait_event_interruptible(plr->lock_thread_wq,
 				       plr->thread_done == 1);
@@ -826,10 +804,8 @@ int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp)
 	struct task_struct *thread;
 	unsigned int new_minor;
 	struct device *dev;
+	char *kn_name __free(kfree) = NULL;
 	int ret;
-
-	if (!IS_ENABLED(CONFIG_RESCTRL_FS_PSEUDO_LOCK))
-		return -EOPNOTSUPP;
 
 	ret = pseudo_lock_region_alloc(plr);
 	if (ret < 0)
@@ -840,21 +816,21 @@ int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp)
 		ret = -EINVAL;
 		goto out_region;
 	}
+	kn_name = kstrdup(rdt_kn_name(rdtgrp->kn), GFP_KERNEL);
+	if (!kn_name) {
+		ret = -ENOMEM;
+		goto out_cstates;
+	}
 
 	plr->thread_done = 0;
 
-	plr->closid = rdtgrp->closid;
-	thread = kthread_create_on_node(resctrl_arch_pseudo_lock_fn, plr,
-					cpu_to_node(plr->cpu),
-					"pseudo_lock/%u", plr->cpu);
+	thread = kthread_run_on_cpu(resctrl_arch_pseudo_lock_fn, plr,
+				    plr->cpu, "pseudo_lock/%u");
 	if (IS_ERR(thread)) {
 		ret = PTR_ERR(thread);
 		rdt_last_cmd_printf("Locking thread returned error %d\n", ret);
 		goto out_cstates;
 	}
-
-	kthread_bind(thread, plr->cpu);
-	wake_up_process(thread);
 
 	ret = wait_event_interruptible(plr->lock_thread_wq,
 				       plr->thread_done == 1);
@@ -889,8 +865,7 @@ int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp)
 	mutex_unlock(&rdtgroup_mutex);
 
 	if (!IS_ERR_OR_NULL(debugfs_resctrl)) {
-		plr->debugfs_dir = debugfs_create_dir(rdtgrp->kn->name,
-						      debugfs_resctrl);
+		plr->debugfs_dir = debugfs_create_dir(kn_name, debugfs_resctrl);
 		if (!IS_ERR_OR_NULL(plr->debugfs_dir))
 			debugfs_create_file("pseudo_lock_measure", 0200,
 					    plr->debugfs_dir, rdtgrp,
@@ -899,7 +874,7 @@ int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp)
 
 	dev = device_create(&pseudo_lock_class, NULL,
 			    MKDEV(pseudo_lock_major, new_minor),
-			    rdtgrp, "%s", rdtgrp->kn->name);
+			    rdtgrp, "%s", kn_name);
 
 	mutex_lock(&rdtgroup_mutex);
 
@@ -956,9 +931,6 @@ out:
 void rdtgroup_pseudo_lock_remove(struct rdtgroup *rdtgrp)
 {
 	struct pseudo_lock_region *plr = rdtgrp->plr;
-
-	if (!IS_ENABLED(CONFIG_RESCTRL_FS_PSEUDO_LOCK))
-		return;
 
 	if (rdtgrp->mode == RDT_MODE_PSEUDO_LOCKSETUP) {
 		/*
@@ -1058,7 +1030,7 @@ static int pseudo_lock_dev_mmap(struct file *filp, struct vm_area_struct *vma)
 	 * may be scheduled elsewhere and invalidate entries in the
 	 * pseudo-locked region.
 	 */
-	if (!cpumask_subset(current->cpus_ptr, &plr->d->cpu_mask)) {
+	if (!cpumask_subset(current->cpus_ptr, &plr->d->hdr.cpu_mask)) {
 		mutex_unlock(&rdtgroup_mutex);
 		return -EINVAL;
 	}
@@ -1099,7 +1071,6 @@ static int pseudo_lock_dev_mmap(struct file *filp, struct vm_area_struct *vma)
 
 static const struct file_operations pseudo_lock_dev_fops = {
 	.owner =	THIS_MODULE,
-	.llseek =	no_llseek,
 	.read =		NULL,
 	.write =	NULL,
 	.open =		pseudo_lock_dev_open,
