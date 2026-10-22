@@ -656,7 +656,8 @@ static int __init skx_init(void)
 			d->imc[i].mc = mc++;
 			d->imc[i].lmc = i;
 			d->imc[i].src_id = src_id;
-			rc = skx_register_mci(&d->imc[i], d->imc[i].chan[0].cdev,
+			rc = skx_register_mci(&d->imc[i], &d->imc[i].chan[0].cdev->dev,
+					      pci_name(d->imc[i].chan[0].cdev),
 					      "Skylake Socket", EDAC_MOD_STR,
 					      skx_get_dimm_config, cfg);
 			if (rc < 0)
