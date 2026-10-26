@@ -17,6 +17,7 @@
 #include <linux/acpi.h>
 #include <linux/dmi.h>
 #include <linux/adxl.h>
+#include <linux/overflow.h>
 #include <acpi/nfit.h>
 #include <asm/mce.h>
 #include <asm/uv/uv.h>
@@ -29,10 +30,12 @@ static const char * const component_names[] = {
 	[INDEX_CHANNEL]		= "ChannelId",
 	[INDEX_DIMM]		= "DimmSlotId",
 	[INDEX_CS]		= "ChipSelect",
+	[INDEX_SUBCH]		= "SubChId",
 	[INDEX_NM_MEMCTRL]	= "NmMemoryControllerId",
 	[INDEX_NM_CHANNEL]	= "NmChannelId",
 	[INDEX_NM_DIMM]		= "NmDimmSlotId",
 	[INDEX_NM_CS]		= "NmChipSelect",
+	[INDEX_NM_SUBCH]	= "NmSubChId",
 };
 
 static int component_indices[ARRAY_SIZE(component_names)];
@@ -41,14 +44,283 @@ static const char * const *adxl_component_names;
 static u64 *adxl_values;
 static char *adxl_msg;
 static unsigned long adxl_nm_bitmap;
+static unsigned long adxl_bitmap;
 
 static char skx_msg[MSG_SIZE];
 static skx_decode_f driver_decode;
-static skx_show_retry_log_f skx_show_retry_rd_err_log;
+static skx_show_rrl_f show_rrl;
 static u64 skx_tolm, skx_tohm;
 static LIST_HEAD(dev_edac_list);
 static bool skx_mem_cfg_2lm;
 static struct res_config *skx_res_cfg;
+
+u64 skx_readx(void __iomem *addr, u8 width)
+{
+	switch (width) {
+	case 1:
+		return readb(addr);
+	case 2:
+		return readw(addr);
+	case 4:
+		return readl(addr);
+	case 8:
+		return readq(addr);
+	default:
+		skx_printk(KERN_ERR, "Invalid reg 0x%p width %u to read.\n", addr, width);
+		return 0;
+	}
+}
+EXPORT_SYMBOL_GPL(skx_readx);
+
+static void skx_writex(void __iomem *addr, u8 width, u64 val)
+{
+	switch (width) {
+	case 1:
+		writeb((u8)val, addr);
+		return;
+	case 2:
+		writew((u16)val, addr);
+		return;
+	case 4:
+		writel((u32)val, addr);
+		return;
+	case 8:
+		writeq(val, addr);
+		return;
+	default:
+		skx_printk(KERN_ERR, "Invalid reg 0x%p width %u to write 0x%llx.\n", addr, width, val);
+	}
+}
+
+u64 skx_read_imc_reg(struct skx_imc *imc, int chan, u32 offset, u8 width)
+{
+	return skx_readx(imc->mbase + imc->chan_mmio_sz * chan + offset, width);
+}
+EXPORT_SYMBOL_GPL(skx_read_imc_reg);
+
+void skx_write_imc_reg(struct skx_imc *imc, int chan, u32 offset, u8 width, u64 val)
+{
+	skx_writex(imc->mbase + imc->chan_mmio_sz * chan + offset, width, val);
+}
+EXPORT_SYMBOL_GPL(skx_write_imc_reg);
+
+static void enable_rrl(struct skx_imc *imc, int chan, struct reg_rrl *rrl,
+		       int rrl_set, bool enable, u32 *rrl_ctl)
+{
+	enum rrl_source_type source = rrl->sources[rrl_set];
+	u32 offset = rrl->offsets[rrl_set][0], v;
+	u8 width = rrl->widths[0];
+	bool first, scrub;
+
+	/* First or last read error. */
+	first = (source == RRL_SRC_FRE_SCRUB || source == RRL_SRC_FRE_DEMAND);
+	/* Patrol scrub or on-demand read error. */
+	scrub = (source == RRL_SRC_FRE_SCRUB || source == RRL_SRC_LRE_SCRUB);
+
+	v = skx_read_imc_reg(imc, chan, offset, width);
+
+	if (enable) {
+		/* Save default configurations. */
+		*rrl_ctl = v;
+		v &= ~rrl->uc_mask;
+
+		if (first)
+			v |= rrl->noover_mask;
+		else
+			v &= ~rrl->noover_mask;
+
+		if (scrub)
+			v |= rrl->en_patspr_mask;
+		else
+			v &= ~rrl->en_patspr_mask;
+
+		v |= rrl->en_mask;
+	} else {
+		/* Restore default configurations. */
+		if (*rrl_ctl & rrl->uc_mask)
+			v |= rrl->uc_mask;
+
+		if (first) {
+			if (!(*rrl_ctl & rrl->noover_mask))
+				v &= ~rrl->noover_mask;
+		} else {
+			if (*rrl_ctl & rrl->noover_mask)
+				v |= rrl->noover_mask;
+		}
+
+		if (scrub) {
+			if (!(*rrl_ctl & rrl->en_patspr_mask))
+				v &= ~rrl->en_patspr_mask;
+		} else {
+			if (*rrl_ctl & rrl->en_patspr_mask)
+				v |= rrl->en_patspr_mask;
+		}
+
+		if (!(*rrl_ctl & rrl->en_mask))
+			v &= ~rrl->en_mask;
+	}
+
+	skx_write_imc_reg(imc, chan, offset, width, v);
+}
+
+static void enable_rrls(struct skx_imc *imc, int chan, struct reg_rrl *rrl,
+			bool enable, u32 *rrl_ctl)
+{
+	for (int i = 0; i < rrl->set_num; i++)
+		enable_rrl(imc, chan, rrl, i, enable, rrl_ctl + i);
+}
+
+static void enable_rrls_ddr(struct skx_imc *imc, bool enable)
+{
+	struct reg_rrl **rrl_ddr = skx_res_cfg->reg_rrl_ddr;
+	int i, chan_num = skx_res_cfg->ddr_chan_num;
+	struct skx_channel *chan = imc->chan;
+
+	if (!imc->mbase)
+		return;
+
+	for (i = 0; i < chan_num; i++) {
+		enable_rrls(imc, i, rrl_ddr[0], enable, chan[i].rrl_ctl[0]);
+		if (rrl_ddr[1])
+			enable_rrls(imc, i, rrl_ddr[1], enable, chan[i].rrl_ctl[1]);
+	}
+}
+
+static void enable_rrls_hbm(struct skx_imc *imc, bool enable)
+{
+	struct reg_rrl **rrl_hbm = skx_res_cfg->reg_rrl_hbm;
+	int i, chan_num = skx_res_cfg->hbm_chan_num;
+	struct skx_channel *chan = imc->chan;
+
+	if (!imc->mbase || !imc->hbm_mc || !rrl_hbm[0] || !rrl_hbm[1])
+		return;
+
+	for (i = 0; i < chan_num; i++) {
+		enable_rrls(imc, i, rrl_hbm[0], enable, chan[i].rrl_ctl[0]);
+		enable_rrls(imc, i, rrl_hbm[1], enable, chan[i].rrl_ctl[1]);
+	}
+}
+
+void skx_enable_rrl(bool enable)
+{
+	struct skx_dev *d;
+	int i, imc_num;
+
+	edac_dbg(2, "\n");
+
+	list_for_each_entry(d, &dev_edac_list, list) {
+		imc_num  = skx_res_cfg->ddr_imc_num;
+		for (i = 0; i < imc_num; i++)
+			enable_rrls_ddr(&d->imc[i], enable);
+
+		imc_num += skx_res_cfg->hbm_imc_num;
+		for (; i < imc_num; i++)
+			enable_rrls_hbm(&d->imc[i], enable);
+	}
+}
+EXPORT_SYMBOL_GPL(skx_enable_rrl);
+
+static struct reg_rrl *get_rrl_reg(struct decoded_addr *res, struct res_config *cfg)
+{
+	struct skx_imc *imc = &res->dev->imc[res->imc];
+
+	/* HBM has two groups of RRL sets, one per pseudo-channel. */
+	if (imc->hbm_mc)
+		return cfg->reg_rrl_hbm[res->cs & 1];
+
+	/* One group of RRL sets per DDR channel. */
+	if (!cfg->reg_rrl_ddr[1])
+		return cfg->reg_rrl_ddr[0];
+
+	if (res->subch == -1) {
+		skx_printk(KERN_ERR, "Invalid sub-channel id (-1), possibly missing %s ADXL component.\n", component_names[INDEX_SUBCH]);
+		return NULL;
+	}
+
+	/* Two groups of RRL sets per DDR channel (e.g., DMR: one group per sub-channel). */
+	return cfg->reg_rrl_ddr[res->subch & 1];
+}
+
+void skx_show_rrl(struct decoded_addr *res, char *msg, int len, bool scrub_err)
+{
+	struct skx_imc *imc = &res->dev->imc[res->imc];
+	int i, j, n, ch = res->channel;
+	u64 log, corr, status_mask;
+	struct reg_rrl *rrl;
+	bool scrub;
+	u32 offset;
+	u8 width;
+
+	if (!imc->mbase)
+		return;
+
+	rrl = get_rrl_reg(res, skx_res_cfg);
+	if (!rrl)
+		return;
+
+	status_mask = rrl->over_mask | rrl->uc_mask | rrl->v_mask;
+
+	n = scnprintf(msg, len, " retry_rd_err_log[");
+	for (i = 0; i < rrl->set_num; i++) {
+		scrub = (rrl->sources[i] == RRL_SRC_FRE_SCRUB || rrl->sources[i] == RRL_SRC_LRE_SCRUB);
+		if (scrub_err != scrub)
+			continue;
+
+		for (j = 0; j < rrl->reg_num && len - n > 0; j++) {
+			offset = rrl->offsets[i][j];
+			width = rrl->widths[j];
+			log = skx_read_imc_reg(imc, ch, offset, width);
+
+			if (width == 4)
+				n += scnprintf(msg + n, len - n, "%.8llx ", log);
+			else
+				n += scnprintf(msg + n, len - n, "%.16llx ", log);
+
+			/* Clear RRL status if RRL in Linux control mode. */
+			if (skx_res_cfg->rrl_ctrl_mode == RRL_CTRL_LINUX && !j && (log & status_mask))
+				skx_write_imc_reg(imc, ch, offset, width, log & ~status_mask);
+		}
+	}
+
+	/* Move back one space. */
+	n--;
+	n += scnprintf(msg + n, len - n, "]");
+
+	if (len - n > 0) {
+		n += scnprintf(msg + n, len - n, " correrrcnt[");
+		for (i = 0; i < rrl->cecnt_num && len - n > 0; i++) {
+			offset = rrl->cecnt_offsets[i];
+			width = rrl->cecnt_widths[i];
+			corr = skx_read_imc_reg(imc, ch, offset, width);
+
+			/* CPUs {ICX,SPR} encode two counters per 4-byte CORRERRCNT register. */
+			if (skx_res_cfg->type <= SPR) {
+				n += scnprintf(msg + n, len - n, "%.4llx %.4llx ",
+					      corr & 0xffff, corr >> 16);
+			} else {
+			/* CPUs {GNR} encode one counter per CORRERRCNT register. */
+				if (width == 4)
+					n += scnprintf(msg + n, len - n, "%.8llx ", corr);
+				else
+					n += scnprintf(msg + n, len - n, "%.16llx ", corr);
+			}
+		}
+
+		/* Move back one space. */
+		n--;
+		n += scnprintf(msg + n, len - n, "]");
+	}
+}
+EXPORT_SYMBOL_GPL(skx_show_rrl);
+
+static bool adxl_component_required(int idx)
+{
+	return idx == INDEX_SOCKET ||
+	       idx == INDEX_MEMCTRL ||
+	       idx == INDEX_CHANNEL ||
+	       idx == INDEX_DIMM ||
+	       idx == INDEX_CS;
+}
 
 int skx_adxl_get(void)
 {
@@ -68,12 +340,14 @@ int skx_adxl_get(void)
 
 				if (i >= INDEX_NM_FIRST)
 					adxl_nm_bitmap |= 1 << i;
+				else
+					adxl_bitmap |= 1 << i;
 
 				break;
 			}
 		}
 
-		if (!names[j] && i < INDEX_NM_FIRST)
+		if (!names[j] && adxl_component_required(i))
 			goto err;
 	}
 
@@ -124,7 +398,7 @@ void skx_adxl_put(void)
 }
 EXPORT_SYMBOL_GPL(skx_adxl_put);
 
-static void skx_init_mc_mapping(struct skx_dev *d)
+void skx_init_mc_mapping(struct skx_dev *d)
 {
 	/*
 	 * By default, the BIOS presents all memory controllers within each
@@ -132,31 +406,38 @@ static void skx_init_mc_mapping(struct skx_dev *d)
 	 * the logical indices of the memory controllers enumerated by the
 	 * EDAC driver.
 	 */
-	for (int i = 0; i < NUM_IMC; i++)
-		d->mc_mapping[i] = i;
+	for (int i = 0; i < d->num_imc; i++)
+		d->imc[i].mc_mapping = i;
 }
+EXPORT_SYMBOL_GPL(skx_init_mc_mapping);
 
 void skx_set_mc_mapping(struct skx_dev *d, u8 pmc, u8 lmc)
 {
 	edac_dbg(0, "Set the mapping of mc phy idx to logical idx: %02d -> %02d\n",
 		 pmc, lmc);
 
-	d->mc_mapping[pmc] = lmc;
+	d->imc[lmc].mc_mapping = pmc;
 }
 EXPORT_SYMBOL_GPL(skx_set_mc_mapping);
 
-static u8 skx_get_mc_mapping(struct skx_dev *d, u8 pmc)
+static int skx_get_mc_mapping(struct skx_dev *d, u8 pmc)
 {
-	edac_dbg(0, "Get the mapping of mc phy idx to logical idx: %02d -> %02d\n",
-		 pmc, d->mc_mapping[pmc]);
+	for (int lmc = 0; lmc < d->num_imc; lmc++) {
+		if (d->imc[lmc].mc_mapping == pmc) {
+			edac_dbg(0, "Get the mapping of mc phy idx to logical idx: %02d -> %02d\n",
+				 pmc, lmc);
 
-	return d->mc_mapping[pmc];
+			return lmc;
+		}
+	}
+
+	return -1;
 }
 
 static bool skx_adxl_decode(struct decoded_addr *res, enum error_source err_src)
 {
+	int i, lmc, len = 0;
 	struct skx_dev *d;
-	int i, len = 0;
 
 	if (res->addr >= skx_tohm || (res->addr >= skx_tolm &&
 				      res->addr < BIT_ULL(32))) {
@@ -195,11 +476,15 @@ static bool skx_adxl_decode(struct decoded_addr *res, enum error_source err_src)
 			       (int)adxl_values[component_indices[INDEX_NM_DIMM]] : -1;
 		res->cs      = (adxl_nm_bitmap & BIT_NM_CS) ?
 			       (int)adxl_values[component_indices[INDEX_NM_CS]] : -1;
+		res->subch   = (adxl_nm_bitmap & BIT_NM_SUBCH) ?
+			       (int)adxl_values[component_indices[INDEX_NM_SUBCH]] : -1;
 	} else {
 		res->imc     = (int)adxl_values[component_indices[INDEX_MEMCTRL]];
 		res->channel = (int)adxl_values[component_indices[INDEX_CHANNEL]];
 		res->dimm    = (int)adxl_values[component_indices[INDEX_DIMM]];
 		res->cs      = (int)adxl_values[component_indices[INDEX_CS]];
+		res->subch   = (adxl_bitmap & BIT_SUBCH) ?
+			       (int)adxl_values[component_indices[INDEX_SUBCH]] : -1;
 	}
 
 	if (res->imc > NUM_IMC - 1 || res->imc < 0) {
@@ -220,7 +505,13 @@ static bool skx_adxl_decode(struct decoded_addr *res, enum error_source err_src)
 		return false;
 	}
 
-	res->imc = skx_get_mc_mapping(d, res->imc);
+	lmc = skx_get_mc_mapping(d, res->imc);
+	if (lmc < 0) {
+		skx_printk(KERN_ERR, "No lmc for imc %d\n", res->imc);
+		return false;
+	}
+
+	res->imc = lmc;
 
 	for (i = 0; i < adxl_component_count; i++) {
 		if (adxl_values[i] == ~0x0ull)
@@ -249,12 +540,17 @@ void skx_set_res_cfg(struct res_config *cfg)
 }
 EXPORT_SYMBOL_GPL(skx_set_res_cfg);
 
-void skx_set_decode(skx_decode_f decode, skx_show_retry_log_f show_retry_log)
+void skx_set_decode(skx_decode_f decode)
 {
 	driver_decode = decode;
-	skx_show_retry_rd_err_log = show_retry_log;
 }
 EXPORT_SYMBOL_GPL(skx_set_decode);
+
+void skx_set_show_rrl(skx_show_rrl_f rrl)
+{
+	show_rrl = rrl;
+}
+EXPORT_SYMBOL_GPL(skx_set_show_rrl);
 
 static int skx_get_pkg_id(struct skx_dev *d, u8 *id)
 {
@@ -322,10 +618,10 @@ static int get_width(u32 mtr)
  */
 int skx_get_all_bus_mappings(struct res_config *cfg, struct list_head **list)
 {
+	int ndev = 0, imc_num = cfg->ddr_imc_num + cfg->hbm_imc_num;
 	struct pci_dev *pdev, *prev;
 	struct skx_dev *d;
 	u32 reg;
-	int ndev = 0;
 
 	prev = NULL;
 	for (;;) {
@@ -333,7 +629,7 @@ int skx_get_all_bus_mappings(struct res_config *cfg, struct list_head **list)
 		if (!pdev)
 			break;
 		ndev++;
-		d = kzalloc(sizeof(*d), GFP_KERNEL);
+		d = kzalloc(struct_size(d, imc, imc_num), GFP_KERNEL);
 		if (!d) {
 			pci_dev_put(pdev);
 			return -ENOMEM;
@@ -356,8 +652,10 @@ int skx_get_all_bus_mappings(struct res_config *cfg, struct list_head **list)
 			d->seg = GET_BITFIELD(reg, 16, 23);
 		}
 
-		edac_dbg(2, "busses: 0x%x, 0x%x, 0x%x, 0x%x\n",
-			 d->bus[0], d->bus[1], d->bus[2], d->bus[3]);
+		d->num_imc = imc_num;
+
+		edac_dbg(2, "busses: 0x%x, 0x%x, 0x%x, 0x%x, imcs %d\n",
+			 d->bus[0], d->bus[1], d->bus[2], d->bus[3], imc_num);
 		list_add_tail(&d->list, &dev_edac_list);
 		prev = pdev;
 
@@ -369,6 +667,12 @@ int skx_get_all_bus_mappings(struct res_config *cfg, struct list_head **list)
 	return ndev;
 }
 EXPORT_SYMBOL_GPL(skx_get_all_bus_mappings);
+
+struct list_head *skx_get_edac_list(void)
+{
+	return &dev_edac_list;
+}
+EXPORT_SYMBOL_GPL(skx_get_edac_list);
 
 int skx_get_hi_lo(unsigned int did, int off[], u64 *tolm, u64 *tohm)
 {
@@ -410,6 +714,13 @@ fail:
 }
 EXPORT_SYMBOL_GPL(skx_get_hi_lo);
 
+void skx_set_hi_lo(u64 tolm, u64 tohm)
+{
+	skx_tolm = tolm;
+	skx_tohm = tohm;
+}
+EXPORT_SYMBOL_GPL(skx_set_hi_lo);
+
 static int skx_get_dimm_attr(u32 reg, int lobit, int hibit, int add,
 			     int minval, int maxval, const char *name)
 {
@@ -423,7 +734,7 @@ static int skx_get_dimm_attr(u32 reg, int lobit, int hibit, int add,
 }
 
 #define numrank(reg)	skx_get_dimm_attr(reg, 12, 13, 0, 0, 2, "ranks")
-#define numrow(reg)	skx_get_dimm_attr(reg, 2, 4, 12, 1, 6, "rows")
+#define numrow(reg)	skx_get_dimm_attr(reg, 2, 4, 12, 1, 7, "rows")
 #define numcol(reg)	skx_get_dimm_attr(reg, 0, 1, 10, 0, 2, "cols")
 
 int skx_get_dimm_info(u32 mtr, u32 mcmtr, u32 amap, struct dimm_info *dimm,
@@ -534,9 +845,9 @@ unknown_size:
 }
 EXPORT_SYMBOL_GPL(skx_get_nvdimm_info);
 
-int skx_register_mci(struct skx_imc *imc, struct pci_dev *pdev,
-		     const char *ctl_name, const char *mod_str,
-		     get_dimm_config_f get_dimm_config,
+int skx_register_mci(struct skx_imc *imc, struct device *dev,
+		     const char *dev_name, const char *ctl_name,
+		     const char *mod_str, get_dimm_config_f get_dimm_config,
 		     struct res_config *cfg)
 {
 	struct mem_ctl_info *mci;
@@ -546,10 +857,10 @@ int skx_register_mci(struct skx_imc *imc, struct pci_dev *pdev,
 
 	/* Allocate a new MC control structure */
 	layers[0].type = EDAC_MC_LAYER_CHANNEL;
-	layers[0].size = NUM_CHANNELS;
+	layers[0].size = imc->num_channels;
 	layers[0].is_virt_csrow = false;
 	layers[1].type = EDAC_MC_LAYER_SLOT;
-	layers[1].size = NUM_DIMMS;
+	layers[1].size = imc->num_dimms;
 	layers[1].is_virt_csrow = true;
 	mci = edac_mc_alloc(imc->mc, ARRAY_SIZE(layers), layers,
 			    sizeof(struct skx_pvt));
@@ -577,7 +888,7 @@ int skx_register_mci(struct skx_imc *imc, struct pci_dev *pdev,
 	mci->edac_ctl_cap = EDAC_FLAG_NONE;
 	mci->edac_cap = EDAC_FLAG_NONE;
 	mci->mod_name = mod_str;
-	mci->dev_name = pci_name(pdev);
+	mci->dev_name = dev_name;
 	mci->ctl_page_to_phys = NULL;
 
 	rc = get_dimm_config(mci, cfg);
@@ -585,7 +896,7 @@ int skx_register_mci(struct skx_imc *imc, struct pci_dev *pdev,
 		goto fail;
 
 	/* Record ptr to the generic device */
-	mci->pdev = &pdev->dev;
+	mci->pdev = dev;
 
 	/* Add this new MC control structure to EDAC's list of MCs */
 	if (unlikely(edac_mc_add_mc(mci))) {
@@ -689,8 +1000,8 @@ static void skx_mce_output_error(struct mem_ctl_info *mci,
 			 res->row, res->column, res->bank_address, res->bank_group);
 	}
 
-	if (skx_show_retry_rd_err_log)
-		skx_show_retry_rd_err_log(res, skx_msg + len, MSG_SIZE - len, scrub_err);
+	if (show_rrl)
+		show_rrl(res, skx_msg + len, MSG_SIZE - len, scrub_err);
 
 	edac_dbg(0, "%s\n", skx_msg);
 
@@ -789,7 +1100,7 @@ void skx_remove(void)
 
 	list_for_each_entry_safe(d, tmp, &dev_edac_list, list) {
 		list_del(&d->list);
-		for (i = 0; i < NUM_IMC; i++) {
+		for (i = 0; i < d->num_imc; i++) {
 			if (d->imc[i].mci)
 				skx_unregister_mci(&d->imc[i]);
 
@@ -799,7 +1110,10 @@ void skx_remove(void)
 			if (d->imc[i].mbase)
 				iounmap(d->imc[i].mbase);
 
-			for (j = 0; j < NUM_CHANNELS; j++) {
+			if (d->imc[i].dev)
+				put_device(d->imc[i].dev);
+
+			for (j = 0; j < d->imc[i].num_channels; j++) {
 				if (d->imc[i].chan[j].cdev)
 					pci_dev_put(d->imc[i].chan[j].cdev);
 			}
@@ -822,7 +1136,7 @@ EXPORT_SYMBOL_GPL(skx_remove);
 /*
  * Debug feature.
  * Exercise the address decode logic by writing an address to
- * /sys/kernel/debug/edac/{skx,i10nm}_test/addr.
+ * /sys/kernel/debug/edac/{skx,i10nm,imh}_test/addr.
  */
 static struct dentry *skx_test;
 
