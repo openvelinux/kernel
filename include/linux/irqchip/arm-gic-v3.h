@@ -41,6 +41,7 @@
 #define GICD_ICFGRnE			0x3000
 #define GICD_IROUTER			0x6000
 #define GICD_IROUTERnE			0x8000
+#define GICD_CFGID			0xF000
 #define GICD_IDREGS			0xFFD0
 #define GICD_PIDR2			0xFFE8
 
@@ -96,6 +97,8 @@
 
 #define GICD_IROUTER_SPI_MODE_ONE	(0U << 31)
 #define GICD_IROUTER_SPI_MODE_ANY	(1U << 31)
+
+#define GICD_CFGID_PEW			GENMASK_ULL(52, 48)
 
 #define GIC_PIDR2_ARCH_MASK		0xf0
 #define GIC_PIDR2_ARCH_GICv3		0x30
@@ -245,6 +248,7 @@
 #define GICR_TYPER_DirectLPIS		(1U << 3)
 #define GICR_TYPER_LAST			(1U << 4)
 #define GICR_TYPER_RVPEID		(1U << 7)
+#define GICR_TYPER_PR_NUMBER		GENMASK_ULL(23, 8)
 #define GICR_TYPER_COMMON_LPI_AFF	GENMASK_ULL(25, 24)
 #define GICR_TYPER_AFFINITY		GENMASK_ULL(63, 32)
 
@@ -634,12 +638,19 @@ struct rdists {
 	bool			has_vpend_valid_dirty;
 };
 
+struct gic_mbi_range {
+	u32 spi_start;
+	u32 nr_spis;
+};
+
 struct irq_domain;
 struct fwnode_handle;
 int __init its_lpi_memreserve_init(void);
 int its_cpu_init(void);
 int its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	     struct irq_domain *domain);
+
+int mbi_set_acpi_data(const struct gic_mbi_range *ranges, unsigned int nr_ranges);
 int mbi_init(struct fwnode_handle *fwnode, struct irq_domain *parent);
 
 static inline bool gic_enable_sre(void)
@@ -657,6 +668,15 @@ static inline bool gic_enable_sre(void)
 	return !!(val & ICC_SRE_EL1_SRE);
 }
 
+#ifdef CONFIG_HISILICON_ERRATUM_165010801
+extern void gic_irq_set_prio(struct irq_data *d, u8 prio);
+#endif
+
+#define GIC_MAX_MBI_FRAMES	4
+
+phys_addr_t gic_get_mbi_frame_address(struct irq_data *d);
+int gic_mbi_set_affinity(struct irq_data *d, const struct cpumask *mask_val, bool force);
+int gic_get_mbi_frames(phys_addr_t *addr);
 #endif
 
 #endif

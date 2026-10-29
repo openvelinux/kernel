@@ -164,6 +164,14 @@ struct msi_desc_data {
 
 #define MSI_MAX_INDEX		((unsigned int)USHRT_MAX)
 
+#define MSI_MAX_IOMMU_MAP	4
+
+struct msi_address_map {
+	u64		iommu_msi_iova : 58;
+	u64		iommu_msi_shift : 6;
+	phys_addr_t	msi_addr;
+};
+
 /**
  * struct msi_desc - Descriptor structure for MSI based interrupts
  * @irq:	The base interrupt number
@@ -193,8 +201,7 @@ struct msi_desc {
 	struct msi_msg			msg;
 	struct irq_affinity_desc	*affinity;
 #ifdef CONFIG_IRQ_MSI_IOMMU
-	u64				iommu_msi_iova : 58;
-	u64				iommu_msi_shift : 6;
+	struct msi_address_map		address_map[MSI_MAX_IOMMU_MAP];
 #endif
 #ifdef CONFIG_SYSFS
 	struct device_attribute		*sysfs_attrs;
@@ -312,12 +319,43 @@ struct msi_desc *msi_next_desc(struct device *dev, unsigned int domid,
 #define msi_desc_to_dev(desc)		((desc)->dev)
 
 static inline void msi_desc_set_iommu_msi_iova(struct msi_desc *desc, u64 msi_iova,
-					       unsigned int msi_shift)
+					       unsigned int msi_shift, phys_addr_t msi_addr)
 {
 #ifdef CONFIG_IRQ_MSI_IOMMU
-	desc->iommu_msi_iova = msi_iova >> msi_shift;
-	desc->iommu_msi_shift = msi_shift;
+	for (unsigned int i = 0; i < MSI_MAX_IOMMU_MAP; i++) {
+		if (desc->address_map[i].msi_addr == msi_addr)
+			return;
+
+		if (desc->address_map[i].iommu_msi_iova)
+			continue;
+
+		pr_debug("Mapping PA %pa\n", &msi_addr);
+		desc->address_map[i].iommu_msi_iova = msi_iova >> msi_shift;
+		desc->address_map[i].iommu_msi_shift = msi_shift;
+		desc->address_map[i].msi_addr = msi_addr;
+		return;
+	}
 #endif
+}
+
+static inline void msi_msg_set_addr(struct msi_desc *desc, struct msi_msg *msg,
+				    phys_addr_t msi_addr)
+{
+#ifdef CONFIG_IRQ_MSI_IOMMU
+	for (unsigned int i = 0; i < MSI_MAX_IOMMU_MAP; i++) {
+		if (desc->address_map[i].msi_addr == msi_addr) {
+			u64 msi_iova = desc->address_map[i].iommu_msi_iova <<
+				       desc->address_map[i].iommu_msi_shift;
+
+			msg->address_hi = upper_32_bits(msi_iova);
+			msg->address_lo = lower_32_bits(msi_iova) |
+					  (msi_addr & ((1 << desc->address_map[i].iommu_msi_shift) - 1));
+			return;
+		}
+	}
+#endif
+	msg->address_hi = upper_32_bits(msi_addr);
+	msg->address_lo = lower_32_bits(msi_addr);
 }
 
 int msi_domain_insert_msi_desc(struct device *dev, unsigned int domid,
