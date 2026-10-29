@@ -506,7 +506,7 @@ struct kvm_vcpu_arch {
 	u8 cflags;
 
 	/* Input flags to the hypervisor code, potentially cleared after use */
-	u8 iflags;
+	u16 iflags;
 
 	/* State flags for kernel bookkeeping, unused by the hypervisor code */
 	u8 sflags;
@@ -546,6 +546,8 @@ struct kvm_vcpu_arch {
 		u64 pmscr_el1;
 		/* Self-hosted trace */
 		u64 trfcr_el1;
+		/* Branch record buffer */
+		u64 brbcr_el1;
 	} host_debug_state;
 
 	/* VGIC state */
@@ -718,6 +720,8 @@ struct kvm_vcpu_arch {
 #define DEBUG_STATE_SAVE_TRBE	__vcpu_single_flag(iflags, BIT(6))
 /* vcpu running in HYP context */
 #define VCPU_HYP_CONTEXT	__vcpu_single_flag(iflags, BIT(7))
+/* Save host BRBE controls when entering an nVHE guest */
+#define DEBUG_STATE_SAVE_BRBE	__vcpu_single_flag(iflags, BIT(8))
 
 /* Physical CPU not in supported_cpus */
 #define ON_UNSUPPORTED_CPU	__vcpu_single_flag(sflags, BIT(2))

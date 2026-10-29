@@ -72,6 +72,11 @@ struct pmu_hw_events {
 	struct arm_pmu		*percpu_pmu;
 
 	int irq;
+
+	struct perf_branch_stack	*branch_stack;
+
+	/* Active events requesting branch records */
+	unsigned int		branch_users;
 };
 
 enum armpmu_attr_groups {
@@ -116,12 +121,15 @@ struct arm_pmu {
 	const struct attribute_group *attr_groups[ARMPMU_NR_ATTR_GROUPS + 1];
 	/* store the PMMIR_EL1 to expose slots */
 	u64		reg_pmmir;
+	u64		reg_brbidr;
 
 	/* Only to be used by ACPI probing code */
 	unsigned long acpi_cpuid;
 };
 
 #define to_arm_pmu(p) (container_of(p, struct arm_pmu, pmu))
+
+DECLARE_PER_CPU(struct arm_pmu *, cpu_armpmu);
 
 u64 armpmu_event_update(struct perf_event *event);
 

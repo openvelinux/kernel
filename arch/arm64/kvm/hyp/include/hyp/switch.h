@@ -82,6 +82,13 @@ static inline void __activate_traps_fpsimd32(struct kvm_vcpu *vcpu)
 static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpu_context *hctxt = &this_cpu_ptr(&kvm_host_data)->host_ctxt;
+	const u64 brbe_insn_mask = HFGITR_EL2_nBRBIALL_MASK |
+				   HFGITR_EL2_nBRBINJ_MASK;
+	const u64 brbe_read_mask = HDFGRTR_EL2_nBRBDATA_MASK |
+				   HDFGRTR_EL2_nBRBCTL_MASK |
+				   HDFGRTR_EL2_nBRBIDR_MASK;
+	const u64 brbe_write_mask = HDFGWTR_EL2_nBRBDATA_MASK |
+				    HDFGWTR_EL2_nBRBCTL_MASK;
 	u64 r_clr = 0, w_clr = 0, r_set = 0, w_set = 0, tmp;
 	u64 r_val, w_val;
 
@@ -90,6 +97,9 @@ static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 
 	ctxt_sys_reg(hctxt, HFGRTR_EL2) = read_sysreg_s(SYS_HFGRTR_EL2);
 	ctxt_sys_reg(hctxt, HFGWTR_EL2) = read_sysreg_s(SYS_HFGWTR_EL2);
+	ctxt_sys_reg(hctxt, HFGITR_EL2) = read_sysreg_s(SYS_HFGITR_EL2);
+	ctxt_sys_reg(hctxt, HDFGRTR_EL2) = read_sysreg_s(SYS_HDFGRTR_EL2);
+	ctxt_sys_reg(hctxt, HDFGWTR_EL2) = read_sysreg_s(SYS_HDFGWTR_EL2);
 
 	if (cpus_have_final_cap(ARM64_SME)) {
 		tmp = HFGxTR_EL2_nSMPRI_EL1_MASK | HFGxTR_EL2_nTPIDR2_EL0_MASK;
@@ -121,21 +131,25 @@ static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 	write_sysreg_s(r_val, SYS_HFGRTR_EL2);
 	write_sysreg_s(w_val, SYS_HFGWTR_EL2);
 
-	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
+	/* BRBE is hidden from guests; clearing nBRB* enables its traps. */
+	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu)) {
+		write_sysreg_s(ctxt_sys_reg(hctxt, HFGITR_EL2) &
+			       ~brbe_insn_mask, SYS_HFGITR_EL2);
+		write_sysreg_s(ctxt_sys_reg(hctxt, HDFGRTR_EL2) &
+			       ~brbe_read_mask, SYS_HDFGRTR_EL2);
+		write_sysreg_s(ctxt_sys_reg(hctxt, HDFGWTR_EL2) &
+			       ~brbe_write_mask, SYS_HDFGWTR_EL2);
 		return;
-
-	ctxt_sys_reg(hctxt, HFGITR_EL2) = read_sysreg_s(SYS_HFGITR_EL2);
+	}
 
 	r_set = r_clr = 0;
 	compute_clr_set(vcpu, HFGITR_EL2, r_clr, r_set);
 	r_val = __HFGITR_EL2_nMASK;
 	r_val |= r_set;
 	r_val &= ~r_clr;
+	r_val &= ~brbe_insn_mask;
 
 	write_sysreg_s(r_val, SYS_HFGITR_EL2);
-
-	ctxt_sys_reg(hctxt, HDFGRTR_EL2) = read_sysreg_s(SYS_HDFGRTR_EL2);
-	ctxt_sys_reg(hctxt, HDFGWTR_EL2) = read_sysreg_s(SYS_HDFGWTR_EL2);
 
 	r_clr = r_set = w_clr = w_set = 0;
 
@@ -145,10 +159,12 @@ static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 	r_val = __HDFGRTR_EL2_nMASK;
 	r_val |= r_set;
 	r_val &= ~r_clr;
+	r_val &= ~brbe_read_mask;
 
 	w_val = __HDFGWTR_EL2_nMASK;
 	w_val |= w_set;
 	w_val &= ~w_clr;
+	w_val &= ~brbe_write_mask;
 
 	write_sysreg_s(r_val, SYS_HDFGRTR_EL2);
 	write_sysreg_s(w_val, SYS_HDFGWTR_EL2);
@@ -163,9 +179,6 @@ static inline void __deactivate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 
 	write_sysreg_s(ctxt_sys_reg(hctxt, HFGRTR_EL2), SYS_HFGRTR_EL2);
 	write_sysreg_s(ctxt_sys_reg(hctxt, HFGWTR_EL2), SYS_HFGWTR_EL2);
-
-	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
-		return;
 
 	write_sysreg_s(ctxt_sys_reg(hctxt, HFGITR_EL2), SYS_HFGITR_EL2);
 	write_sysreg_s(ctxt_sys_reg(hctxt, HDFGRTR_EL2), SYS_HDFGRTR_EL2);
