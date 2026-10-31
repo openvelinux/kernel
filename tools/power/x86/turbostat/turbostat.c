@@ -7384,7 +7384,6 @@ legacy_i915:
 	if (!gfx_info[GFX_MHz].fp)
 		set_graphics_fp("/sys/class/graphics/fb0/device/drm/card0/gt_cur_freq_mhz", GFX_MHz);
 
-
 	set_graphics_fp("/sys/class/drm/card0/gt_act_freq_mhz", GFX_ACTMHz);
 	if (!gfx_info[GFX_ACTMHz].fp)
 		set_graphics_fp("/sys/class/graphics/fb0/device/drm/card0/gt_act_freq_mhz", GFX_ACTMHz);
@@ -10675,7 +10674,7 @@ int get_and_dump_counters(void)
 
 void print_version()
 {
-	fprintf(outf, "turbostat version 2026.09.28 - Len Brown <lenb@kernel.org>\n");
+	fprintf(outf, "turbostat version 2026.10.31 - Len Brown <lenb@kernel.org>\n");
 }
 
 #define COMMAND_LINE_SIZE 2048
