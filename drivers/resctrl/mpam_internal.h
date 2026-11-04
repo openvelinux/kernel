@@ -158,7 +158,7 @@ static inline bool __must_check mpam_mon_sel_lock(struct mpam_msc *msc)
 		return true;
 	}
 
-	if (!preemptible())
+	if (!in_task() || irqs_disabled())
 		return false;
 
 	mutex_lock(&msc->mon_sel_mutex);
