@@ -304,8 +304,6 @@ enum mcp_flags {
 
 void machine_check_poll(enum mcp_flags flags, mce_banks_t *b);
 
-bool mce_notify_irq(void);
-
 DECLARE_PER_CPU(struct mce, injectm);
 
 /* Disable CMCI/polling for MCA bank claimed by firmware */
@@ -409,8 +407,6 @@ enum smca_bank_types smca_get_bank_type(unsigned int cpu, unsigned int bank);
 static inline bool amd_mce_is_memory_error(struct mce *m)		{ return false; };
 static inline void mce_amd_feature_init(struct cpuinfo_x86 *c)		{ }
 #endif
-
-static inline void mce_hygon_feature_init(struct cpuinfo_x86 *c)	{ return mce_amd_feature_init(c); }
 
 unsigned long copy_mc_fragile_handle_tail(char *to, char *from, unsigned len);
 
