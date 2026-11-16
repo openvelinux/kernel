@@ -199,6 +199,8 @@ obj-$(CONFIG_HTE)		+= hte/
 obj-$(CONFIG_DRM_ACCEL)		+= accel/
 obj-$(CONFIG_CDX_BUS)		+= cdx/
 
+obj-$(CONFIG_ARM64_MPAM_DRIVER)	+= resctrl/
+
 obj-$(CONFIG_S390)		+= s390/
 
 obj-$(CONFIG_BYTEDANCE)		+= bytedance/

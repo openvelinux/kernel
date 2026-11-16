@@ -3,13 +3,11 @@
 #define _FS_RESCTRL_INTERNAL_H
 
 #include <linux/resctrl.h>
-#include <linux/sched.h>
 #include <linux/kernfs.h>
 #include <linux/fs_context.h>
-#include <linux/jump_label.h>
 #include <linux/tick.h>
 
-#include <asm/resctrl.h>
+#define CQM_LIMBOCHECK_INTERVAL	1000
 
 /**
  * cpumask_any_housekeeping() - Choose any CPU in @mask, preferring those that
@@ -33,15 +31,12 @@ cpumask_any_housekeeping(const struct cpumask *mask, int exclude_cpu)
 	else
 		cpu = cpumask_any_but(mask, exclude_cpu);
 
-	/* Only continue if tick_nohz_full_mask has been initialized. */
 	if (!tick_nohz_full_enabled())
 		return cpu;
 
-	/* If the CPU picked isn't marked nohz_full nothing more needs doing. */
 	if (cpu < nr_cpu_ids && !tick_nohz_full_cpu(cpu))
 		return cpu;
 
-	/* Try to find a CPU that isn't nohz_full to use in preference */
 	hk_cpu = cpumask_nth_andnot(0, mask, tick_nohz_full_mask);
 	if (hk_cpu == exclude_cpu)
 		hk_cpu = cpumask_nth_andnot(1, mask, tick_nohz_full_mask);
@@ -58,7 +53,6 @@ struct rdt_fs_context {
 	bool				enable_cdpl3;
 	bool				enable_mba_mbps;
 	bool				enable_debug;
-	bool				enable_l2;
 };
 
 static inline struct rdt_fs_context *rdt_fc2context(struct fs_context *fc)
@@ -69,35 +63,90 @@ static inline struct rdt_fs_context *rdt_fc2context(struct fs_context *fc)
 }
 
 /**
- * union mon_data_bits - Monitoring details for each event file
- * @priv:              Used to store monitoring event data in @u
- *                     as kernfs private data
- * @rid:               Resource id associated with the event file
- * @evtid:             Event id associated with the event file
- * @domid:             The domain to which the event file belongs
- * @u:                 Name of the bit fields struct
+ * struct mon_evt - Properties of a monitor event
+ * @evtid:		event id
+ * @rid:		resource id for this event
+ * @name:		name of the event
+ * @evt_cfg:		Event configuration value that represents the
+ *			memory transactions (e.g., READS_TO_LOCAL_MEM,
+ *			READS_TO_REMOTE_MEM) being tracked by @evtid.
+ *			Only valid if @evtid is an MBM event.
+ * @configurable:	true if the event is configurable
+ * @enabled:		true if the event is enabled
  */
-union mon_data_bits {
-	void *priv;
-	struct {
-		unsigned int rid		: 10;
-		enum resctrl_event_id evtid	: 8;
-		unsigned int domid		: 14;
-	} u;
+struct mon_evt {
+	enum resctrl_event_id	evtid;
+	enum resctrl_res_level	rid;
+	char			*name;
+	u32			evt_cfg;
+	bool			configurable;
+	bool			enabled;
 };
 
+extern struct mon_evt mon_event_all[QOS_NUM_EVENTS];
+
+#define for_each_mon_event(mevt) for (mevt = &mon_event_all[QOS_FIRST_EVENT];	\
+				      mevt < &mon_event_all[QOS_NUM_EVENTS]; mevt++)
+
+/**
+ * struct mon_data - Monitoring details for each event file.
+ * @list:            Member of the global @mon_data_kn_priv_list list.
+ * @rid:             Resource id associated with the event file.
+ * @evtid:           Event id associated with the event file.
+ * @sum:             Set when event must be summed across multiple
+ *                   domains.
+ * @domid:           When @sum is zero this is the domain to which
+ *                   the event file belongs. When @sum is one this
+ *                   is the id of the L3 cache that all domains to be
+ *                   summed share.
+ *
+ * Pointed to by the kernfs kn->priv field of monitoring event files.
+ * Readers and writers must hold rdtgroup_mutex.
+ */
+struct mon_data {
+	struct list_head	list;
+	enum resctrl_res_level	rid;
+	enum resctrl_event_id	evtid;
+	int			domid;
+	bool			sum;
+};
+
+/**
+ * struct rmid_read - Data passed across smp_call*() to read event count.
+ * @rgrp:  Resource group for which the counter is being read. If it is a parent
+ *	   resource group then its event count is summed with the count from all
+ *	   its child resource groups.
+ * @r:	   Resource describing the properties of the event being read.
+ * @d:	   Domain that the counter should be read from. If NULL then sum all
+ *	   domains in @r sharing L3 @ci.id
+ * @evtid: Which monitor event to read.
+ * @first: Initialize MBM counter when true.
+ * @ci:    Cacheinfo for L3. Only set when @d is NULL. Used when summing domains.
+ * @is_mbm_cntr: true if "mbm_event" counter assignment mode is enabled and it
+ *	   is an MBM event.
+ * @err:   Error encountered when reading counter.
+ * @val:   Returned value of event counter. If @rgrp is a parent resource group,
+ *	   @val includes the sum of event counts from its child resource groups.
+ *	   If @d is NULL, @val includes the sum of all domains in @r sharing @ci.id,
+ *	   (summed across child resource groups if @rgrp is a parent resource group).
+ * @arch_mon_ctx: Hardware monitor allocated for this read request (MPAM only).
+ */
 struct rmid_read {
 	struct rdtgroup		*rgrp;
 	struct rdt_resource	*r;
-	struct rdt_domain	*d;
+	struct rdt_mon_domain	*d;
 	enum resctrl_event_id	evtid;
 	bool			first;
+	struct cacheinfo	*ci;
+	bool			is_mbm_cntr;
 	int			err;
 	u64			val;
 	void			*arch_mon_ctx;
 };
 
 extern struct list_head resctrl_schema_all;
+
+extern bool resctrl_mounted;
 
 enum rdt_group_type {
 	RDTCTRL_GROUP = 0,
@@ -161,6 +210,7 @@ struct mongroup {
  *				monitor only or ctrl_mon group
  * @mon:			mongroup related data
  * @mode:			mode of resource group
+ * @mba_mbps_event:		input monitoring event id when mba_sc is enabled
  * @plr:			pseudo-locked region
  */
 struct rdtgroup {
@@ -173,8 +223,42 @@ struct rdtgroup {
 	enum rdt_group_type		type;
 	struct mongroup			mon;
 	enum rdtgrp_mode		mode;
+	enum resctrl_event_id		mba_mbps_event;
 	struct pseudo_lock_region	*plr;
 };
+
+/* rdtgroup.flags */
+#define	RDT_DELETED		1
+
+/* rftype.flags */
+#define RFTYPE_FLAGS_CPUS_LIST	1
+
+/*
+ * Define the file type flags for base and info directories.
+ */
+#define RFTYPE_INFO			BIT(0)
+
+#define RFTYPE_BASE			BIT(1)
+
+#define RFTYPE_CTRL			BIT(4)
+
+#define RFTYPE_MON			BIT(5)
+
+#define RFTYPE_TOP			BIT(6)
+
+#define RFTYPE_DEBUG			BIT(10)
+
+#define RFTYPE_ASSIGN_CONFIG		BIT(11)
+
+#define RFTYPE_CTRL_INFO		(RFTYPE_INFO | RFTYPE_CTRL)
+
+#define RFTYPE_MON_INFO			(RFTYPE_INFO | RFTYPE_MON)
+
+#define RFTYPE_TOP_INFO			(RFTYPE_INFO | RFTYPE_TOP)
+
+#define RFTYPE_CTRL_BASE		(RFTYPE_BASE | RFTYPE_CTRL)
+
+#define RFTYPE_MON_BASE			(RFTYPE_BASE | RFTYPE_MON)
 
 /* List of all resource groups */
 extern struct list_head rdt_all_groups;
@@ -219,78 +303,182 @@ struct mbm_state {
 	u32	prev_bw;
 };
 
-static inline  bool is_mba_sc(struct rdt_resource *r)
+extern struct mutex rdtgroup_mutex;
+
+static inline const char *rdt_kn_name(const struct kernfs_node *kn)
 {
-	if (!r)
-		r = resctrl_arch_get_resource(RDT_RESOURCE_MBA);
-
-	/*
-	 * The software controller support is only applicable to MBA resource.
-	 * Make sure to check for resource type.
-	 */
-	if (r->rid != RDT_RESOURCE_MBA)
-		return false;
-
-	return r->membw.mba_sc;
+	return rcu_dereference_check(kn->name, lockdep_is_held(&rdtgroup_mutex));
 }
 
-extern struct mutex rdtgroup_mutex;
 extern struct rdtgroup rdtgroup_default;
+
 extern struct dentry *debugfs_resctrl;
 
+extern enum resctrl_event_id mba_mbps_default_event;
+
 void rdt_last_cmd_clear(void);
+
 void rdt_last_cmd_puts(const char *s);
+
 __printf(1, 2)
 void rdt_last_cmd_printf(const char *fmt, ...);
 
 struct rdtgroup *rdtgroup_kn_lock_live(struct kernfs_node *kn);
+
 void rdtgroup_kn_unlock(struct kernfs_node *kn);
+bool info_kn_lock(struct kernfs_node *kn);
+void info_kn_unlock(struct kernfs_node *kn);
+
 int rdtgroup_kn_mode_restrict(struct rdtgroup *r, const char *name);
+
 int rdtgroup_kn_mode_restore(struct rdtgroup *r, const char *name,
 			     umode_t mask);
+
 ssize_t rdtgroup_schemata_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off);
+
 int rdtgroup_schemata_show(struct kernfs_open_file *of,
 			   struct seq_file *s, void *v);
-bool rdtgroup_cbm_overlaps(struct resctrl_schema *s, struct rdt_domain *d,
+
+ssize_t rdtgroup_mba_mbps_event_write(struct kernfs_open_file *of,
+				      char *buf, size_t nbytes, loff_t off);
+
+int rdtgroup_mba_mbps_event_show(struct kernfs_open_file *of,
+				 struct seq_file *s, void *v);
+
+bool rdtgroup_cbm_overlaps(struct resctrl_schema *s, struct rdt_ctrl_domain *d,
 			   unsigned long cbm, int closid, bool exclusive);
-unsigned int rdtgroup_cbm_to_size(struct rdt_resource *r, struct rdt_domain *d,
+
+unsigned int rdtgroup_cbm_to_size(struct rdt_resource *r, struct rdt_ctrl_domain *d,
 				  unsigned long cbm);
+
 enum rdtgrp_mode rdtgroup_mode_by_closid(int closid);
+
 int rdtgroup_tasks_assigned(struct rdtgroup *r);
-int rdtgroup_locksetup_enter(struct rdtgroup *rdtgrp);
-int rdtgroup_locksetup_exit(struct rdtgroup *rdtgrp);
-bool rdtgroup_cbm_overlaps_pseudo_locked(struct rdt_domain *d, unsigned long cbm);
-bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_domain *d);
-int rdt_pseudo_lock_init(void);
-void rdt_pseudo_lock_release(void);
-int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp);
-void rdtgroup_pseudo_lock_remove(struct rdtgroup *rdtgrp);
+
 int closids_supported(void);
-bool closid_allocated(unsigned int closid);
-bool resctrl_closid_is_dirty(u32 closid);
+
 void closid_free(int closid);
+
 int alloc_rmid(u32 closid);
+
 void free_rmid(u32 closid, u32 rmid);
+
 void resctrl_mon_resource_exit(void);
+
 void mon_event_count(void *info);
+
 int rdtgroup_mondata_show(struct seq_file *m, void *arg);
+
 void mon_event_read(struct rmid_read *rr, struct rdt_resource *r,
-		    struct rdt_domain *d, struct rdtgroup *rdtgrp,
-		    int evtid, int first);
+		    struct rdt_mon_domain *d, struct rdtgroup *rdtgrp,
+		    cpumask_t *cpumask, int evtid, int first);
+
 int resctrl_mon_resource_init(void);
-void mbm_setup_overflow_handler(struct rdt_domain *dom,
+
+void mbm_setup_overflow_handler(struct rdt_mon_domain *dom,
 				unsigned long delay_ms,
 				int exclude_cpu);
+
 void mbm_handle_overflow(struct work_struct *work);
-void setup_default_ctrlval(struct rdt_resource *r, u32 *dc);
-void cqm_setup_limbo_handler(struct rdt_domain *dom, unsigned long delay_ms,
+
+bool is_mba_sc(struct rdt_resource *r);
+
+void cqm_setup_limbo_handler(struct rdt_mon_domain *dom, unsigned long delay_ms,
 			     int exclude_cpu);
+
 void cqm_handle_limbo(struct work_struct *work);
-bool has_busy_rmid(struct rdt_domain *d);
-void __check_limbo(struct rdt_domain *d, bool force_free);
+
+bool has_busy_rmid(struct rdt_mon_domain *d);
+
+void __check_limbo(struct rdt_mon_domain *d, bool force_free);
+
+void resctrl_file_fflags_init(const char *config, unsigned long fflags);
+
+void resctrl_file_mode_init(const char *config, umode_t mode);
+
 void rdt_staged_configs_clear(void);
+
+bool closid_allocated(unsigned int closid);
+
 int resctrl_find_cleanest_closid(void);
-struct rmid_entry *resctrl_find_free_rmid(u32 closid);
+
+void *rdt_kn_parent_priv(struct kernfs_node *kn);
+
+int resctrl_mbm_assign_mode_show(struct kernfs_open_file *of, struct seq_file *s, void *v);
+bool resctrl_is_mon_event_enabled(enum resctrl_event_id eventid);
+
+int resctrl_num_mbm_cntrs_show(struct kernfs_open_file *of, struct seq_file *s, void *v);
+
+int resctrl_available_mbm_cntrs_show(struct kernfs_open_file *of, struct seq_file *s,
+				     void *v);
+
+void rdtgroup_assign_cntrs(struct rdtgroup *rdtgrp);
+
+void rdtgroup_unassign_cntrs(struct rdtgroup *rdtgrp);
+
+int event_filter_show(struct kernfs_open_file *of, struct seq_file *seq, void *v);
+
+ssize_t event_filter_write(struct kernfs_open_file *of, char *buf, size_t nbytes,
+			   loff_t off);
+
+int resctrl_mbm_assign_on_mkdir_show(struct kernfs_open_file *of,
+				     struct seq_file *s, void *v);
+
+ssize_t resctrl_mbm_assign_on_mkdir_write(struct kernfs_open_file *of, char *buf,
+					  size_t nbytes, loff_t off);
+
+int mbm_L3_assignments_show(struct kernfs_open_file *of, struct seq_file *s, void *v);
+
+ssize_t mbm_L3_assignments_write(struct kernfs_open_file *of, char *buf, size_t nbytes,
+				 loff_t off);
+
+#ifdef CONFIG_RESCTRL_FS_PSEUDO_LOCK
+int rdtgroup_locksetup_enter(struct rdtgroup *rdtgrp);
+
+int rdtgroup_locksetup_exit(struct rdtgroup *rdtgrp);
+
+bool rdtgroup_cbm_overlaps_pseudo_locked(struct rdt_ctrl_domain *d, unsigned long cbm);
+
+bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_ctrl_domain *d);
+
+int rdt_pseudo_lock_init(void);
+
+void rdt_pseudo_lock_release(void);
+
+int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp);
+
+void rdtgroup_pseudo_lock_remove(struct rdtgroup *rdtgrp);
+
+#else
+static inline int rdtgroup_locksetup_enter(struct rdtgroup *rdtgrp)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int rdtgroup_locksetup_exit(struct rdtgroup *rdtgrp)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline bool rdtgroup_cbm_overlaps_pseudo_locked(struct rdt_ctrl_domain *d, unsigned long cbm)
+{
+	return false;
+}
+
+static inline bool rdtgroup_pseudo_locked_in_hierarchy(struct rdt_ctrl_domain *d)
+{
+	return false;
+}
+
+static inline int rdt_pseudo_lock_init(void) { return 0; }
+static inline void rdt_pseudo_lock_release(void) { }
+static inline int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline void rdtgroup_pseudo_lock_remove(struct rdtgroup *rdtgrp) { }
+#endif /* CONFIG_RESCTRL_FS_PSEUDO_LOCK */
 
 #endif /* _FS_RESCTRL_INTERNAL_H */

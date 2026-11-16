@@ -1716,7 +1716,7 @@ int iommu_dma_prepare_msi(struct msi_desc *desc, phys_addr_t msi_addr)
 	static DEFINE_MUTEX(msi_prepare_lock); /* see below */
 
 	if (!domain || !domain->iova_cookie) {
-		msi_desc_set_iommu_msi_iova(desc, 0, 0);
+		msi_desc_set_iommu_msi_iova(desc, 0, 0, 0);
 		return 0;
 	}
 
@@ -1733,7 +1733,7 @@ int iommu_dma_prepare_msi(struct msi_desc *desc, phys_addr_t msi_addr)
 
 	msi_desc_set_iommu_msi_iova(
 		desc, msi_page->iova,
-		ilog2(cookie_msi_granule(domain->iova_cookie)));
+		ilog2(cookie_msi_granule(domain->iova_cookie)), msi_addr);
 	return 0;
 }
 
@@ -1745,12 +1745,12 @@ int iommu_dma_prepare_msi(struct msi_desc *desc, phys_addr_t msi_addr)
 void iommu_dma_compose_msi_msg(struct msi_desc *desc, struct msi_msg *msg)
 {
 #ifdef CONFIG_IRQ_MSI_IOMMU
-	if (desc->iommu_msi_shift) {
-		u64 msi_iova = desc->iommu_msi_iova << desc->iommu_msi_shift;
+	if (desc->address_map[0].iommu_msi_shift) {
+		u64 msi_iova = desc->address_map[0].iommu_msi_iova << desc->address_map[0].iommu_msi_shift;
 
 		msg->address_hi = upper_32_bits(msi_iova);
 		msg->address_lo = lower_32_bits(msi_iova) |
-				  (msg->address_lo & ((1 << desc->iommu_msi_shift) - 1));
+				  (msg->address_lo & ((1 << desc->address_map[0].iommu_msi_shift) - 1));
 	}
 #endif
 }

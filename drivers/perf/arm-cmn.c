@@ -2026,11 +2026,20 @@ static void arm_cmn_init_dtm(struct arm_cmn_dtm *dtm, struct arm_cmn_node *xp, i
 static int arm_cmn_init_dtc(struct arm_cmn *cmn, struct arm_cmn_node *dn, int idx)
 {
 	struct arm_cmn_dtc *dtc = cmn->dtc + idx;
+	const struct resource *cfg;
+	resource_size_t base, size;
 
 	dtc->base = dn->pmu_base - CMN_PMU_OFFSET;
 	dtc->irq = platform_get_irq(to_platform_device(cmn->dev), idx);
 	if (dtc->irq < 0)
 		return dtc->irq;
+
+	cfg = platform_get_resource(to_platform_device(cmn->dev), IORESOURCE_MEM, 0);
+	base = dtc->base - cmn->base + cfg->start;
+	size = cmn->part == PART_CMN600 ? SZ_16K : SZ_64K;
+	if (!devm_request_mem_region(cmn->dev, base, size, dev_name(cmn->dev)))
+		return dev_err_probe(cmn->dev, -EBUSY,
+				     "Failed to request DTC region 0x%pa\n", &base);
 
 	writel_relaxed(CMN_DT_DTC_CTL_DT_EN, dtc->base + CMN_DT_DTC_CTL);
 	writel_relaxed(CMN_DT_PMCR_PMU_EN | CMN_DT_PMCR_OVFL_INTR_EN, dtc->base + CMN_DT_PMCR);
@@ -2413,46 +2422,28 @@ static int arm_cmn_discover(struct arm_cmn *cmn, unsigned int rgn_offset)
 	return 0;
 }
 
-static int arm_cmn600_acpi_probe(struct platform_device *pdev, struct arm_cmn *cmn)
+static int arm_cmn_get_root(struct arm_cmn *cmn, const struct resource *cfg)
 {
-	struct resource *cfg, *root;
-
-	cfg = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!cfg)
-		return -EINVAL;
-
-	root = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!root)
-		return -EINVAL;
-
-	if (!resource_contains(cfg, root))
-		swap(cfg, root);
-	/*
-	 * Note that devm_ioremap_resource() is dumb and won't let the platform
-	 * device claim cfg when the ACPI companion device has already claimed
-	 * root within it. But since they *are* already both claimed in the
-	 * appropriate name, we don't really need to do it again here anyway.
-	 */
-	cmn->base = devm_ioremap(cmn->dev, cfg->start, resource_size(cfg));
-	if (!cmn->base)
-		return -ENOMEM;
-
-	return root->start - cfg->start;
-}
-
-static int arm_cmn600_of_probe(struct device_node *np)
-{
+	const struct device_node *np = cmn->dev->of_node;
+	const struct resource *root;
 	u32 rootnode;
 
-	return of_property_read_u32(np, "arm,root-node", &rootnode) ?: rootnode;
+	if (cmn->part != PART_CMN600)
+		return 0;
+
+	if (np)
+		return of_property_read_u32(np, "arm,root-node", &rootnode) ?: rootnode;
+
+	root = platform_get_resource(to_platform_device(cmn->dev), IORESOURCE_MEM, 1);
+	return root ? root->start - cfg->start : -EINVAL;
 }
 
 static int arm_cmn_probe(struct platform_device *pdev)
 {
 	struct arm_cmn *cmn;
+	const struct resource *cfg;
 	const char *name;
 	static atomic_t id;
-	struct resource *cfg;
 	int err, rootnode, this_id;
 
 	cmn = devm_kzalloc(&pdev->dev, sizeof(*cmn), GFP_KERNEL);
@@ -2464,25 +2455,16 @@ static int arm_cmn_probe(struct platform_device *pdev)
 	cmn->cpu = cpumask_local_spread(0, dev_to_node(cmn->dev));
 	platform_set_drvdata(pdev, cmn);
 
-	if (cmn->part == PART_CMN600 && has_acpi_companion(cmn->dev)) {
-		rootnode = arm_cmn600_acpi_probe(pdev, cmn);
-	} else {
-		rootnode = 0;
+	cfg = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!cfg)
+		return -EINVAL;
 
-		/*
-		 * Avoid registering resources as the PMUs registers are
-		 * scattered through CMN, and may appear either side of
-		 * registers for other 'devices'. (e.g. the MPAM MSC controls).
-		 */
-		cfg = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-		if (!cfg)
-			return -EINVAL;
-		cmn->base = devm_ioremap(&pdev->dev, cfg->start, resource_size(cfg));
-		if (IS_ERR(cmn->base))
-			return PTR_ERR(cmn->base);
-		if (cmn->part == PART_CMN600)
-			rootnode = arm_cmn600_of_probe(pdev->dev.of_node);
-	}
+	/* Map the whole region now, claim the DTCs once we've found them */
+	cmn->base = devm_ioremap(cmn->dev, cfg->start, resource_size(cfg));
+	if (!cmn->base)
+		return -ENOMEM;
+
+	rootnode = arm_cmn_get_root(cmn, cfg);
 	if (rootnode < 0)
 		return rootnode;
 

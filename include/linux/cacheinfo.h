@@ -48,7 +48,7 @@ extern unsigned int coherency_max_size;
  * keeping, the remaining members form the core properties of the cache
  */
 struct cacheinfo {
-	unsigned long id;
+	unsigned int id;
 	enum cache_type type;
 	unsigned int level;
 	unsigned int coherency_line_size;
@@ -112,7 +112,6 @@ int acpi_get_cache_info(unsigned int cpu,
 #endif
 
 const struct attribute_group *cache_get_priv_group(struct cacheinfo *this_leaf);
-unsigned long cache_of_get_id(struct device_node *np);
 
 /*
  * Get the cacheinfo structure for the cache associated with @cpu at
@@ -141,31 +140,11 @@ static inline struct cacheinfo *get_cpu_cacheinfo_level(int cpu, int level)
  * Get the id of the cache associated with @cpu at level @level.
  * cpuhp lock must be held.
  */
-static inline unsigned long get_cpu_cacheinfo_id(int cpu, int level)
+static inline int get_cpu_cacheinfo_id(int cpu, int level)
 {
 	struct cacheinfo *ci = get_cpu_cacheinfo_level(cpu, level);
 
-	return ci ? ci->id : ~0UL;
-}
-
-/*
- * Get the size of the cache associated with @cpu at level @level.
- * cpuhp lock must be held.
- */
-static inline unsigned int get_cpu_cacheinfo_size(int cpu, int level)
-{
-	struct cpu_cacheinfo *ci = get_cpu_cacheinfo(cpu);
-	int i;
-
-	if (!ci->info_list)
-		return 0;
-
-	for (i = 0; i < ci->num_leaves; i++) {
-		if (ci->info_list[i].level == level)
-			return ci->info_list[i].size;
-	}
-
-	return 0;
+	return ci ? ci->id : -1;
 }
 
 #ifdef CONFIG_ARM64
