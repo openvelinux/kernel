@@ -29,6 +29,7 @@
  *		_N,_P	- other mobile parts
  *		_H	- premium mobile parts
  *		_S	- other client parts
+ *		_R	- ruggedized for harsh environment
  *
  *		Historical OPTDIFFs:
  *
@@ -198,6 +199,12 @@
 #define INTEL_LUNARLAKE_M		IFM(6, 0xBD)
 
 #define INTEL_PANTHERLAKE_L		IFM(6, 0xCC)
+#define INTEL_PANTHERLAKE_R		IFM(6, 0xE5) /* Cougar Cove / Darkmont */
+
+#define INTEL_WILDCATLAKE_L		IFM(6, 0xD5)
+
+#define INTEL_NOVALAKE			IFM(18, 0x01)
+#define INTEL_NOVALAKE_L		IFM(18, 0x03)
 
 /* "Small Core" Processors (Atom/E-Core) */
 
@@ -219,11 +226,11 @@
 #define INTEL_ATOM_SILVERMONT_D		IFM(6, 0x4D) /* Avaton, Rangely */
 #define INTEL_FAM6_ATOM_SILVERMONT_MID	0x4A /* Merriefield */
 #define INTEL_ATOM_SILVERMONT_MID	IFM(6, 0x4A) /* Merriefield */
+#define INTEL_FAM6_ATOM_SILVERMONT_MID2	0x5A /* Anniedale */
+#define INTEL_ATOM_SILVERMONT_MID2	IFM(6, 0x5A) /* Anniedale */
 
 #define INTEL_FAM6_ATOM_AIRMONT		0x4C /* Cherry Trail, Braswell */
 #define INTEL_ATOM_AIRMONT		IFM(6, 0x4C) /* Cherry Trail, Braswell */
-#define INTEL_FAM6_ATOM_AIRMONT_MID	0x5A /* Moorefield */
-#define INTEL_ATOM_AIRMONT_MID		IFM(6, 0x5A) /* Moorefield */
 #define INTEL_FAM6_ATOM_AIRMONT_NP	0x75 /* Lightning Mountain */
 #define INTEL_ATOM_AIRMONT_NP		IFM(6, 0x75) /* Lightning Mountain */
 
