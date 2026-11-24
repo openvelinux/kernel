@@ -19,26 +19,6 @@
 #include <adf_dbgfs.h>
 #include "adf_dh895xcc_hw_data.h"
 
-static const struct pci_device_id adf_pci_tbl[] = {
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_QAT_DH895XCC), },
-	{ }
-};
-MODULE_DEVICE_TABLE(pci, adf_pci_tbl);
-
-static int adf_probe(struct pci_dev *dev, const struct pci_device_id *ent);
-static void adf_remove(struct pci_dev *dev);
-static void adf_shutdown(struct pci_dev *dev);
-
-static struct pci_driver adf_driver = {
-	.id_table = adf_pci_tbl,
-	.name = ADF_DH895XCC_DEVICE_NAME,
-	.probe = adf_probe,
-	.remove = adf_remove,
-	.shutdown = adf_shutdown,
-	.sriov_configure = adf_sriov_configure,
-	.err_handler = &adf_err_handler,
-};
-
 static void adf_cleanup_pci_dev(struct adf_accel_dev *accel_dev)
 {
 	pci_release_regions(accel_dev->accel_pci_dev.pci_dev);
@@ -128,7 +108,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	adf_init_hw_data_dh895xcc(accel_dev->hw_device);
 	pci_read_config_byte(pdev, PCI_REVISION_ID, &accel_pci_dev->revid);
 	pci_read_config_dword(pdev, ADF_DEVICE_FUSECTL_OFFSET,
-			      &hw_data->fuses);
+			      &hw_data->fuses[ADF_FUSECTL0]);
 
 	/* Get Accelerators and Accelerators Engines masks */
 	hw_data->accel_mask = hw_data->get_accel_mask(hw_data);
@@ -182,15 +162,14 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		bar->size = pci_resource_len(pdev, bar_nr);
 		bar->virt_addr = pci_iomap(accel_pci_dev->pci_dev, bar_nr, 0);
 		if (!bar->virt_addr) {
-			dev_err(&pdev->dev, "Failed to map BAR %d\n", bar_nr);
+			pci_err(pdev, "Failed to map BAR %d\n", bar_nr);
 			ret = -EFAULT;
 			goto out_err_free_reg;
 		}
 	}
-	pci_set_master(pdev);
 
 	if (pci_save_state(pdev)) {
-		dev_err(&pdev->dev, "Failed to save pci state\n");
+		pci_err(pdev, "Failed to save pci state\n");
 		ret = -ENOMEM;
 		goto out_err_free_reg;
 	}
@@ -204,7 +183,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return ret;
 
 out_err_dev_stop:
-	adf_dev_down(accel_dev, false);
+	adf_dev_down(accel_dev);
 out_err_free_reg:
 	pci_release_regions(accel_pci_dev->pci_dev);
 out_err_disable:
@@ -223,7 +202,7 @@ static void adf_remove(struct pci_dev *pdev)
 		pr_err("QAT: Driver removal failed\n");
 		return;
 	}
-	adf_dev_down(accel_dev, false);
+	adf_dev_down(accel_dev);
 	adf_cleanup_accel(accel_dev);
 	adf_cleanup_pci_dev(accel_dev);
 	kfree(accel_dev);
@@ -233,8 +212,24 @@ static void adf_shutdown(struct pci_dev *pdev)
 {
 	struct adf_accel_dev *accel_dev = adf_devmgr_pci_to_accel_dev(pdev);
 
-	adf_dev_down(accel_dev, false);
+	adf_dev_down(accel_dev);
 }
+
+static const struct pci_device_id adf_pci_tbl[] = {
+	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_QAT_DH895XCC) },
+	{ }
+};
+MODULE_DEVICE_TABLE(pci, adf_pci_tbl);
+
+static struct pci_driver adf_driver = {
+	.id_table = adf_pci_tbl,
+	.name = ADF_DH895XCC_DEVICE_NAME,
+	.probe = adf_probe,
+	.remove = adf_remove,
+	.shutdown = adf_shutdown,
+	.sriov_configure = adf_sriov_configure,
+	.err_handler = &adf_err_handler,
+};
 
 static int __init adfdrv_init(void)
 {
@@ -260,4 +255,4 @@ MODULE_AUTHOR("Intel");
 MODULE_FIRMWARE(ADF_DH895XCC_FW);
 MODULE_FIRMWARE(ADF_DH895XCC_MMP);
 MODULE_DESCRIPTION("Intel(R) QuickAssist Technology");
-MODULE_VERSION(ADF_DRV_VERSION);
+MODULE_IMPORT_NS(CRYPTO_QAT);

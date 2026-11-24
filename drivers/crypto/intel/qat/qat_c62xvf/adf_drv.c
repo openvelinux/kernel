@@ -158,12 +158,11 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		bar->size = pci_resource_len(pdev, bar_nr);
 		bar->virt_addr = pci_iomap(accel_pci_dev->pci_dev, bar_nr, 0);
 		if (!bar->virt_addr) {
-			dev_err(&pdev->dev, "Failed to map BAR %d\n", bar_nr);
+			pci_err(pdev, "Failed to map BAR %d\n", bar_nr);
 			ret = -EFAULT;
 			goto out_err_free_reg;
 		}
 	}
-	pci_set_master(pdev);
 	/* Completion for VF2PF request/response message exchange */
 	init_completion(&accel_dev->vf.msg_received);
 
@@ -176,7 +175,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return ret;
 
 out_err_dev_stop:
-	adf_dev_down(accel_dev, false);
+	adf_dev_down(accel_dev);
 out_err_free_reg:
 	pci_release_regions(accel_pci_dev->pci_dev);
 out_err_disable:
@@ -196,7 +195,7 @@ static void adf_remove(struct pci_dev *pdev)
 		return;
 	}
 	adf_flush_vf_wq(accel_dev);
-	adf_dev_down(accel_dev, false);
+	adf_dev_down(accel_dev);
 	adf_cleanup_accel(accel_dev);
 	adf_cleanup_pci_dev(accel_dev);
 	kfree(accel_dev);
@@ -225,4 +224,4 @@ module_exit(adfdrv_release);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Intel");
 MODULE_DESCRIPTION("Intel(R) QuickAssist Technology");
-MODULE_VERSION(ADF_DRV_VERSION);
+MODULE_IMPORT_NS(CRYPTO_QAT);

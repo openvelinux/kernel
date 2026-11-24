@@ -46,11 +46,11 @@ static struct vf_id_map *adf_find_vf(u32 bdf)
 }
 
 /**
- * adf_clean_vf_map() - Cleans VF id mapings
- *
- * Function cleans internal ids for virtual functions.
+ * adf_clean_vf_map() - Cleans VF id mappings
  * @vf: flag indicating whether mappings is cleaned
  *	for vfs only or for vfs and pfs
+ *
+ * Function cleans internal ids for virtual functions.
  */
 void adf_clean_vf_map(bool vf)
 {
@@ -262,16 +262,6 @@ unlock:
 	mutex_unlock(&table_lock);
 }
 EXPORT_SYMBOL_GPL(adf_devmgr_rm_dev);
-
-struct adf_accel_dev *adf_devmgr_get_first(void)
-{
-	struct adf_accel_dev *dev = NULL;
-
-	if (!list_empty(&accel_table))
-		dev = list_first_entry(&accel_table, struct adf_accel_dev,
-				       list);
-	return dev;
-}
 
 /**
  * adf_devmgr_pci_to_accel_dev() - Get accel_dev associated with the pci_dev.

@@ -9,6 +9,11 @@
 #include "adf_common_drv.h"
 #include "adf_dbgfs.h"
 #include "adf_heartbeat.h"
+#include "adf_rl.h"
+#include "adf_kpt.h"
+#include "adf_sysfs_anti_rb.h"
+#include "adf_sysfs_ras_counters.h"
+#include "adf_telemetry.h"
 
 static LIST_HEAD(service_table);
 static DEFINE_MUTEX(service_lock);
@@ -61,7 +66,6 @@ int adf_service_unregister(struct service_hndl *service)
 static int adf_dev_init(struct adf_accel_dev *accel_dev)
 {
 	struct service_hndl *service;
-	struct list_head *list_itr;
 	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
 	int ret;
 
@@ -70,6 +74,8 @@ static int adf_dev_init(struct adf_accel_dev *accel_dev)
 			"Failed to init device - hw_data not set\n");
 		return -EFAULT;
 	}
+
+	adf_set_bme(accel_dev);
 
 	if (!test_bit(ADF_STATUS_CONFIGURED, &accel_dev->status) &&
 	    !accel_dev->is_vf) {
@@ -120,6 +126,9 @@ static int adf_dev_init(struct adf_accel_dev *accel_dev)
 	}
 	set_bit(ADF_STATUS_IRQ_ALLOCATED, &accel_dev->status);
 
+	if (hw_data->ras_ops.enable_ras_errors)
+		hw_data->ras_ops.enable_ras_errors(accel_dev);
+
 	hw_data->enable_ints(accel_dev);
 	hw_data->enable_error_correction(accel_dev);
 
@@ -134,22 +143,31 @@ static int adf_dev_init(struct adf_accel_dev *accel_dev)
 	}
 
 	adf_heartbeat_init(accel_dev);
+	ret = adf_rl_init(accel_dev);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
+
+	ret = adf_tl_init(accel_dev);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
 
 	/*
 	 * Subservice initialisation is divided into two stages: init and start.
 	 * This is to facilitate any ordering dependencies between services
 	 * prior to starting any of the accelerators.
 	 */
-	list_for_each(list_itr, &service_table) {
-		service = list_entry(list_itr, struct service_hndl, list);
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
 		if (service->event_hld(accel_dev, ADF_EVENT_INIT)) {
 			dev_err(&GET_DEV(accel_dev),
 				"Failed to initialise service %s\n",
 				service->name);
+			mutex_unlock(&service_lock);
 			return -EFAULT;
 		}
 		set_bit(accel_dev->accel_id, service->init_status);
 	}
+	mutex_unlock(&service_lock);
 
 	return 0;
 }
@@ -168,7 +186,6 @@ static int adf_dev_start(struct adf_accel_dev *accel_dev)
 {
 	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
 	struct service_hndl *service;
-	struct list_head *list_itr;
 	int ret;
 
 	set_bit(ADF_STATUS_STARTING, &accel_dev->status);
@@ -202,6 +219,13 @@ static int adf_dev_start(struct adf_accel_dev *accel_dev)
 		return -EFAULT;
 	}
 
+	/* Enable Key Protection Technology (KPT) */
+	ret = adf_enable_kpt(accel_dev);
+	if (ret) {
+		dev_err(&GET_DEV(accel_dev), "Failed to enable KPT\n");
+		return ret;
+	}
+
 	if (hw_data->start_timer) {
 		ret = hw_data->start_timer(accel_dev);
 		if (ret) {
@@ -211,17 +235,26 @@ static int adf_dev_start(struct adf_accel_dev *accel_dev)
 	}
 
 	adf_heartbeat_start(accel_dev);
+	ret = adf_rl_start(accel_dev);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
 
-	list_for_each(list_itr, &service_table) {
-		service = list_entry(list_itr, struct service_hndl, list);
+	ret = adf_tl_start(accel_dev);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
+
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
 		if (service->event_hld(accel_dev, ADF_EVENT_START)) {
 			dev_err(&GET_DEV(accel_dev),
 				"Failed to start service %s\n",
 				service->name);
+			mutex_unlock(&service_lock);
 			return -EFAULT;
 		}
 		set_bit(accel_dev->accel_id, service->start_status);
 	}
+	mutex_unlock(&service_lock);
 
 	clear_bit(ADF_STATUS_STARTING, &accel_dev->status);
 	set_bit(ADF_STATUS_STARTED, &accel_dev->status);
@@ -246,6 +279,8 @@ static int adf_dev_start(struct adf_accel_dev *accel_dev)
 	set_bit(ADF_STATUS_COMP_ALGS_REGISTERED, &accel_dev->status);
 
 	adf_dbgfs_add(accel_dev);
+	adf_sysfs_start_ras(accel_dev);
+	adf_sysfs_start_arb(accel_dev);
 
 	return 0;
 }
@@ -264,7 +299,6 @@ static void adf_dev_stop(struct adf_accel_dev *accel_dev)
 {
 	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
 	struct service_hndl *service;
-	struct list_head *list_itr;
 	bool wait = false;
 	int ret;
 
@@ -272,7 +306,11 @@ static void adf_dev_stop(struct adf_accel_dev *accel_dev)
 	    !test_bit(ADF_STATUS_STARTING, &accel_dev->status))
 		return;
 
+	adf_tl_stop(accel_dev);
+	adf_rl_stop(accel_dev);
 	adf_dbgfs_rm(accel_dev);
+	adf_sysfs_stop_ras(accel_dev);
+	adf_sysfs_stop_arb(accel_dev);
 
 	clear_bit(ADF_STATUS_STARTING, &accel_dev->status);
 	clear_bit(ADF_STATUS_STARTED, &accel_dev->status);
@@ -289,8 +327,8 @@ static void adf_dev_stop(struct adf_accel_dev *accel_dev)
 		qat_comp_algs_unregister();
 	clear_bit(ADF_STATUS_COMP_ALGS_REGISTERED, &accel_dev->status);
 
-	list_for_each(list_itr, &service_table) {
-		service = list_entry(list_itr, struct service_hndl, list);
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
 		if (!test_bit(accel_dev->accel_id, service->start_status))
 			continue;
 		ret = service->event_hld(accel_dev, ADF_EVENT_STOP);
@@ -301,9 +339,12 @@ static void adf_dev_stop(struct adf_accel_dev *accel_dev)
 			clear_bit(accel_dev->accel_id, service->start_status);
 		}
 	}
+	mutex_unlock(&service_lock);
 
 	if (hw_data->stop_timer)
 		hw_data->stop_timer(accel_dev);
+
+	hw_data->disable_iov(accel_dev);
 
 	if (wait)
 		msleep(100);
@@ -327,7 +368,6 @@ static void adf_dev_shutdown(struct adf_accel_dev *accel_dev)
 {
 	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
 	struct service_hndl *service;
-	struct list_head *list_itr;
 
 	if (!hw_data) {
 		dev_err(&GET_DEV(accel_dev),
@@ -349,8 +389,8 @@ static void adf_dev_shutdown(struct adf_accel_dev *accel_dev)
 				  &accel_dev->status);
 	}
 
-	list_for_each(list_itr, &service_table) {
-		service = list_entry(list_itr, struct service_hndl, list);
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
 		if (!test_bit(accel_dev->accel_id, service->init_status))
 			continue;
 		if (service->event_hld(accel_dev, ADF_EVENT_SHUTDOWN))
@@ -360,19 +400,25 @@ static void adf_dev_shutdown(struct adf_accel_dev *accel_dev)
 		else
 			clear_bit(accel_dev->accel_id, service->init_status);
 	}
+	mutex_unlock(&service_lock);
+
+	adf_rl_exit(accel_dev);
+
+	if (hw_data->ras_ops.disable_ras_errors)
+		hw_data->ras_ops.disable_ras_errors(accel_dev);
 
 	adf_heartbeat_shutdown(accel_dev);
 
-	hw_data->disable_iov(accel_dev);
+	adf_tl_shutdown(accel_dev);
 
 	if (test_bit(ADF_STATUS_IRQ_ALLOCATED, &accel_dev->status)) {
 		hw_data->free_irq(accel_dev);
 		clear_bit(ADF_STATUS_IRQ_ALLOCATED, &accel_dev->status);
 	}
 
-	/* Delete configuration only if not restarting */
+	/* If not restarting, delete all cfg sections except for GENERAL */
 	if (!test_bit(ADF_STATUS_RESTARTING, &accel_dev->status))
-		adf_cfg_del_all(accel_dev);
+		adf_cfg_del_all_except(accel_dev, ADF_GENERAL_SEC);
 
 	if (hw_data->exit_arb)
 		hw_data->exit_arb(accel_dev);
@@ -388,60 +434,48 @@ static void adf_dev_shutdown(struct adf_accel_dev *accel_dev)
 int adf_dev_restarting_notify(struct adf_accel_dev *accel_dev)
 {
 	struct service_hndl *service;
-	struct list_head *list_itr;
 
-	list_for_each(list_itr, &service_table) {
-		service = list_entry(list_itr, struct service_hndl, list);
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
 		if (service->event_hld(accel_dev, ADF_EVENT_RESTARTING))
 			dev_err(&GET_DEV(accel_dev),
 				"Failed to restart service %s.\n",
 				service->name);
 	}
+	mutex_unlock(&service_lock);
 	return 0;
 }
 
 int adf_dev_restarted_notify(struct adf_accel_dev *accel_dev)
 {
 	struct service_hndl *service;
-	struct list_head *list_itr;
 
-	list_for_each(list_itr, &service_table) {
-		service = list_entry(list_itr, struct service_hndl, list);
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
 		if (service->event_hld(accel_dev, ADF_EVENT_RESTARTED))
 			dev_err(&GET_DEV(accel_dev),
 				"Failed to restart service %s.\n",
 				service->name);
 	}
+	mutex_unlock(&service_lock);
 	return 0;
 }
 
-static int adf_dev_shutdown_cache_cfg(struct adf_accel_dev *accel_dev)
+void adf_error_notifier(struct adf_accel_dev *accel_dev)
 {
-	char services[ADF_CFG_MAX_VAL_LEN_IN_BYTES] = {0};
-	int ret;
+	struct service_hndl *service;
 
-	ret = adf_cfg_get_param_value(accel_dev, ADF_GENERAL_SEC,
-				      ADF_SERVICES_ENABLED, services);
-
-	adf_dev_stop(accel_dev);
-	adf_dev_shutdown(accel_dev);
-
-	if (!ret) {
-		ret = adf_cfg_section_add(accel_dev, ADF_GENERAL_SEC);
-		if (ret)
-			return ret;
-
-		ret = adf_cfg_add_key_value_param(accel_dev, ADF_GENERAL_SEC,
-						  ADF_SERVICES_ENABLED,
-						  services, ADF_STR);
-		if (ret)
-			return ret;
+	mutex_lock(&service_lock);
+	list_for_each_entry(service, &service_table, list) {
+		if (service->event_hld(accel_dev, ADF_EVENT_FATAL_ERROR))
+			dev_err(&GET_DEV(accel_dev),
+				"Failed to send error event to %s.\n",
+				service->name);
 	}
-
-	return 0;
+	mutex_unlock(&service_lock);
 }
 
-int adf_dev_down(struct adf_accel_dev *accel_dev, bool reconfig)
+int adf_dev_down(struct adf_accel_dev *accel_dev)
 {
 	int ret = 0;
 
@@ -450,15 +484,9 @@ int adf_dev_down(struct adf_accel_dev *accel_dev, bool reconfig)
 
 	mutex_lock(&accel_dev->state_lock);
 
-	if (reconfig) {
-		ret = adf_dev_shutdown_cache_cfg(accel_dev);
-		goto out;
-	}
-
 	adf_dev_stop(accel_dev);
 	adf_dev_shutdown(accel_dev);
 
-out:
 	mutex_unlock(&accel_dev->state_lock);
 	return ret;
 }
@@ -505,7 +533,7 @@ int adf_dev_restart(struct adf_accel_dev *accel_dev)
 	if (!accel_dev)
 		return -EFAULT;
 
-	adf_dev_down(accel_dev, false);
+	adf_dev_down(accel_dev);
 
 	ret = adf_dev_up(accel_dev, false);
 	/* if device is already up return success*/

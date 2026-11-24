@@ -9,17 +9,18 @@
 #include "icp_qat_hal.h"
 #include "icp_qat_uclo.h"
 
-#define BAD_REGADDR	       0xffff
-#define MAX_RETRY_TIMES	   10000
-#define INIT_CTX_ARB_VALUE	0x0
-#define INIT_CTX_ENABLE_VALUE     0x0
-#define INIT_PC_VALUE	     0x0
-#define INIT_WAKEUP_EVENTS_VALUE  0x1
-#define INIT_SIG_EVENTS_VALUE     0x1
-#define INIT_CCENABLE_VALUE       0x2000
-#define RST_CSR_QAT_LSB	   20
-#define RST_CSR_AE_LSB		  0
-#define MC_TIMESTAMP_ENABLE       (0x1 << 7)
+#define BAD_REGADDR			0xffff
+#define MAX_RETRY_TIMES			10000
+#define INIT_CTX_ARB_VALUE		0x0
+#define INIT_CTX_ENABLE_VALUE		0x0
+#define INIT_PC_VALUE			0x0
+#define INIT_WAKEUP_EVENTS_VALUE	0x1
+#define INIT_SIG_EVENTS_VALUE		0x1
+#define INIT_CCENABLE_VALUE		0x2000
+#define RST_CSR_QAT_LSB			20
+#define RST_CSR_AE_LSB			0
+#define MC_TIMESTAMP_ENABLE		(0x1 << 7)
+#define MIN_RESET_DELAY_US		3
 
 #define IGNORE_W1C_MASK ((~(1 << CE_BREAKPOINT_BITPOS)) & \
 	(~(1 << CE_CNTL_STORE_PARITY_ERROR_BITPOS)) & \
@@ -163,7 +164,7 @@ int qat_hal_set_ae_ctx_mode(struct icp_qat_fw_loader_handle *handle,
 		return -EINVAL;
 	}
 
-	/* Sets the accelaration engine context mode to either four or eight */
+	/* Sets the acceleration engine context mode to either four or eight */
 	csr = qat_hal_rd_ae_csr(handle, ae, CTX_ENABLES);
 	csr = IGNORE_W1C_MASK & csr;
 	new_csr = (mode == 4) ?
@@ -694,20 +695,29 @@ static int qat_hal_chip_init(struct icp_qat_fw_loader_handle *handle,
 
 	handle->pci_dev = pci_info->pci_dev;
 	switch (handle->pci_dev->device) {
-	case ADF_4XXX_PCI_DEVICE_ID:
-	case ADF_401XX_PCI_DEVICE_ID:
-	case ADF_402XX_PCI_DEVICE_ID:
+	case PCI_DEVICE_ID_INTEL_QAT_4XXX:
+	case PCI_DEVICE_ID_INTEL_QAT_401XX:
+	case PCI_DEVICE_ID_INTEL_QAT_402XX:
+	case PCI_DEVICE_ID_INTEL_QAT_420XX:
+	case PCI_DEVICE_ID_INTEL_QAT_6XXX:
 		handle->chip_info->mmp_sram_size = 0;
 		handle->chip_info->nn = false;
 		handle->chip_info->lm2lm3 = true;
 		handle->chip_info->lm_size = ICP_QAT_UCLO_MAX_LMEM_REG_2X;
 		handle->chip_info->icp_rst_csr = ICP_RESET_CPP0;
-		handle->chip_info->icp_rst_mask = 0x100015;
+		if (handle->pci_dev->device == PCI_DEVICE_ID_INTEL_QAT_420XX)
+			handle->chip_info->icp_rst_mask = 0x100155;
+		else
+			handle->chip_info->icp_rst_mask = 0x100015;
 		handle->chip_info->glb_clk_enable_csr = ICP_GLOBAL_CLK_ENABLE_CPP0;
 		handle->chip_info->misc_ctl_csr = MISC_CONTROL_C4XXX;
 		handle->chip_info->wakeup_event_val = 0x80000000;
 		handle->chip_info->fw_auth = true;
 		handle->chip_info->css_3k = true;
+		if (handle->pci_dev->device == PCI_DEVICE_ID_INTEL_QAT_6XXX) {
+			handle->chip_info->dual_sign = true;
+			handle->chip_info->reset_delay_us = MIN_RESET_DELAY_US;
+		}
 		handle->chip_info->tgroup_share_ustore = true;
 		handle->chip_info->fcu_ctl_csr = FCU_CONTROL_4XXX;
 		handle->chip_info->fcu_sts_csr = FCU_STATUS_4XXX;

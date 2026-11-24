@@ -70,6 +70,7 @@ void adf_enable_vf2pf_interrupts(struct adf_accel_dev *accel_dev, u32 vf_mask)
 void adf_enable_all_vf2pf_interrupts(struct adf_accel_dev *accel_dev, u32 num_vfs)
 {
 	void __iomem *pmisc_addr = adf_get_pmisc_base(accel_dev);
+	struct adf_pfvf_ops *pfvf_ops = GET_PFVF_OPS(accel_dev);
 	unsigned long flags;
 	u32 vf_mask;
 
@@ -79,7 +80,19 @@ void adf_enable_all_vf2pf_interrupts(struct adf_accel_dev *accel_dev, u32 num_vf
 
 	spin_lock_irqsave(&accel_dev->pf.vf2pf_ints_lock, flags);
 	WRITE_ONCE(accel_dev->pf.vf2pf_disabled, false);
-	GET_PFVF_OPS(accel_dev)->enable_vf2pf_interrupts(pmisc_addr, vf_mask);
+	/*
+	 * A VF2PF interrupt is only generated when a source transitions from
+	 * masked to unmasked. A VF may write to its VF2PF CSR while the source
+	 * is masked or while the MSI-X vectors are torn down, for example
+	 * during a device reset, leaving the source latched with no interrupt
+	 * pending. The FLR performed as part of a device reset returns the mask
+	 * register to its default value, which leaves all the sources unmasked,
+	 * so simply unmasking is not guaranteed to be a transition. Mask all the
+	 * sources first, so that unmasking always generates an interrupt for
+	 * the sources latched in the meantime.
+	 */
+	pfvf_ops->disable_all_vf2pf_interrupts(pmisc_addr);
+	pfvf_ops->enable_vf2pf_interrupts(pmisc_addr, vf_mask);
 	spin_unlock_irqrestore(&accel_dev->pf.vf2pf_ints_lock, flags);
 }
 
@@ -150,6 +163,26 @@ static bool adf_handle_pm_int(struct adf_accel_dev *accel_dev)
 	return false;
 }
 
+static bool adf_handle_ras_int(struct adf_accel_dev *accel_dev)
+{
+	struct adf_ras_ops *ras_ops = &accel_dev->hw_device->ras_ops;
+	bool reset_required;
+
+	if (ras_ops->handle_interrupt &&
+	    ras_ops->handle_interrupt(accel_dev, &reset_required)) {
+		if (reset_required) {
+			dev_err(&GET_DEV(accel_dev), "Fatal error, reset required\n");
+			if (adf_notify_fatal_error(accel_dev))
+				dev_err(&GET_DEV(accel_dev),
+					"Failed to notify fatal error\n");
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
 static irqreturn_t adf_msix_isr_ae(int irq, void *dev_ptr)
 {
 	struct adf_accel_dev *accel_dev = dev_ptr;
@@ -161,6 +194,9 @@ static irqreturn_t adf_msix_isr_ae(int irq, void *dev_ptr)
 #endif /* CONFIG_PCI_IOV */
 
 	if (adf_handle_pm_int(accel_dev))
+		return IRQ_HANDLED;
+
+	if (adf_handle_ras_int(accel_dev))
 		return IRQ_HANDLED;
 
 	dev_dbg(&GET_DEV(accel_dev), "qat_dev%d spurious AE interrupt\n",
@@ -293,7 +329,7 @@ static int adf_isr_alloc_msix_vectors_data(struct adf_accel_dev *accel_dev)
 	if (!accel_dev->pf.vf_info)
 		msix_num_entries += hw_data->num_banks;
 
-	irqs = kzalloc_node(msix_num_entries * sizeof(*irqs),
+	irqs = kcalloc_node(msix_num_entries, sizeof(*irqs),
 			    GFP_KERNEL, dev_to_node(&GET_DEV(accel_dev)));
 	if (!irqs)
 		return -ENOMEM;
@@ -395,8 +431,6 @@ EXPORT_SYMBOL_GPL(adf_isr_resource_alloc);
 
 /**
  * adf_init_misc_wq() - Init misc workqueue
- *
- * Function init workqueue 'qat_misc_wq' for general purpose.
  *
  * Return: 0 on success, error code otherwise.
  */

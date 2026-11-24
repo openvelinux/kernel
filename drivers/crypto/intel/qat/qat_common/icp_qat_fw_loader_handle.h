@@ -27,6 +27,7 @@ struct icp_qat_fw_loader_chip_info {
 	int mmp_sram_size;
 	bool nn;
 	bool lm2lm3;
+	u16 reset_delay_us;
 	u32 lm_size;
 	u32 icp_rst_csr;
 	u32 icp_rst_mask;
@@ -35,6 +36,7 @@ struct icp_qat_fw_loader_chip_info {
 	u32 wakeup_event_val;
 	bool fw_auth;
 	bool css_3k;
+	bool dual_sign;
 	bool tgroup_share_ustore;
 	u32 fcu_ctl_csr;
 	u32 fcu_sts_csr;

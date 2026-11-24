@@ -6,10 +6,14 @@
 #include <linux/iopoll.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
+#include <linux/delay.h>
 #include "adf_accel_devices.h"
+#include "adf_admin.h"
+#include "adf_anti_rb.h"
 #include "adf_common_drv.h"
 #include "adf_cfg.h"
 #include "adf_heartbeat.h"
+#include "adf_kpt.h"
 #include "icp_qat_fw_init_admin.h"
 
 #define ADF_ADMIN_MAILBOX_STRIDE 0x1000
@@ -18,6 +22,7 @@
 #define ADF_ADMIN_POLL_DELAY_US 20
 #define ADF_ADMIN_POLL_TIMEOUT_US (5 * USEC_PER_SEC)
 #define ADF_ONE_AE 1
+#define ADF_ADMIN_RETRY_MAX 60
 
 static const u8 const_tab[1024] __aligned(1024) = {
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -309,6 +314,73 @@ static bool is_dcc_enabled(struct adf_accel_dev *accel_dev)
 	return !strcmp(services, "dcc");
 }
 
+static int adf_get_fw_capabilities(struct adf_accel_dev *accel_dev, u16 *caps)
+{
+	u32 ae_mask = accel_dev->hw_device->admin_ae_mask;
+	struct icp_qat_fw_init_admin_resp resp = { };
+	struct icp_qat_fw_init_admin_req req = { };
+	int ret;
+
+	if (!ae_mask)
+		return 0;
+
+	req.cmd_id = ICP_QAT_FW_CAPABILITIES_GET;
+	ret = adf_send_admin(accel_dev, &req, &resp, ae_mask);
+	if (ret)
+		return ret;
+
+	*caps = resp.fw_capabilities;
+
+	return 0;
+}
+
+int adf_send_admin_rl_init(struct adf_accel_dev *accel_dev,
+			   struct icp_qat_fw_init_admin_slice_cnt *slices)
+{
+	u32 ae_mask = accel_dev->hw_device->admin_ae_mask;
+	struct icp_qat_fw_init_admin_resp resp = { };
+	struct icp_qat_fw_init_admin_req req = { };
+	int ret;
+
+	req.cmd_id = ICP_QAT_FW_RL_INIT;
+
+	ret = adf_send_admin(accel_dev, &req, &resp, ae_mask);
+	if (ret)
+		return ret;
+
+	memcpy(slices, &resp.slices, sizeof(*slices));
+
+	return 0;
+}
+
+int adf_send_admin_rl_add_update(struct adf_accel_dev *accel_dev,
+				 struct icp_qat_fw_init_admin_req *req)
+{
+	u32 ae_mask = accel_dev->hw_device->admin_ae_mask;
+	struct icp_qat_fw_init_admin_resp resp = { };
+
+	/*
+	 * req struct filled in rl implementation. Used commands
+	 * ICP_QAT_FW_RL_ADD for a new SLA
+	 * ICP_QAT_FW_RL_UPDATE for update SLA
+	 */
+	return adf_send_admin(accel_dev, req, &resp, ae_mask);
+}
+
+int adf_send_admin_rl_delete(struct adf_accel_dev *accel_dev, u16 node_id,
+			     u8 node_type)
+{
+	u32 ae_mask = accel_dev->hw_device->admin_ae_mask;
+	struct icp_qat_fw_init_admin_resp resp = { };
+	struct icp_qat_fw_init_admin_req req = { };
+
+	req.cmd_id = ICP_QAT_FW_RL_REMOVE;
+	req.node_id = node_id;
+	req.node_type = node_type;
+
+	return adf_send_admin(accel_dev, &req, &resp, ae_mask);
+}
+
 /**
  * adf_send_admin_init() - Function sends init message to FW
  * @accel_dev: Pointer to acceleration device.
@@ -319,6 +391,7 @@ static bool is_dcc_enabled(struct adf_accel_dev *accel_dev)
  */
 int adf_send_admin_init(struct adf_accel_dev *accel_dev)
 {
+	struct adf_hw_device_data *hw_data = GET_HW_DATA(accel_dev);
 	u32 dc_capabilities = 0;
 	int ret;
 
@@ -338,6 +411,8 @@ int adf_send_admin_init(struct adf_accel_dev *accel_dev)
 		return ret;
 	}
 	accel_dev->hw_device->extended_dc_capabilities = dc_capabilities;
+
+	adf_get_fw_capabilities(accel_dev, &hw_data->fw_capabilities);
 
 	return adf_init_ae(accel_dev);
 }
@@ -377,6 +452,197 @@ int adf_init_admin_pm(struct adf_accel_dev *accel_dev, u32 idle_delay)
 	req.idle_filter = idle_delay;
 
 	return adf_send_admin(accel_dev, &req, &resp, ae_mask);
+}
+EXPORT_SYMBOL_GPL(adf_init_admin_pm);
+
+int adf_get_pm_info(struct adf_accel_dev *accel_dev, dma_addr_t p_state_addr,
+		    size_t buff_size)
+{
+	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
+	struct icp_qat_fw_init_admin_req req = { };
+	struct icp_qat_fw_init_admin_resp resp;
+	u32 ae_mask = hw_data->admin_ae_mask;
+	int ret;
+
+	/* Query pm info via init/admin cmd */
+	if (!accel_dev->admin) {
+		dev_err(&GET_DEV(accel_dev), "adf_admin is not available\n");
+		return -EFAULT;
+	}
+
+	req.cmd_id = ICP_QAT_FW_PM_INFO;
+	req.init_cfg_sz = buff_size;
+	req.init_cfg_ptr = p_state_addr;
+
+	ret = adf_send_admin(accel_dev, &req, &resp, ae_mask);
+	if (ret)
+		dev_err(&GET_DEV(accel_dev),
+			"Failed to query power-management info\n");
+
+	return ret;
+}
+
+int adf_get_cnv_stats(struct adf_accel_dev *accel_dev, u16 ae, u16 *err_cnt,
+		      u16 *latest_err)
+{
+	struct icp_qat_fw_init_admin_req req = { };
+	struct icp_qat_fw_init_admin_resp resp;
+	int ret;
+
+	req.cmd_id = ICP_QAT_FW_CNV_STATS_GET;
+
+	ret = adf_put_admin_msg_sync(accel_dev, ae, &req, &resp);
+	if (ret)
+		return ret;
+	if (resp.status)
+		return -EPROTONOSUPPORT;
+
+	*err_cnt = resp.error_count;
+	*latest_err = resp.latest_error;
+
+	return ret;
+}
+
+int adf_send_admin_tl_start(struct adf_accel_dev *accel_dev,
+			    dma_addr_t tl_dma_addr, size_t layout_sz, u8 *rp_indexes,
+			    struct icp_qat_fw_init_admin_slice_cnt *slice_count)
+{
+	u32 ae_mask = GET_HW_DATA(accel_dev)->admin_ae_mask;
+	struct icp_qat_fw_init_admin_resp resp = { };
+	struct icp_qat_fw_init_admin_req req = { };
+	int ret;
+
+	req.cmd_id = ICP_QAT_FW_TL_START;
+	req.init_cfg_ptr = tl_dma_addr;
+	req.init_cfg_sz = layout_sz;
+
+	if (rp_indexes)
+		memcpy(&req.rp_indexes, rp_indexes, sizeof(req.rp_indexes));
+
+	ret = adf_send_admin(accel_dev, &req, &resp, ae_mask);
+	if (ret)
+		return ret;
+
+	memcpy(slice_count, &resp.slices, sizeof(*slice_count));
+
+	return 0;
+}
+
+int adf_send_admin_tl_stop(struct adf_accel_dev *accel_dev)
+{
+	struct adf_hw_device_data *hw_data = GET_HW_DATA(accel_dev);
+	struct icp_qat_fw_init_admin_resp resp = { };
+	struct icp_qat_fw_init_admin_req req = { };
+	u32 ae_mask = hw_data->admin_ae_mask;
+
+	req.cmd_id = ICP_QAT_FW_TL_STOP;
+
+	return adf_send_admin(accel_dev, &req, &resp, ae_mask);
+}
+
+static int adf_send_admin_retry(struct adf_accel_dev *accel_dev, u8 cmd_id,
+				struct icp_qat_fw_init_admin_resp *resp,
+				unsigned int sleep_ms)
+{
+	u32 admin_ae_mask = GET_HW_DATA(accel_dev)->admin_ae_mask;
+	struct icp_qat_fw_init_admin_req req = { };
+	unsigned int retries = ADF_ADMIN_RETRY_MAX;
+	int ret;
+
+	req.cmd_id = cmd_id;
+
+	do {
+		ret = adf_send_admin(accel_dev, &req, resp, admin_ae_mask);
+		if (!ret)
+			return 0;
+
+		if (resp->status != ICP_QAT_FW_INIT_RESP_STATUS_RETRY)
+			return ret;
+
+		msleep(sleep_ms);
+	} while (--retries);
+
+	return -ETIMEDOUT;
+}
+
+static int adf_send_admin_svn(struct adf_accel_dev *accel_dev, u8 cmd_id,
+			      struct icp_qat_fw_init_admin_resp *resp)
+{
+	return adf_send_admin_retry(accel_dev, cmd_id, resp, ADF_SVN_RETRY_MS);
+}
+
+int adf_send_admin_arb_query(struct adf_accel_dev *accel_dev, int cmd, u8 *svn)
+{
+	struct icp_qat_fw_init_admin_resp resp = { };
+	int ret;
+
+	ret = adf_send_admin_svn(accel_dev, ICP_QAT_FW_SVN_READ, &resp);
+	if (ret)
+		return ret;
+
+	switch (cmd) {
+	case ARB_ENFORCED_MIN_SVN:
+		*svn = resp.enforced_min_svn;
+		break;
+	case ARB_PERMANENT_MIN_SVN:
+		*svn = resp.permanent_min_svn;
+		break;
+	case ARB_ACTIVE_SVN:
+		*svn = resp.active_svn;
+		break;
+	default:
+		*svn = 0;
+		dev_err(&GET_DEV(accel_dev),
+			"Unknown secure version number request\n");
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+int adf_send_admin_arb_commit(struct adf_accel_dev *accel_dev)
+{
+	struct icp_qat_fw_init_admin_resp resp = { };
+
+	return adf_send_admin_svn(accel_dev, ICP_QAT_FW_SVN_COMMIT, &resp);
+}
+
+static_assert(sizeof(struct icp_qat_fw_init_admin_kpt_cfg) < PAGE_SIZE);
+
+static void adf_cfg_kpt_config(struct adf_accel_dev *accel_dev,
+			       struct icp_qat_fw_init_admin_kpt_cfg *kpt_config)
+{
+	struct adf_kpt_interface_data *user_data = GET_KPT_USER_DATA(accel_dev);
+
+	kpt_config->swk_cnt_per_fn = user_data->swk_cnt_per_fn;
+	kpt_config->swk_cnt_per_pasid = user_data->swk_cnt_per_pasid;
+	kpt_config->swk_ttl_in_secs = user_data->swk_max_ttl;
+	kpt_config->swk_shared_disable = !user_data->swk_shared;
+}
+
+int adf_send_admin_kpt_init(struct adf_accel_dev *accel_dev, void *init_cfg,
+			    size_t init_cfg_sz, dma_addr_t init_ptr)
+{
+	struct icp_qat_fw_init_admin_kpt_cfg *kpt_config = init_cfg;
+	u32 ae_mask = GET_HW_DATA(accel_dev)->admin_ae_mask;
+	struct icp_qat_fw_init_admin_resp resp = { };
+	struct icp_qat_fw_init_admin_req req = { };
+	int ret;
+
+	if (!kpt_config || init_cfg_sz < sizeof(*kpt_config))
+		return -EINVAL;
+
+	adf_cfg_kpt_config(accel_dev, kpt_config);
+
+	req.cmd_id = ICP_QAT_FW_KPT_ENABLE;
+	req.init_cfg_ptr = init_ptr;
+	req.init_cfg_sz = sizeof(*kpt_config);
+
+	ret = adf_send_admin(accel_dev, &req, &resp, ae_mask);
+	if (ret)
+		dev_err(&GET_DEV(accel_dev), "Failed to send KPT init admin message\n");
+
+	return ret;
 }
 
 int adf_init_admin_comms(struct adf_accel_dev *accel_dev)

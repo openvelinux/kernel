@@ -15,14 +15,19 @@ struct qat_alg_buf {
 } __packed;
 
 struct qat_alg_buf_list {
-	u64 resrvd;
-	u32 num_bufs;
-	u32 num_mapped_bufs;
+	/* New members must be added within the __struct_group() macro below. */
+	__struct_group(qat_alg_buf_list_hdr, hdr, __packed,
+		u64 resrvd;
+		u32 num_bufs;
+		u32 num_mapped_bufs;
+	);
 	struct qat_alg_buf buffers[];
 } __packed;
+static_assert(offsetof(struct qat_alg_buf_list, buffers) == sizeof(struct qat_alg_buf_list_hdr),
+	      "struct member likely outside of __struct_group()");
 
 struct qat_alg_fixed_buf_list {
-	struct qat_alg_buf_list sgl_hdr;
+	struct qat_alg_buf_list_hdr sgl_hdr;
 	struct qat_alg_buf descriptors[QAT_MAX_BUFF_DESC];
 } __packed __aligned(64);
 
@@ -59,11 +64,5 @@ static inline gfp_t qat_algs_alloc_flags(struct crypto_async_request *req)
 {
 	return req->flags & CRYPTO_TFM_REQ_MAY_SLEEP ? GFP_KERNEL : GFP_ATOMIC;
 }
-
-int qat_bl_realloc_map_new_dst(struct adf_accel_dev *accel_dev,
-			       struct scatterlist **newd,
-			       unsigned int dlen,
-			       struct qat_request_buffs *qat_bufs,
-			       gfp_t gfp);
 
 #endif
